@@ -20,7 +20,7 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | `curate` | the proposal queues one proposal at a time, applied through `curate-apply.sh`, every decision a commit | `references/curate.md` |
 | `consolidate` | duplicates, contradictions and staleness in one or more memory scopes, as proposals | `references/consolidate.md` |
 | `solve` | one problem end to end: triage, grill, decompose, blocks in their own worktrees, the MR | `references/solve.md`, quick lane `references/solve-quick.md` |
-| `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh` starts ready tasks, or a wave of blocks, as their own sessions | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
+| `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh` starts ready tasks, or a wave of blocks, as their own sessions, and without a parent also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |
 
