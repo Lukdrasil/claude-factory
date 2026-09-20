@@ -5,10 +5,9 @@
 # phase tests -> opus, phase implement -> opus; with no phase, archetype review/feature/bugfix/refactor -> opus
 # (generated code never runs below opus), triage/ops or tier green -> haiku, everything else -> sonnet.
 #
-# Phase implement is the one exception to "generated code never runs below opus" (T-154, docs/plans/slim-harness.md
-# M12): a green block, or a yellow block of complexity low on its first attempt, is written by sonnet. Both are
-# blocks whose acceptance the coordinator reruns itself and whose retry escalates to opus anyway, so the cheap
-# pass costs one retry at worst. Every other implement block stays on opus.
+# Phase implement answers opus at every tier: the implement agents (agents/factory-block-implement*.md) fix
+# `model: opus` and the coordinator passes no override, so a cheaper answer here would only disagree with the
+# agent that actually runs (the sonnet lane of slim-harness M12 never ran and is gone).
 #
 # Phase verify is a script run plus a fixed-format report, so it sits below the escalation block and answers
 # haiku unless complexity high or attempt >= 1 has already escalated it.
@@ -58,11 +57,7 @@ if [ "$complexity" = high ] || [ "$attempt" -ge 1 ]; then
 fi
 
 case "$phase" in
-  tests) echo opus; exit 0 ;;
-  implement)
-    if [ "$tier" = green ] || { [ "$tier" = yellow ] && [ "$complexity" = low ]; }; then echo sonnet
-    else echo opus; fi
-    exit 0 ;;
+  tests|implement) echo opus; exit 0 ;;
   verify) echo haiku; exit 0 ;;
 esac
 

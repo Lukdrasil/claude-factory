@@ -33,11 +33,12 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 
 ## Output
 
-1. `git-guard fetch && git rebase origin/<base>`, `<base>` being `default_branch` for `<key>` in
+1. `git fetch origin && git rebase origin/<base>`, `<base>` being `default_branch` for `<key>` in
    `../state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
    you cannot reconcile inside the task's scope is `blocked`.
 2. Run acceptance again: a rebase can break what was green.
-3. `git-guard push-lease <branch>`, the only rewrite permitted and only on your own branch.
+3. `git push --force-with-lease origin <branch>`, the only rewrite permitted and only on your own branch;
+   the policy guard refuses it on any other.
 4. `sh <plugin-root>/bin/mr-open.sh <id>` builds the description and opens the MR idempotently; what it says
    and never says is `<plugin-root>/skills/_shared/mr-description.md`.
 5. Write the web URL it printed into `mr_url`, then report. No forge means the output is the pushed,
@@ -56,6 +57,6 @@ You write `status:` and `mr_url:`, nothing else: `owner`, `attempt` and `plan_ha
 
 ## WIP push and liveness
 
-`git-guard push <branch>` after every green, never `--force`. Report progress before a long operation or the
+`git push -u origin <branch>` after every green, never `--force`. Report progress before a long operation or the
 watchdog declares you `stalled` (ADR-0009). Every run carries the cap in
 `<plugin-root>/skills/_shared/test-budget.md`.

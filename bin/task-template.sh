@@ -204,8 +204,6 @@ TEMPLATE
     cat <<'TEMPLATE'
 ## Handoff
 - **Blast radius:** the files/modules affected and why
-- **Blast-radius coverage:** `method -> %` from toolset `coverage`, the analysed symbols only; every
-  uncovered one listed explicitly with why. Data for the implement phase and the reviewer, not a gate.
 - **Green tests:** what covers the existing behaviour (list the new characterization ones)
 - **Red tests:** a list of `test -> what should turn it green`; for each, why and how it fails
 - **Commands:** the toolset commands that run the whole suite / only the red tests (`test`, `test-filter <expr>`)

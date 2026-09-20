@@ -20,17 +20,18 @@ against the second list is a **hit**: a defect, fixed in the members the diff to
 
 ## Steps
 
-1. **Read the stack.** Read `stack:` from the toolset section of the injected context. If
-   `${CLAUDE_SKILL_DIR}/references/<stack>/README.md` exists, read it and the `inefficient.md` beside it:
-   the two lists for that stack, one table row per item. The `details.md` beside them carries the snippet
-   and the sources per row code; open it only for a row you need to see in full. Without a toolset or a
-   reference, apply the rules above with the language's own documentation. Done when you know which
-   reference, if any, applies.
+1. **Read the stack.** Read `stack:` from the toolset section of the injected context. While implementing,
+   read `${CLAUDE_SKILL_DIR}/references/<stack>/inefficient.md` when it exists: the defects list, one table
+   row per item. In a review, read the `README.md` beside it too, the replacements list. The `details.md`
+   beside them carries the snippet and the sources per row code; open it only for a row you need to see in
+   full. Without a toolset or a reference, apply the rules above with the language's own documentation.
+   Done when you know which reference, if any, applies.
 2. **Read the project's language and runtime version** from its project files. That version bounds every
    replacement: a row above it stays out, and the version stays where the project set it. Done when you can
    say which rows apply to this project.
-3. **Write the change in the modern idiom** for every new or edited member, within the version from step 2.
-   Done when no new line uses a construct the replacements list names as superseded.
+3. **Write the change in the modern idiom** for every new or edited member, within the version from step 2:
+   the language's current construct, not the one it superseded. The review walks the replacements list over
+   the diff; a superseded construct it finds is a suggestion with its row code.
 4. **Walk the inefficient idioms over the diff.** Every member the diff touches is checked against the list.
    Each hit is fixed in place; a hit whose fix would widen the change beyond the task, or a hit in a member
    the diff leaves untouched, goes into the progress file with its row code and the reason. Done when every

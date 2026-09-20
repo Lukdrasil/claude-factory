@@ -1,6 +1,6 @@
 ---
 name: block-tests
-description: The tests phase of a two-phase implementation task (ADR-0030): the blast radius covered green, new behaviour as red tests, a handoff for the implement phase.
+description: The tests phase of a two-phase implementation task (ADR-0030, red tier or yellow above low complexity): the blast radius covered green, new behaviour as red tests, a handoff for the implement phase.
 ---
 
 # block-tests
@@ -13,11 +13,13 @@ gets only what you pushed. The argument is the task file's path in the state clo
 
 - cwd is the task worktree on the branch from the frontmatter, the state clone in `../state`, the progress
   file `../state/repos/<key>/progress/<id>.md`; otherwise self-report `failed`.
-- Toolset (ADR-0039): `build`, `test`, `test-filter <expr>`, `coverage`, `find-refs <symbol>`; one the repo
-  lacks is a note in the handoff, not a failure.
+- Toolset (ADR-0039): `build`, `test`, `test-filter <expr>`, `find-refs <symbol>`; one the repo lacks is a
+  note in the handoff, not a failure.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/rules.md`,
   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/progress-and-push.md` and
-  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/delegation.md` hold; rerun every delivered test yourself.
+  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/delegation.md` hold; rerun every delivered test yourself. Spawned as
+  a block subagent, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/block-subagent.md` replaces those three and steps
+  1, 6 and 7.
 
 ## Procedure
 
@@ -28,16 +30,13 @@ gets only what you pushed. The argument is the task file's path in the state clo
    `${CLAUDE_PLUGIN_ROOT}/skills/_shared/test-budget.md`, recorded. Already red is `blocked`.
 4. **Characterization tests.** Cover blast-radius behaviour the existing tests miss, green straight away, or
    the implement phase cannot tell what it broke.
-5. **Blast-radius coverage.** On the green suite, toolset `coverage`, the per-method rows of the step-2
-   symbols only: a global number is gameable. Data, not a gate: an uncovered method is recorded with its
-   reason, not chased.
-6. **Red tests.** The new behaviour from `# Goal` and `## Acceptance` as failing tests, each run to confirm
+5. **Red tests.** The new behaviour from `# Goal` and `## Acceptance` as failing tests, each run to confirm
    it fails **for the right reason**, missing functionality and not a typo, the reason into the handoff.
    Files exempt under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/test-exemptions.md` get none, here or in step 4;
    they go under `Notes` as `exempt`. Never edit acceptance.
-7. **Handoff.** `git-guard push <branch>`, rewrite the progress file, append the filled-in section
+6. **Handoff.** `git push -u origin <branch>`, rewrite the progress file, append the filled-in section
    `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh handoff` prints. Push first, the next phase clones fresh.
-8. Self-report `tests_ready`.
+7. Self-report `tests_ready`.
 
 **You do not change production code**, only tests and their scaffolding. A spec untestable without one is a
 handoff note; an ambiguity is `blocked`. No MR and no knowledge review here.
@@ -54,7 +53,6 @@ Never `review`; `## Remaining` lists what the handoff still misses.
 
 ## As a block subagent
 
-Spawned by a `factory solve` coordinator inside a block's worktree you are not the session:
-no MR, no self-report, no state-repo write, no push. Land the analysis and the tests, then report back the commands you
-ran with their exit codes, the `## Handoff` content and at most one `## Lessons` line. The coordinator reruns
-the red tests first.
+Steps 2 to 5, the tests committed on the block branch, then the report of
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/block-subagent.md` with the filled-in `## Handoff`. The coordinator
+reruns the red tests first.

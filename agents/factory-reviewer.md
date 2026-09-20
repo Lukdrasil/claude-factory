@@ -18,8 +18,8 @@ so look for what no single block could see: the same thing solved twice, a helpe
 one block changed and another still assumes, a test weakened to make one block's change pass. The `## Test deviations` entries are the only justified test edits;
 any other change to a test that existed before the session is a blocking finding.
 
-The brief also carries the `block-verify` reports, the `## Quality` table, the `## Duplication` answers and
-the blocks that ran on sonnet. What each of them makes a finding is the last section of
+The brief also carries the `block-verify` reports, the `## Quality` table and the `## Duplication` candidates
+`dup-check.sh` printed. What each of them makes a finding is the last section of
 `${CLAUDE_PLUGIN_ROOT}/skills/block-review/references/axes.md`, severities included: one `must` there is a
 `changes needed` verdict here.
 

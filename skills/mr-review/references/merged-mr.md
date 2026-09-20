@@ -12,9 +12,9 @@ checkout is the merge commit either way.
 **Without `forge.sh`.** `gh pr view <url> --json title,body,headRefName,baseRefName,closingIssuesReferences,comments`,
 or `glab mr view <url> -F json` together with `glab mr view <url> --comments`.
 
-**Fetching.** `git fetch origin <head>` in a plain session; `git-guard fetch` on a worker, where the guard
-owns the remote. The checkout is `git worktree add --detach <review-dir>/tree FETCH_HEAD`, except on a
-worker, where the clone is yours alone: check out in place and `tree` is the clone itself.
+**Fetching.** `git fetch origin <head>`. The checkout is
+`git worktree add --detach <review-dir>/tree FETCH_HEAD`, except in a task worktree of your own, where you
+check out in place and `tree` is the worktree itself.
 
 **The inventory** takes `--toolset <toolset.md>` when the repo has one, and is otherwise run bare.
 

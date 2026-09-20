@@ -17,7 +17,8 @@
 # <state>/repos/<key>/toolset.md, read with the same awk snippet and the same `**` to `*` rewrite
 # policy-guard.sh uses, and matched with the same repo-relative plus leading-slash `case` pair. A changed
 # `*.test.sh` runs as `timeout 10m sh <file>`; a changed `*Tests.cs` runs through the toolset's `test-filter`
-# binding with <expr> substituted by the file's base name, which already carries its own cap. `timeout` is
+# binding with <expr> substituted by the file's base name; that binding carries the `timeout` policy-guard.sh
+# demands of every `dotnet test` (toolsets/dotnet.md). `timeout` is
 # spelled as a bare word so PATH resolves it. A changed file that matches a glob but is neither shape is not
 # counted and not run, and so is a file the block deleted: only a test file present on disk can be run. An
 # empty diff is the same as a diff with no test file in it, which is red.

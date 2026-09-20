@@ -18,8 +18,8 @@
 # where the agent is what `model-for.sh --agent` prints, the model what `model-for.sh` prints, and the brief is
 # the whole output of `block-brief.sh <block-id> --agent <agent>` written to
 # `<root>/<key>/.harness/<T-NNN>/brief-<block-id>.md`. The phase both picks is the block's own `phase:` field;
-# a block that has none is in the tests phase when its tier is yellow or red and in the implement phase when it
-# is green, the way solve.md lets a green block skip wave 1.
+# a block that has none is in the implement phase when lib-tasks.sh's single_phase says so (green, or yellow
+# at complexity low: red-first TDD inside one agent) and in the tests phase otherwise.
 #
 # Exit 0 with the plan. Exit 1 with the reason on stderr when no parent id is given, when the id resolves to no
 # task file, when dag-check.sh refuses the cut, when the requested wave is not in the plan, or when no block of
@@ -143,13 +143,13 @@ for b in $(wave_ids "$wave"); do
   attempt=$(fm "$bf" attempt); [ -n "$attempt" ] || attempt=0
   phase=$(fm "$bf" phase)
   if [ -z "$phase" ]; then
-    if [ "$tier" = green ]; then phase=implement; else phase=tests; fi
+    if single_phase "$tier" "$complexity"; then phase=implement; else phase=tests; fi
   fi
 
   agent=$("$bin/model-for.sh" --agent "$archetype" "$tier" "$phase" "$attempt" "$complexity")
   model=$("$bin/model-for.sh" "$archetype" "$tier" "$phase" "$attempt" "$complexity")
   brief="$harness/brief-$b.md"
-  "$bin/block-brief.sh" "$b" --state "$state" --agent "$agent" > "$brief"
+  "$bin/block-brief.sh" "$b" --state "$state" --agent "$agent" --phase "$phase" > "$brief"
 
   printf '%s %s %s %s\n' "$b" "$agent" "$model" "$brief"
   lines=$((lines + 1))

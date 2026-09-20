@@ -34,7 +34,8 @@ Example: "Make the red tests in `block/T-091-01` green. Do not touch `## Accepta
 
 `model-for.sh --agent` picks the implement agent: `complexity: high` gets `factory-block-implement-medium`
 (effort medium), everything else `factory-block-implement` (effort low). Phase and complexity decide it; the
-attempt ladder does not, since escalation moves the model and `--agent` the agent.
+attempt ladder does not, since escalation moves the model and `--agent` the agent. The model of a code-writing
+agent is fixed in its definition and is opus; `model-for.sh` agrees with it at every tier.
 
 ## No `<model>-strong` twin
 `model-for.sh` prints `haiku|sonnet|opus` and nothing else, except under `--agent`, where it prints an agent

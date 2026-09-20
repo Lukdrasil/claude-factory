@@ -22,7 +22,7 @@ jq -n --arg repo "<key>" --arg id "<new-id>" --arg slug "<slug>" --rawfile markd
 
 | Response | What to do |
 |---|---|
-| `201` `{"id":..., "file":...}` | Created and pushed; `file` is the path for `## Evidence`. Run `git-guard fetch && git rebase` so your clone has it before the self-report commit. |
+| `201` `{"id":..., "file":...}` | Created and pushed; `file` is the path for `## Evidence`. Run `git pull --rebase` so your clone has it before the self-report commit. |
 | `400` `... already exists ...` | Another session took the id; take the next number and send it again. |
 | `400` other | Server-side validation of the frontmatter, the enums, the branch or the slug. Fix the markdown per the error text; do not resend it unchanged. |
 | `401` | The token is missing or wrong. Self-report `failed` with that reason. |

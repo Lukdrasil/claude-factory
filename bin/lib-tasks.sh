@@ -16,6 +16,13 @@ owned_task_ids() { # <session id>
     | xargs -r sed -n 's/^id:[[:space:]]*//p' 2>/dev/null | sed 's/[[:space:]]*#.*//' | sort -u
 }
 
+# a block that runs as one implement agent with red-first TDD inside, instead of a tests phase and an implement
+# phase: green, or yellow at complexity low. spawn-plan.sh, solve-next.sh and block-brief.sh decide the phase
+# by this one rule.
+single_phase() { # <tier> <complexity>
+  [ "$1" = green ] || { [ "$1" = yellow ] && [ "$2" = low ]; }
+}
+
 # one frontmatter field of a task file, rewritten in place: the line is replaced when the key is already there
 # (a trailing ` # comment` kept) and inserted just above the closing `---` when it is not. T-007 review: a
 # `sed -i 's/^owner:.*/…/'` is a silent no-op on a task whose frontmatter carries no `owner:` line at all, so

@@ -35,12 +35,11 @@ replacement.
 **scope.** Something from `## Out of scope` that should not be in the diff, or a missing piece of the
 assignment.
 
-**The integrated review only.** The brief carries the `block-verify` reports, the `## Quality` table, the
-`## Duplication` answers of the explorer spawns and the blocks that ran on sonnet. Read them as rules.
+**The integrated review only.** The brief carries the `block-verify` reports, the `## Quality` table and the
+`## Duplication` candidates `dup-check.sh` printed. Read them as rules.
 
-- A confirmed duplicate of a helper the repo has is `should` (a suggestion), naming the helper and the call
-  that replaces the copy. A copied block over twelve lines is `must` (blocking).
-- A sonnet block gets two extra passes: its test diff since the tests phase, where a changed test file with no
-  `## Test deviations` entry is `must`, and every member it touched against
-  `<plugin-root>/skills/modern-idioms/SKILL.md`.
+- Every `## Duplication` candidate is judged by you against the code it names: a confirmed duplicate of a
+  helper the repo has is `should` (a suggestion), naming the helper and the call that replaces the copy. A
+  copied block over twelve lines is `must` (blocking). A candidate that is not a duplicate is one line under
+  `### Verified`.
 - One `must` anywhere makes the verdict `changes needed`.

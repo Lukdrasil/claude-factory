@@ -1,12 +1,12 @@
 ---
 name: spec-critic
-description: A second pair of eyes on a draft task before approval, read with a clean context like a fresh session and reported as proposed edits. Use on tier yellow or red, before a human flips a draft to ready.
+description: A second pair of eyes on a draft task before approval, read with a clean context like a fresh session and reported as proposed edits. Use on tier red, or on a yellow draft when the human asks, before a human flips a draft to ready.
 ---
 
 # spec-critic
 
-Trigger: a draft task at `tier: yellow` or `tier: red`, before the flip to `ready`; not a green task, which
-costs more than it gives. You criticise the **spec, not the code**:
+Trigger: a draft task at `tier: red`, before the flip to `ready` (`_shared/tiers.md`), or a `yellow` one the
+human asks for; never a green task, which costs more than it gives. You criticise the **spec, not the code**:
 
 > Would a fresh session, given only this file and the generated `CLAUDE.md`, get all the way to a finished result?
 
@@ -30,7 +30,7 @@ costs more than it gives. You criticise the **spec, not the code**:
    a choice stays a question.
 4. Show the human the report of `references/report.md`, write the agreed edits into the task file, commit
    and push. Without agreement, edit nothing.
-5. Say what happens next: the flip to `ready` and `plan_hash` are a human's, in the dashboard.
+5. Say what happens next: the flip to `ready` and `plan_hash` are a human's, through `factory approve`.
 
 As the `spec-critic` subagent you stop after step 3: the report is your final message, back to the calling
 session.

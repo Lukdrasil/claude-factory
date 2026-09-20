@@ -8,7 +8,7 @@ sentence: `tier`, `archetype` and `complexity` per `<plugin-root>/skills/_shared
 only proposals from this plan and no cycles; `docs`, `none` or the docs this task updates in the same branch;
 `design`, the members of `## Program design` this task implements, by file and name, `none` only for a
 `research` proposal. A proposal that changes public behaviour or architecture and still says `none` for docs
-needs the one sentence why. Neither decompose nor the dashboard remakes these decisions.
+needs the one sentence why. Decompose does not remake these decisions; `decompose.sh` copies them 1:1.
 
 ## The plan file
 
@@ -22,9 +22,8 @@ Write it to `<state>/repos/<repo-key>/plans/<slug>-plan-ready.md`, where `<slug>
 the spec, lowercase and hyphenated, and commit it from `<state>`. The plan is an artifact: it outlives the
 session and shows up in the diff.
 
-`task:` is the id of the draft task this grill hung off, the only link back, and the dashboard scopes that
-task's plan panel by it. `none` when the grill ran before any task existed, and such a plan stays offered on
-every draft of the repo.
+`task:` is the id of the draft task this grill hung off, the only link back: the blocks become its
+`T-NNN-NN` children and carry its forge issue. `none` when the grill ran before any task existed.
 
 Then lint it:
 
