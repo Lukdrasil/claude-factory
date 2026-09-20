@@ -11,18 +11,18 @@ suffix `-2`.
 Derive the tie from the topic, whether a repo key or its code comes up in it, or force it with `--repo=<key>`;
 `--repo=none` forces the general `research/`. When in doubt choose `research/`: a general topic in a repo
 folder is harder to find than the other way round. `research/` is the final home of the report, where a human
-reads or archives it in the dashboard.
+reads or archives it.
 
 ## The commit
 
-`git-guard` and `git rebase` work on cwd, and cwd is the product clone whenever the state clone is
+`git` works on cwd, and cwd is the product clone whenever the state clone is
 `../state`, so the whole block runs from the state clone the preconditions resolved:
 
 ```sh
 (
   cd <state clone> || exit 1
   git add <path to the report> && git commit -m "research: <topic>"
-  git-guard fetch && git rebase && git-guard push
+  git pull --rebase --autostash -X theirs && git push
 )
 ```
 

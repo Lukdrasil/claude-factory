@@ -24,8 +24,8 @@ not listed here does not exist for this repo — note it and move on.
 |---|---|
 | `build` | `dotnet build {{solution}} -warnaserror -v q --nologo` |
 | `test` | `timeout 15m dotnet test {{solution}}` |
-| `test-filter <expr>` | `dotnet test {{solution}} --filter-query "<expr>"` — Microsoft.Testing.Platform; a VSTest repo takes `--filter "<expr>"` instead |
-| `coverage` | `dotnet test {{solution}} --collect:"XPlat Code Coverage"`, then `reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:TextSummary` |
+| `test-filter <expr>` | `timeout 15m dotnet test {{solution}} --filter-query "<expr>"`, Microsoft.Testing.Platform; a VSTest repo takes `--filter "<expr>"` instead |
+| `coverage` | `timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage"`, then `reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:TextSummary` |
 | `mutation <scope>` | `dotnet stryker --mutate "<scope>" --break-at <n>` — `<n>` is the score the task's `## Acceptance` demands; the run exits non-zero below it |
 | `crap <scope>` | `DOTNET_ROLL_FORWARD=Major dotnet-crap analyze "<scope>" --coverage .coverage/Cobertura.xml --threshold 8` (newest runtime): run `coverage` first; the tool's default is 30, changed code is held to the `crap-threshold:` above, which `block-verify.sh` reddens a block over |
 | `format` | `dotnet format whitespace {{solution}} --include <the changed files>` |

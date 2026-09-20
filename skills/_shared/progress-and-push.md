@@ -35,20 +35,18 @@ record the command, its exit code and the key output line. The Stop hook bounces
 
 ## Report
 
-The state clone is read-only towards the state repo (ADR-0047): the status, the progress snapshot and the lines
-under `## Attempts` / `## Tool failures` are written by the dashboard. Rewrite the two files, then:
-
-`<plugin-root>` is the plugin root the skill that sent you here names; substitute it and quote the path:
-`sh "<plugin-root>/bin/state-report.sh"`.
+The task's `status:` and the progress file are written only through `state-report.sh`, which in the
+standalone posture of this plugin (ADR-0050, `DASHBOARD_URL` unset) validates the transition, commits in the
+state clone and pushes. Rewrite the progress file, then:
 
 ```sh
-sh "<plugin-root>/bin/state-report.sh"
+sh "<plugin-root>/bin/state-report.sh" --task <id> [--set-status <status>]
 ```
 
-It sends the task's `status` and the whole progress file to `PATCH /api/tasks/<id>`. Run it at every milestone —
-that report is the liveness signal (ADR-0009), so a long operation goes after one. Exit 1 = refused, the reason
-is on stderr; fix it and run again. Exit 2 = it never arrived; there is no git fallback, note it and carry on.
-The Stop hook reports for you at the end.
+`<plugin-root>` is the plugin root the skill that sent you here names. Run it at every milestone: that
+report is the liveness signal (ADR-0009), so a long operation goes after one. Exit 1 = refused, the reason
+is on stderr; fix it and run again. Exit 2 = the push did not land; the local commit stays, note it and carry
+on. The Stop hook reports for you at the end.
 
 A **new file** of your own — a research report, an ADR or memory proposal, a plan — still goes through git:
 

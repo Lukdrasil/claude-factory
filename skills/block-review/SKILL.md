@@ -20,7 +20,7 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
 
 1. Snapshot and `state-report.sh`, your only liveness signal: repeat it at every milestone and before a
    long run (ADR-0009).
-2. `git-guard fetch && git checkout <branch>`; the diff is `git diff origin/<base>...HEAD`, `<base>` being
+2. `git fetch origin && git checkout <branch>`; the diff is `git diff origin/<base>...HEAD`, `<base>` being
    `default_branch` for `<key>` in `../state/repos.yml`. Read the MR with
    `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh mr <mr_url>`; a description not matching it is a finding.
 3. Judge against the source task's `## Acceptance` and `## Out of scope`, never your own. A `- mr: <url>`

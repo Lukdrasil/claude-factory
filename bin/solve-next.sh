@@ -260,9 +260,19 @@ if [ -n "$pending" ]; then
     emit "Step 11 of 16: wave ${wave:-1} implement, from $pending" "every block of the wave has its implement subagent spawned with the brief spawn-plan.sh wrote."
     cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status"
     cmd "$bin/spawn-plan.sh $id$wave_arg --state $state"
-  elif [ -z "$bp" ] && [ "$bt" != green ]; then
-    emit "Step 11 of 16: wave ${wave:-1} tests, from $pending" "you have rerun the red tests each agent wrote yourself, and every yellow or red block of the wave is tests_ready."
+  elif [ -z "$bp" ] && ! single_phase "$bt" "$bc"; then
+    emit "Step 11 of 16: wave ${wave:-1} tests, from $pending" "you have rerun the red tests each agent wrote yourself, and every two-phase block of the wave (red, or yellow above low complexity) is tests_ready."
     cmd "$bin/spawn-plan.sh $id$wave_arg --state $state"
+  elif [ -z "$bp" ]; then
+    # why: a single-phase block (green, or yellow at complexity low) gets no tests phase, so the red proof the
+    # why: coordinator would have rerun at tests_ready is rerun here instead: the agent's first commit carries
+    # why: the red tests alone, and that commit is checked out and run before the phase field is armed
+    emit "Step 11 of 16: wave ${wave:-1} single-phase implement, from $pending" "the implement subagent of $pending has returned, its first commit on the block branch touches test files only and its ## Red proof names that commit; you have run test-filter over those files at that commit yourself (red) and at HEAD (green), and $pending carries phase: implement."
+    cmd "$bin/spawn-plan.sh $id$wave_arg --state $state"
+    bbase=$(sed -n 's/^base:[[:space:]]*//p' "$bprogress" 2>/dev/null | head -n1)
+    cmd "git -C $bwt log --format='%h %s' --name-only ${bbase:-$branch}..HEAD"
+    cmd "git -C $bwt worktree add --detach $harness/red-$pending <red-commit> && (cd $harness/red-$pending && <test-filter binding over the red test files>); git -C $bwt worktree remove --force $harness/red-$pending"
+    cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status"
   else
     emit "Step 11 of 16: verify and open the MR for $pending" "$pending is review with its mr_url set, evidenced in $bprogress, and the merge into the session branch is proved green."
     cmd "$bin/model-for.sh $ba $bt verify $bn $bc"
@@ -281,21 +291,19 @@ if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
   cmd "sed -n '/^## Acceptance/,/^## /p' $task"
   cmd "sed -n '/^|/p' $state/repos/$key/toolset.md"
   cmd "cat $plugin/skills/_shared/crap-loop.md"
-  cmd "cat $plugin/skills/_shared/test-exemptions.md"
   exit 0
 fi
 
 if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
-  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and every candidate it printed is answered under ## Duplication in $progress, the answers coming from at most eight worker-explorer spawns (haiku, read-only), one candidate each, never from your own search; an empty candidate list is recorded as one line."
+  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and its output stands verbatim under ## Duplication in $progress, judged by nobody yet: the factory-reviewer of step 13 answers every candidate. An empty candidate list is recorded as one line."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/dup-check.sh $harness/review.diff $worktree"
-  cmd "cat $plugin/skills/_shared/delegation.md"
   exit 0
 fi
 
 if ! grep -q '^## Review' "$progress" 2>/dev/null; then
-  emit "Step 13 of 16: integrated review of $id" "a verdict from factory-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table, the ## Duplication answers and the list of blocks that ran on sonnet, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
+  emit "Step 13 of 16: integrated review of $id" "a verdict from factory-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"

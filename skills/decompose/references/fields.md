@@ -1,6 +1,7 @@
-# Choosing the fields
+# The fields
 
-The skeleton comes from `<plugin-root>/bin/task-template.sh block`. What goes into it:
+`<plugin-root>/bin/decompose.sh` fills the skeleton of `task-template.sh block` by these rules; read this when
+a generated file looks wrong, to tell a plan defect from a script defect:
 
 - `tier`, `archetype`, `complexity` - copied 1:1 from the plan's proposal. The grill made those decisions
   against `<plugin-root>/skills/_shared/tiers.md` and you do not remake them here. For a `red` tier, remind
@@ -9,7 +10,7 @@ The skeleton comes from `<plugin-root>/bin/task-template.sh block`. What goes in
 - `depends_on` - only ids of tasks from this batch or already existing ones, no cycles. Dispatch waits for
   their `done`.
 - `branch` - the prefix per archetype (`feat/`, `fix/`, `refactor/`, `research/`) plus the slug, written
-  without the id; the server inserts the id it assigns after the prefix. A triage task has no branch.
+  without the id; `task-new.sh` inserts the id it assigns after the prefix. A triage task has no branch.
 - `# Goal`, `## Context`, `## Acceptance` - what must be true when the task is done, never how the
   environment is configured. Name the command, never its binding: the binding is regenerated per dispatch
   while a task body is immutable.
@@ -17,6 +18,6 @@ The skeleton comes from `<plugin-root>/bin/task-template.sh block`. What goes in
   carries the `Design (approved in the grill):` block verbatim.
 - `## Docs` - the grill's `docs:` answer for this proposal, copied verbatim. Do not invent one the grill did
   not make; with nothing to carry over, write `none`.
-- `- forge issue:` - the url the source task carries, copied onto **every** task you write. It is the join
-  key the dashboard pairs on, so without it the issue never learns the work exists. With no forge issue on
-  the source task, omit the line along with the whole `## Internal` section; never write an empty one.
+- `- forge issue:` - the url the source task carries, copied onto **every** block. It is the join key the
+  MR description and the issue are paired on, so without it the issue never learns the work exists. With no
+  forge issue on the source task, the line and the whole `## Internal` section are omitted; never an empty one.

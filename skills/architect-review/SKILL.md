@@ -18,7 +18,8 @@ interactive: the reviewer reports, the human decides.
 - cwd is the state clone. `<key>` comes from the plan's frontmatter `repo:`, `<slug>` from the plan file name.
 - The product clone for `<key>` resolves and has `docs/architecture/`. Without those docs there is nothing to
   curate: skip the invocation, write no verdict file, and say so in one line.
-- The curation runs at every tier. Tier decides how hard a finding is argued, never whether the check runs.
+- The curation runs at every tier. Tier decides how hard a finding is argued and whether the specialist panel
+  of step 5 fires, never whether the check runs.
 
 ## Steps
 
@@ -32,8 +33,9 @@ interactive: the reviewer reports, the human decides.
 4. Spawn the `architect-reviewer` agent with the invocation name and the absolute paths of the input, the
    product repo and `references/checks.md`. It runs on a fresh context and returns a report, never an edit.
 5. Match the input's scope against the `Load when` column of `architecture-docs/references/README.md`. One or
-   two touched domains: the reviewer loads those rubrics itself. Three or more, or a `red` tier: spawn one
-   `architect-specialist` per domain, in parallel, each carrying the same absolute paths plus that index.
+   two touched domains, or a plan whose every proposal is `green`: the reviewer loads those rubrics itself.
+   Three or more at `yellow`, or any `red` tier: spawn one `architect-specialist` per domain, in parallel,
+   each carrying the same absolute paths plus that index.
 6. Check every finding carries its axis, a severity and evidence a human can open. Send an unevidenced
    finding back once; if it returns unevidenced, drop it.
 7. Synthesize one report and one verdict, whatever the panel size, arbitrating where two domains contradict

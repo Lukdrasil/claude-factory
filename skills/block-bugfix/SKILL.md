@@ -12,7 +12,9 @@ the task file's absolute path in the state clone; read all of it, it is a self-c
 
 ## Session contract
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/_shared/session-contract.md` before step 1 and follow it, with the files
+Spawned as a block subagent by a `factory solve` coordinator, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/block-subagent.md`
+replaces this section and steps 1, 9 and 10 below; the brief says which you are. As a session, read
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/session-contract.md` before step 1 and follow it, with the files
 it names (`rules.md`, `progress-and-push.md`, `knowledge-review.md`, `delegation.md`). `mr_url` set in the
 frontmatter means `${CLAUDE_PLUGIN_ROOT}/skills/_shared/refinement.md` (ADR-0031) replaces the procedure.
 
@@ -51,7 +53,5 @@ confirm the red tests still fail as described, then hunt the cause under
 
 ## As a block subagent
 
-Spawned by a `factory solve` coordinator inside a block's worktree you are not the session:
-no MR, no self-report, no state-repo write, no push. Run the procedure through the architecture-model step,
-then report back the commands you ran with their exit codes and at most one `## Lessons` line. The
-coordinator reruns `build`, `test` and `crap` over your diff before it merges.
+Steps 2 to 8, then the report of `${CLAUDE_PLUGIN_ROOT}/skills/_shared/block-subagent.md`. A WIP push is a
+commit on the block branch.

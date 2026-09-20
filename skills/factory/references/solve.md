@@ -23,19 +23,27 @@ worktree means no spawn.
   `<plugin-root>/bin/task-template.sh <kind>`. When one block builds a mechanism another block's document must
   reach, both acceptances name it. A recut needs a fresh cut-check verdict, which `architect-gate.sh` demands.
 - **Spawn.** `<plugin-root>/bin/spawn-plan.sh <T-NNN>` prints the agent, the model and the brief per block of
-  the wave, `<plugin-root>/bin/block-brief.sh <block-id> --agent <name>` prints the whole brief and
-  `<plugin-root>/bin/model-for.sh` picks the model. A skeleton
-  block declares the new surface and leaves an existing body alone; its gate is `arch-build`.
+  the wave, `<plugin-root>/bin/block-brief.sh <block-id> --agent <name> --phase <phase>` prints the whole
+  brief and `<plugin-root>/bin/model-for.sh` picks the model. The brief is the subagent's whole input: it
+  binds to `_shared/block-subagent.md`, never to the session contract. A green block, or a yellow one at
+  complexity low, runs as one implement agent with red-first TDD inside: its first commit is the red tests
+  alone, and you check that commit out and run them red yourself before you arm `phase: implement`. Every
+  other block gets a tests phase first. A skeleton block declares the new surface and leaves an existing body alone; its gate is
+  `arch-build`.
   With `spawn: herdr` in `<state>/factory.yml`, `<plugin-root>/bin/session-monitor.sh --parent <T-NNN>` runs
   that plan as one interactive session per block instead of one subagent per block
   (`<plugin-root>/skills/herdr/SKILL.md`). Their reports come back through the state repo, not to you, so
   read them with `<plugin-root>/bin/factory-list.sh` and rerun every proving command yourself.
-- **Tests.** Rerun the red tests, then arm the lock with `state-report.sh --set-phase implement`.
+- **Tests.** Rerun the red tests yourself with the toolset's `test-filter` over the files the handoff names,
+  each failing for the reason it states, paste the `## Handoff` into the block's progress file, then arm the
+  lock with `state-report.sh --set-phase implement`.
 - **Verify.** `<plugin-root>/bin/block-verify.sh <block-id>` is green before the MR, and `## Evidence` is
   written by you, never by a subagent. A block red twice is `failed`: spawn nothing new and ask the human
   through `_shared/blocked-question.md`.
 - **Acceptance.** The parent's `## Acceptance` rerun verbatim over the session branch, then `crap`, `format`
   and `arch-build`.
+- **Duplication.** `<plugin-root>/bin/dup-check.sh` over the whole diff, its output verbatim under
+  `## Duplication`; the reviewer judges the candidates, nobody is spawned per candidate.
 - **Review.** A `factory-reviewer` over the whole diff, its verdict in the progress file, then
   `<plugin-root>/bin/mr-open.sh <T-NNN>` for the parent. `changes needed` gets one fix block and one more
   review.

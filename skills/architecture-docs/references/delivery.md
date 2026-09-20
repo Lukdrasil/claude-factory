@@ -5,7 +5,7 @@ product repo. The branch is `docs/architecture-<bootstrap|audit>-<YYYY-MM-DD>`, 
 `docs/**`, `CONTEXT.md` and `README.md` and nothing else.
 
 - **Task mode**: the forge flow in `## Output` of `<plugin-root>/skills/_shared/session-contract.md`. Rebase
-  on the base branch, `git-guard push-lease`, create the MR through `gh` or `glab` only when there is not one
+  on the base branch, `git push --force-with-lease origin <branch>`, create the MR through `gh` or `glab` only when there is not one
   already, write the web URL into `mr_url`.
 - **Local session**: push the branch, then create the MR with `gh` or `glab` when
   `sh <plugin-root>/bin/forge.sh hosts` shows you signed in to the host of `git remote get-url origin`.
