@@ -25,6 +25,13 @@ Skills are then invoked as `/claude-factory:<skill>`, e.g. `/claude-factory:gril
 | `hooks/hooks.json` | SessionStart, PreToolUse, PreCompact and Stop wiring |
 | `toolsets/` | per-stack command bindings |
 | `prompts/` | the worker session system prompt |
+| `tests/` | shell checks over the scripts above |
+
+## Tests
+
+```sh
+for t in tests/*.test.sh; do sh "$t" || exit 1; done
+```
 
 ## Dependency
 

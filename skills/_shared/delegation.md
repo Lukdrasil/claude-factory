@@ -1,6 +1,9 @@
 # Delegation
 
 A session may hand subtasks to subagents; it stays the orchestrator and the only writer of the state repo.
+A block or a ready task can instead run as its own interactive session, which
+`<plugin-root>/bin/session-monitor.sh` starts (`<plugin-root>/skills/herdr/SKILL.md`). Everything below still
+binds it, except that its report arrives through the state repo rather than as a returned brief.
 The rules of a spawn are in `<plugin-root>/skills/_shared/rules.md`, which
 `<plugin-root>/bin/agent-brief.sh <agent>` prints at the top of every brief together with that agent's own
 memory. Prepend its output to the brief you write.

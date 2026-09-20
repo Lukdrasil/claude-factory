@@ -226,3 +226,20 @@ repo_key_of_cwd() { # <cwd>
     if [ "$p" = "$top" ] || { [ -n "$clone" ] && [ "$p" = "$clone" ]; }; then printf '%s\n' "$key"; break; fi
   done
 }
+
+# The MR title is the task's `# Goal` line, and the forge takes it as written: Conventional Commits
+# (`type(scope): subject`) so the release tooling can read the semver bump off it, and at most 130 characters
+# so no forge truncates it. Both MR scripts check it before they call the forge, so a goal that cannot be a
+# title is a task defect caught here and not a bad title on the forge.
+mr_title_check() { # <title> -> 0, or the reason on stdout and 1
+  n=$(printf '%s' "$1" | wc -m | tr -d '[:space:]')
+  if [ "$n" -gt 130 ]; then
+    printf 'the title is %s characters and the cap is 130\n' "$n"
+    return 1
+  fi
+  if printf '%s' "$1" | grep -Eq '^(feat|fix|chore|docs|refactor|test|perf|build|ci)(\([a-z0-9._/-]+\))?!?: .+'; then
+    return 0
+  fi
+  printf '%s\n' 'the title is not Conventional Commits; write it as `type(scope): subject` with type one of feat, fix, chore, docs, refactor, test, perf, build, ci'
+  return 1
+}

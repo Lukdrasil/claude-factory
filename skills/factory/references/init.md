@@ -5,7 +5,7 @@ then the current clone registered and checked.
 
 ## Interview
 
-Ask at most 5 questions, each with a default the user can accept as is:
+Ask at most 6 questions, each with a default the user can accept as is:
 
 1. **Factory root**, default `~/factory`, never inside a product repo. Becomes `--root`.
 2. **State repo**: adopt an existing `<root>/state`, its `repos.yml` byte for byte, or create it.
@@ -13,6 +13,10 @@ Ask at most 5 questions, each with a default the user can accept as is:
    after the apply step.
 4. **Git identity**, only when `git config user.email` prints nothing.
 5. **Register the current repo now?**, default yes when the cwd is a git clone with an origin remote.
+6. **How tasks start**, only when `herdr` is on PATH: `herdr` opens each task as its own interactive
+   session in its own tab, `manual` prints the command for you to run. Default `herdr` when it is
+   installed, `manual` otherwise. Becomes `--spawn`. On a machine with no herdr, skip the question and
+   say nothing: the default already answers it.
 
 Completion: every answer recorded, from the user or the stated default.
 

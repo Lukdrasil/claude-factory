@@ -42,7 +42,7 @@ created: <YYYY-MM-DD>
 ---
 
 # Goal
-One sentence: what has to be achieved.
+One sentence, and the MR title as it stands: Conventional Commits (`type(scope): subject`), at most 130 characters.
 
 ## Context
 The substantive context for the work itself: what matters from the issue, rewritten in your own words, and how
@@ -102,7 +102,7 @@ created: <YYYY-MM-DD>
 ---
 
 # Goal
-One sentence.
+One sentence, and the MR title as it stands: Conventional Commits (`type(scope): subject`), at most 130 characters.
 
 ## Context
 From the plan `repos/<repo-key>/plans/<slug>-plan-ready.md`, the path in full, so the architect gate can find

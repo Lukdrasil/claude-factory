@@ -60,6 +60,7 @@ have=$(field mr_url)
 
 goal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$task")
 [ -n "$goal" ] || die "block $id has no '# Goal' line to title the MR with"
+reason=$(mr_title_check "$goal") || die "block $id: $reason; fix the '# Goal' line of $task"
 
 progress="$state/repos/$key/progress/$id.md"
 [ -f "$progress" ] || die "no progress file at $progress"

@@ -2,25 +2,32 @@
 # The standalone factory root (ADR-0049): <root>/state as the local state repo and WORK_DIR in the user's Claude
 # Code settings. Every change is printed first; nothing is written until --yes.
 #
-#   factory-init.sh --root <dir> [--settings <file>] [--yes]
+#   factory-init.sh --root <dir> [--settings <file>] [--spawn herdr|manual] [--yes]
 #
 # Exit 0 = applied, or nothing to do. Exit 3 = changes pending, shown as a diff, not written (no --yes).
 # An existing <root>/state with a repos.yml is adopted byte for byte; only the missing pieces are added.
 set -eu
 
-root='' settings="$HOME/.claude/settings.json" yes=0
+root='' settings="$HOME/.claude/settings.json" yes=0 spawn=''
 die() { printf 'factory-init: %s\n' "$1" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root|--settings)
+    --root|--settings|--spawn)
       [ $# -ge 2 ] || die "$1 needs a value"
-      case "$1" in --root) root=$2 ;; --settings) settings=$2 ;; esac
+      case "$1" in --root) root=$2 ;; --settings) settings=$2 ;; --spawn) spawn=$2 ;; esac
       shift 2 ;;
     --yes) yes=1; shift ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
+# how the main session starts a task: `herdr` opens each one as its own interactive session in its own tab,
+# `manual` prints the command for the human. The default follows the machine, so a factory on a box without
+# herdr never asks for it.
+if [ -z "$spawn" ]; then
+  if command -v herdr >/dev/null 2>&1; then spawn=herdr; else spawn=manual; fi
+fi
+case "$spawn" in herdr|manual) ;; *) die "--spawn takes herdr or manual, not '$spawn'" ;; esac
 [ -n "$root" ] || die "--root <dir> is required"
 
 root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
@@ -47,7 +54,9 @@ printf '%s\n' \
 
 printf '%s\n' \
   '# standalone factory config (ADR-0052): curation: auto|manual' \
-  'curation: auto' > "$tmp/factory.yml"
+  'curation: auto' \
+  '# how session-monitor.sh starts a task: herdr|manual' \
+  "spawn: $spawn" > "$tmp/factory.yml"
 
 # the settings file with env.WORK_DIR set, every other key kept; node is native on win32, so the root and the file
 # both go in on stdin (an env var or an argument would get its path converted by MSYS)

@@ -26,6 +26,10 @@ worktree means no spawn.
   the wave, `<plugin-root>/bin/block-brief.sh <block-id> --agent <name>` prints the whole brief and
   `<plugin-root>/bin/model-for.sh` picks the model. A skeleton
   block declares the new surface and leaves an existing body alone; its gate is `arch-build`.
+  With `spawn: herdr` in `<state>/factory.yml`, `<plugin-root>/bin/session-monitor.sh --parent <T-NNN>` runs
+  that plan as one interactive session per block instead of one subagent per block
+  (`<plugin-root>/skills/herdr/SKILL.md`). Their reports come back through the state repo, not to you, so
+  read them with `<plugin-root>/bin/factory-list.sh` and rerun every proving command yourself.
 - **Tests.** Rerun the red tests, then arm the lock with `state-report.sh --set-phase implement`.
 - **Verify.** `<plugin-root>/bin/block-verify.sh <block-id>` is green before the MR, and `## Evidence` is
   written by you, never by a subagent. A block red twice is `failed`: spawn nothing new and ask the human

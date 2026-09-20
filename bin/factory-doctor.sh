@@ -110,6 +110,24 @@ else
   missing "repos/$key/toolset.md" "$add_repo"
 fi
 
+# --- how tasks are dispatched -------------------------------------------------------------------------------
+spawn=manual
+[ ! -f "$state/factory.yml" ] || spawn=$(sed -n 's/^spawn:[[:space:]]*//p' "$state/factory.yml" | head -n1 \
+  | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+[ -n "$spawn" ] || spawn=unset
+case "$spawn" in
+  manual) ok "spawn: manual (session-monitor.sh prints the commands)" ;;
+  herdr)
+    if command -v herdr >/dev/null 2>&1; then
+      ok "spawn: herdr, herdr on PATH"
+    else
+      missing "spawn: herdr, but herdr is not on PATH" \
+        'install herdr from https://herdr.dev, or set spawn: manual in factory.yml'
+    fi ;;
+  unset) missing "spawn: in factory.yml" 'add `spawn: manual` or `spawn: herdr` to it' ;;
+  *) missing "spawn: $spawn in factory.yml" 'it takes herdr or manual' ;;
+esac
+
 # --- the tools the toolset binds ---------------------------------------------------------------------------------
 tool() { # <binary> <install command>
   if command -v "$1" >/dev/null 2>&1; then ok "$1 on PATH"; else missing "$1 on PATH" "$2"; fi

@@ -5,8 +5,13 @@ progress file and opens the MR, and it refuses what the contract refuses.
 
 The rules it checks: the sections **What changed**, **Why**, **Issues**, **How to verify** and
 **Follow-ups**, in that order, one with nothing to say left out, the whole thing **under 120 words**, short
-sentences, written for whoever reviews the MR and not for the factory. The title is the goal in one
-sentence, `# Goal` as it stands, with no id in front of it.
+sentences, written for whoever reviews the MR and not for the factory.
+
+The title is `# Goal` as it stands, with no id in front of it, so the goal line is written as a title:
+**Conventional Commits** (`type(scope): subject`, type one of feat, fix, chore, docs, refactor, test,
+perf, build, ci) and **at most 130 characters**. The type is what the release tooling reads the semver
+bump off. `mr-open.sh` and `block-mr.sh` both refuse a title that breaks either rule, before they call
+the forge; the fix is the task's `# Goal` line, not the command.
 
 What it never says: the task or block id, the archetype, tier or complexity, the review verdict, the
 progress file, state-repo paths, attempt counts, subagent names. None of it means anything to a reviewer,
