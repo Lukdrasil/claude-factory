@@ -1,0 +1,51 @@
+// Jediný public vstupní bod modulu.
+// Vše, co registruje, je internal; funguje to, protože registrace
+// probíhá uvnitř téže assembly.
+
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace Acme.__MODULE__.Infrastructure;
+
+public static class __MODULE__ModuleExtensions
+{
+    // --- C# 14 extension members ------------------------------------------
+    // Starý zápis (this IServiceCollection services, ...) funguje dál
+    // a je binárně kompatibilní; kompilátor generuje totéž.
+
+    extension(IServiceCollection services)
+    {
+        public IServiceCollection Add__MODULE__Module(IConfiguration configuration)
+        {
+            // Persistence; DbContext je internal
+            // services.AddDbContext<__MODULE__DbContext>(o =>
+            //     o.UseSqlServer(configuration.GetConnectionString("__MODULE__")));
+
+            // Porty → adaptéry
+            // services.AddScoped<I__ENTITY__Repository, Ef__ENTITY__Repository>();
+
+            // Slice handlery; internal typy jdou registrovat,
+            // protože jsme uvnitř assembly
+            // services.AddScoped<I__MODULE__Api, __MODULE__Api>();
+
+            return services;
+        }
+    }
+
+    extension(IEndpointRouteBuilder app)
+    {
+        public IEndpointRouteBuilder Map__MODULE__Module()
+        {
+            // Mapování MUSÍ být tady, ne v hostu; endpointy odkazují
+            // na internal handlery, na které host nedosáhne.
+            //
+            // var group = app.MapGroup("/__module__").WithTags("__MODULE__");
+            // __USECASE__Endpoint.Map(group);
+
+            return app;
+        }
+    }
+}

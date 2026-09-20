@@ -1,0 +1,24 @@
+{
+  "_comment": "Copy into the target repo's .claude/settings.json. A harder barrier than AGENTS.md; the agent physically cannot touch the quality config.",
+  "permissions": {
+    "deny": [
+      "Edit(eslint.config.js)",
+      "Write(eslint.config.js)",
+      "Edit(tsconfig.json)",
+      "Write(tsconfig.json)",
+      "Edit(tsconfig.*.json)",
+      "Write(tsconfig.*.json)",
+      "Edit(eslint-suppressions.json)",
+      "Write(eslint-suppressions.json)",
+      "Edit(.gitlab-ci.yml)",
+      "Write(.gitlab-ci.yml)"
+    ],
+    "allow": [
+      "Bash(npx eslint:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm test:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ci:*)"
+    ]
+  }
+}

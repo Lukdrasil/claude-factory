@@ -1,0 +1,37 @@
+# Banned API in the domain layer.
+# Format:  <SymbolId>;<Message>
+# Prefixes: T:type  M:method  P:property  F:field  N:namespace
+# The message appears in the build error. Write it as a FIX INSTRUCTION,
+# not a statement; an agent or junior will do the right thing based on it.
+# Verifying a symbol: look in the assembly's XML documentation file,
+# or use `dotnet build -v n` and read the exact ID from the error.
+
+# --- Time: the domain must be deterministically testable --------------------
+P:System.DateTime.Now;Domain must be deterministic. Inject TimeProvider through a port and pass the timestamp into the domain method.
+P:System.DateTime.UtcNow;Domain must be deterministic. Inject TimeProvider through a port and pass the timestamp into the domain method.
+P:System.DateTimeOffset.Now;Domain must be deterministic. Inject TimeProvider through a port.
+P:System.DateTimeOffset.UtcNow;Domain must be deterministic. Inject TimeProvider through a port.
+
+# --- Identity: must be controllable in tests ---------------------------------
+M:System.Guid.NewGuid;Inject an id-generation port so tests can control identity, or accept the id as a constructor argument.
+
+# --- Persistence: the domain must not know how it's stored -------------------
+N:Microsoft.EntityFrameworkCore;Domain must not know about persistence. Define a repository port in Application.Ports and implement it in Infrastructure.
+N:System.Data;Domain must not access data storage directly. Use a repository port.
+N:Dapper;Domain must not access data storage directly. Use a repository port.
+
+# --- I/O and transport --------------------------------------------------------
+T:System.Net.Http.HttpClient;Domain must not perform I/O. Define a port interface and implement it as an adapter in Infrastructure.
+N:System.IO;Domain must not touch the filesystem. Define a port for it.
+
+# --- Cross-cutting concerns that belong in the application layer ------------
+N:Microsoft.Extensions.Logging;Domain must not log. Return a result or raise a domain event; the application layer decides what to log.
+N:Microsoft.Extensions.Configuration;Domain must not read configuration. Pass the value in as a parameter or a typed policy object.
+N:Microsoft.Extensions.DependencyInjection;Domain must not resolve services. Take dependencies through constructor parameters.
+N:Microsoft.AspNetCore;Domain must not know about HTTP. Keep transport concerns in the adapter.
+
+# --- Concurrency ------------------------------------------------------------
+M:System.Threading.Tasks.Task.Run;Domain logic should be synchronous and pure. If you need concurrency, orchestrate it in the application layer.
+
+# --- Environment --------------------------------------------------------------
+T:System.Environment;Domain must not read the environment. Pass the value in explicitly.

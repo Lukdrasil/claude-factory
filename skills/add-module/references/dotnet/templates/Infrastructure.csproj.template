@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Acme.__MODULE__.Infrastructure</RootNamespace>
+    <AssemblyName>Acme.__MODULE__.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Acme.__MODULE__.Application\Acme.__MODULE__.Application.csproj" />
+  </ItemGroup>
+
+  <!-- Registrační extension používá IServiceCollection/IEndpointRouteBuilder;
+       bez shared frameworku se modul nepřeloží. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Acme.__MODULE__.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,53 @@
+# Rules for AI agents; Python
+
+Copy the fenced block below into the target repo root as `AGENTS.md`. The surrounding text is instructions for you, not content. Rewrite the Architecture section to match the repo's real structure. Keep the FORBIDDEN CHANGES section verbatim, only fixing the paths to where the files actually got installed.
+
+---
+
+```markdown
+# Repository rules
+
+## Architecture
+
+Layered architecture, dependencies point inward; the domain is the center:
+
+- `domain`; domain logic, depends on nothing (no I/O, DB, HTTP)
+- `application`; use cases, orchestrates the domain
+- `infrastructure`; adapters (DB, HTTP, queues)
+- `api`; entry layer
+
+Boundaries are enforced by `lint-imports` (file `.importlinter`); a lower layer never imports a higher one.
+
+## Domain
+
+The domain must not read time (`datetime.now()`), generate identity (`uuid.uuid4()`), log, or do I/O; those values arrive as parameters from the application layer. Determinism = testability.
+
+## FORBIDDEN CHANGES
+
+Without explicit human approval, NEVER edit:
+
+- `ruff.toml`
+- `pyrightconfig.json`
+- `.importlinter`
+- `.pre-commit-config.yaml`
+
+Specifically, **never** fix a red lint/typecheck by:
+
+- adding `# noqa` or `# type: ignore`
+- running `ruff check --add-noqa`
+- adding a path to `per-file-ignores`
+- lowering `typeCheckingMode` or adding an `executionEnvironments` exception
+- removing a rule from `extend-select`
+
+When a rule blocks you from finishing the task, **stop and ask.** Either your approach is wrong or the rule is wrong; both are a human's decision, not yours.
+
+## Build
+
+    ruff check .                  # lint
+    ruff format --check .         # format
+    pyright                       # types
+    lint-imports                  # architecture boundaries
+    pytest                        # tests
+
+Locally findings are warnings for you; in CI they block the merge.
+```

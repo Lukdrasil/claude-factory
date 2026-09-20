@@ -1,0 +1,31 @@
+{
+  "_comment": "Copy into .claude/settings.json. A harder barrier than AGENTS.md; the agent physically cannot touch these files.",
+  "permissions": {
+    "deny": [
+      "Edit(.editorconfig)",
+      "Write(.editorconfig)",
+      "Edit(Directory.Build.props)",
+      "Write(Directory.Build.props)",
+      "Edit(Directory.Packages.props)",
+      "Write(Directory.Packages.props)",
+      "Edit(build/BannedSymbols.Domain.txt)",
+      "Write(build/BannedSymbols.Domain.txt)",
+      "Edit(build/BannedSymbols.Global.txt)",
+      "Write(build/BannedSymbols.Global.txt)",
+      "Edit(build/CodeMetricsConfig.txt)",
+      "Write(build/CodeMetricsConfig.txt)",
+      "Edit(tests/Architecture.Tests/**)",
+      "Write(tests/Architecture.Tests/**)",
+      "Edit(global.json)",
+      "Write(global.json)",
+      "Edit(.gitlab-ci.yml)",
+      "Write(.gitlab-ci.yml)"
+    ],
+    "allow": [
+      "Bash(dotnet build:*)",
+      "Bash(dotnet test:*)",
+      "Bash(dotnet format:*)",
+      "Bash(dotnet restore:*)"
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+# Thresholds for CA metric rules.
+# Microsoft's defaults are very generous (CA1506 = 95), which means
+# the rule practically never fires. Tightened here.
+#
+# Only active when QualityLevel=Strict (see Directory.Build.props).
+# The rules also need to be enabled in .editorconfig; they don't run by default.
+#
+# Format: <RuleId>: <value>
+
+# Cyclomatic complexity of a method
+CA1502: 15
+
+# Class coupling; how many different types a class uses.
+# The best available proxy signal for "this class does too much".
+CA1506: 40
+
+# Inheritance depth.
+# In DDD/hexagonal it should be very shallow; composition over inheritance.
+CA1501: 4
+
+# Maintainability index (0-100, lower = worse).
+# Threshold 20 is conservative; raise it gradually.
+CA1505: 20

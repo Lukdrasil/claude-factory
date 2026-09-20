@@ -1,0 +1,46 @@
+# Ruff = linter + formatter in one (replaces flake8, isort, pyupgrade, black).
+# Installed at the target repo root as ruff.toml; a standalone file instead of
+# a pyproject.toml section, so it can be protected by a permission deny rule.
+# Pin the tool (ruff==0.16.3); a new minor version changes the default rule set.
+
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[lint]
+# Ruff's default set (since 0.16 ~400 rules: F, E, W, B, UP, RUF...) + extensions.
+# extend-select ADDS to the defaults; select would REPLACE them; never use ALL,
+# a new Ruff release would break the build by itself with new rules.
+extend-select = [
+    "E",    # pycodestyle errors; the default set carries only a subset (e.g. E711 is missing)
+    "W",    # pycodestyle warnings
+    "B",    # bugbear, complete; the default set carries only a subset (e.g. B904 is missing)
+    "I",    # isort; import ordering
+    "S",    # flake8-bandit; security
+    "SIM",  # flake8-simplify
+    "PL",   # pylint (PLR/PLC/PLE/PLW); includes the complexity limits below
+    "C90",  # mccabe; cyclomatic complexity
+    "N",    # pep8-naming
+    "ARG",  # unused arguments
+    "PTH",  # pathlib over os.path
+    "TID",  # tidy imports; ban relative imports here if desired
+    "TC",   # type-checking blocks
+]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 5
+max-branches = 12
+max-returns = 6
+max-statements = 50
+
+[lint.per-file-ignores]
+# Tests: assert and magic values are fine in tests.
+"tests/**/*.py" = ["S101", "PLR2004"]
+# Per-directory debt freeze; see BASELINE.md, technique B:
+# "src/app/legacy/**/*.py" = ["PL", "C90"]
+
+[format]
+quote-style = "double"

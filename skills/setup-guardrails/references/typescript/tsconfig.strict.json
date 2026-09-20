@@ -1,0 +1,16 @@
+{
+  "_comment": "The tsconfig strictness layer, merge into the target repo's compilerOptions (or extends). Flags beyond strict:true per the Total TypeScript cheat sheet. Deliberately WITHOUT noUnusedLocals/noImplicitReturns, unused variables belong to ESLint (autofix and _-prefix exceptions). verbatimModuleSyntax requires an ESM module setting: under module=commonjs it emits TS1287/TS1295 about the module system itself; back it out as debt, do not change the repo's module system to satisfy it.",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "target": "es2022"
+  }
+}

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Platform Solution Map</title>
+<style>
+  :root {
+    --bg: #faf7f2;
+    --bg-raised: #f1ebe2;
+    --text: #2b2621;
+    --muted: #6f6459;
+    --border: #e2d8c9;
+    --accent: #a6522c;
+    --accent-bg: #f3e3d8;
+    --code-bg: #efe6d8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1d1a17;
+      --bg-raised: #262220;
+      --text: #ece5da;
+      --muted: #a89a8a;
+      --border: #3a332c;
+      --accent: #e08a5b;
+      --accent-bg: #3a2a20;
+      --code-bg: #2c2620;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  a { color: var(--accent); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  code {
+    background: var(--code-bg);
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--code-bg);
+    padding: 0.85em 1em;
+    border-radius: 6px;
+    overflow-x: auto;
+  }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid var(--border); padding: 0.4em 0.6em; text-align: left; }
+  th { background: var(--bg-raised); }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 1em;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--border);
+    padding: 0.6em 1em;
+  }
+  .topbar h1 {
+    font-size: 1.05em;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .topbar .tag {
+    margin-left: auto;
+    font-size: 0.82em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .topbar .tag code { font-size: 0.95em; }
+  #search {
+    flex: 1;
+    max-width: 22em;
+    padding: 0.4em 0.7em;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 0.95em;
+  }
+  #search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .layout {
+    display: flex;
+    align-items: flex-start;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+  #outline {
+    position: sticky;
+    top: 3.4em;
+    flex: 0 0 15em;
+    max-height: calc(100vh - 3.4em);
+    overflow-y: auto;
+    padding: 1em 0.75em;
+    font-size: 0.9em;
+  }
+  #outline ul { list-style: none; margin: 0; padding-left: 0.9em; }
+  #outline > ul { padding-left: 0; }
+  #outline li { margin: 0.15em 0; }
+  #outline a { text-decoration: none; color: var(--text); display: block; padding: 0.15em 0.3em; border-radius: 4px; }
+  #outline a:hover { background: var(--bg-raised); color: var(--accent); }
+
+  #content {
+    flex: 1;
+    min-width: 0;
+    padding: 1.5em 2em 6em;
+  }
+  #content h1 { border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+  #content h2 { margin-top: 2.2em; border-bottom: 1px solid var(--border); padding-bottom: 0.25em; }
+  #content h3 { margin-top: 1.6em; }
+
+  .search-hit {
+    background: var(--accent-bg);
+    outline: 2px solid var(--accent);
+    border-radius: 3px;
+    scroll-margin-top: 4em;
+  }
+
+  pre.mermaid {
+    white-space: pre;
+    border: 1px dashed var(--border);
+  }
+  pre.mermaid::before {
+    content: "mermaid source, renders in GitHub/GitLab";
+    display: block;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 0.78em;
+    color: var(--muted);
+    margin-bottom: 0.5em;
+  }
+
+  @media print {
+    .topbar, #outline { display: none; }
+    .layout { display: block; max-width: none; }
+    #content { padding: 0; }
+    #content h2 { break-before: page; page-break-before: always; }
+    #content h2:first-of-type { break-before: auto; page-break-before: avoid; }
+  }
+
+  @media (max-width: 720px) {
+    #outline { display: none; }
+    .topbar { flex-wrap: wrap; }
+    #search { order: 3; max-width: none; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1 id="bar-title">Solution map</h1>
+    <input id="search" type="search" placeholder="Search headings and code... (Ctrl+K)" aria-label="Search the solution map">
+    <span class="tag">generated from <code id="commit">a1b2c3d</code></span>
+  </div>
+  <div class="layout">
+    <nav id="outline" aria-label="Table of contents"></nav>
+    <main id="content">
+<h2 id="overview">Overview</h2>
+<p>Acme Platform is a small solution with two projects: <code>BillingService</code> hosts payment processing, and <code>WebFrontend</code> is the Blazor UI that calls it.</p>
+
+<h2 id="project-billingservice">Project: BillingService</h2>
+<p>Handles invoices and payment processing. Depends on no other project.</p>
+<p><strong>Flows.</strong> An HTTP endpoint accepts a charge request, <code>PaymentGateway</code> validates it and calls <code>InvoiceStore</code> to record the result.</p>
+<pre class="mermaid">flowchart LR
+  A[`PaymentGateway`] --&gt; B[`InvoiceStore`]
+  C[`WebFrontend`] --&gt; A
+</pre>
+<p><strong>Services.</strong></p>
+<table>
+<thead><tr><th>service</th><th>lifetime</th><th>surface (called from)</th></tr></thead>
+<tbody>
+<tr><td><code>PaymentGateway</code></td><td>Singleton</td><td><code>Charge(amount)</code> &larr; <code>WebFrontend</code></td></tr>
+<tr><td><code>InvoiceStore</code></td><td>Scoped</td><td><code>Save(invoice)</code> &larr; <code>PaymentGateway</code></td></tr>
+</tbody>
+</table>
+
+<h2 id="project-webfrontend">Project: WebFrontend</h2>
+<p>The Blazor UI. Depends on <code>BillingService</code>.</p>
+<p><strong>Flows.</strong> The checkout page injects <code>BillingClient</code>, which calls the <code>BillingService</code> charge endpoint.</p>
+<p>3 UI components not listed.</p>
+    </main>
+  </div>
+  <script type="application/json" id="map-data">
+{
+  "commit": "a1b2c3d",
+  "projects": [
+    {
+      "name": "BillingService",
+      "path": "src/BillingService",
+      "types": [
+        { "name": "PaymentGateway", "isService": true },
+        { "name": "InvoiceStore", "isService": true }
+      ]
+    },
+    {
+      "name": "WebFrontend",
+      "path": "src/WebFrontend",
+      "types": [
+        { "name": "BillingClient", "isService": true }
+      ]
+    }
+  ]
+}
+  </script>
+  <script>
+  (function () {
+    var content = document.getElementById('content');
+    var outline = document.getElementById('outline');
+    var barTitle = document.getElementById('bar-title');
+    if (document.title) { barTitle.textContent = document.title; }
+
+    function slugify(s) {
+      return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'section';
+    }
+
+    var used = {};
+    var headings = content.querySelectorAll('h2, h3');
+    var root = document.createElement('ul');
+    var currentH2Li = null;
+    for (var i = 0; i < headings.length; i++) {
+      var h = headings[i];
+      if (!h.id) {
+        var base = slugify(h.textContent);
+        var id = base, n = 1;
+        while (used[id]) { id = base + '-' + (++n); }
+        h.id = id;
+      }
+      used[h.id] = true;
+
+      var li = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = '#' + h.id;
+      a.textContent = h.textContent;
+      li.appendChild(a);
+
+      if (h.tagName === 'H2') {
+        root.appendChild(li);
+        currentH2Li = li;
+      } else if (currentH2Li) {
+        var sub = currentH2Li.querySelector(':scope > ul');
+        if (!sub) { sub = document.createElement('ul'); currentH2Li.appendChild(sub); }
+        sub.appendChild(li);
+      } else {
+        root.appendChild(li);
+      }
+    }
+    outline.appendChild(root);
+
+    var searchInput = document.getElementById('search');
+    var lastHit = null;
+
+    function clearHighlight() {
+      if (lastHit) { lastHit.classList.remove('search-hit'); lastHit = null; }
+    }
+
+    function runSearch(raw) {
+      var q = raw.trim().toLowerCase();
+      clearHighlight();
+      var links = outline.querySelectorAll('a');
+      for (var i = 0; i < links.length; i++) {
+        var li = links[i].parentNode;
+        var show = !q || links[i].textContent.toLowerCase().indexOf(q) !== -1;
+        li.style.display = show ? '' : 'none';
+      }
+      if (!q) { return; }
+      var candidates = content.querySelectorAll('h2, h3, code');
+      for (var j = 0; j < candidates.length; j++) {
+        var el = candidates[j];
+        if (el.textContent.toLowerCase().indexOf(q) !== -1) {
+          el.classList.add('search-hit');
+          lastHit = el;
+          el.scrollIntoView({ block: 'center' });
+          break;
+        }
+      }
+    }
+
+    searchInput.addEventListener('input', function () { runSearch(searchInput.value); });
+    document.addEventListener('keydown', function (e) {
+      var key = (e.key || '').toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && key === 'k') {
+        e.preventDefault();
+        searchInput.focus();
+        searchInput.select();
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

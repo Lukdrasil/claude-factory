@@ -1,0 +1,23 @@
+# CI gate for the TypeScript/JavaScript guardrails. Merge into the target repo's
+# .gitlab-ci.yml. Locally findings are advisory; here they block the merge.
+
+lint:
+  stage: test
+  interruptible: true
+  image: node:22-alpine
+  script:
+    - npm ci
+    # --max-warnings 0: even a warning blocks; frozen debt in
+    # eslint-suppressions.json does not count (see BASELINE.md).
+    - npx eslint . --max-warnings 0 --pass-on-unpruned-suppressions
+  # Optional MR annotations: npm i -D eslint-formatter-gitlab and add
+  #   - npx eslint . --format gitlab -o gl-codequality.json
+  # artifacts: { reports: { codequality: gl-codequality.json } }
+
+typecheck:
+  stage: test
+  interruptible: true
+  image: node:22-alpine
+  script:
+    - npm ci
+    - npx tsc --noEmit

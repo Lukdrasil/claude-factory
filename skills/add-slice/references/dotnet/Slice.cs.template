@@ -1,0 +1,106 @@
+// Kompletní vertical slice v jednom souboru.
+//
+// Command + Handler + Validator + Endpoint pohromadě je záměr: slice
+// je jednotka, kterou chceš vidět celou naráz a umět smazat jedním rm.
+// Rozděl do víc souborů, až tenhle přeroste ~200 řádků; a ber to jako
+// signál, že use case je možná moc velký.
+//
+// VŠE je internal. Kdyby to bylo public, jiný modul si to zavolá přímo
+// a obejde tím Contracts.
+
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+
+namespace Acme.__MODULE__.Application.Features.__USECASE__;
+
+// --- Vstup ------------------------------------------------------------------
+
+internal sealed record __USECASE__Command(
+    Guid EntityId,
+    string SomeValue);
+
+// --- Výstup -----------------------------------------------------------------
+
+internal sealed record __USECASE__Result(
+    Guid EntityId,
+    DateTimeOffset ProcessedAt);
+
+// --- Validace ---------------------------------------------------------------
+
+internal sealed class __USECASE__Validator
+{
+    public IReadOnlyList<string> Validate(__USECASE__Command command)
+    {
+        List<string> errors = [];
+
+        if (command.EntityId == Guid.Empty)
+            errors.Add("EntityId is required.");
+
+        if (string.IsNullOrWhiteSpace(command.SomeValue))
+            errors.Add("SomeValue is required.");
+
+        return errors;
+    }
+}
+
+// --- Handler ----------------------------------------------------------------
+// Primary constructor je tu na místě; na doménových entitách naopak ne,
+// protože captured parametry nejdou udělat readonly.
+
+internal sealed class __USECASE__Handler(
+    I__ENTITY__Repository repository,
+    TimeProvider timeProvider,
+    __USECASE__Validator validator)
+{
+    public async Task<Result<__USECASE__Result>> HandleAsync(
+        __USECASE__Command command,
+        CancellationToken cancellationToken)
+    {
+        var errors = validator.Validate(command);
+        if (errors.Count > 0)
+            return Result.Invalid<__USECASE__Result>(errors);
+
+        var entity = await repository.FindAsync(command.EntityId, cancellationToken);
+        if (entity is null)
+            return Result.NotFound<__USECASE__Result>();
+
+        // Čas přichází zvenčí; doména ho nikdy nečte sama,
+        // jinak nejde otestovat chování na hranici.
+        var now = timeProvider.GetUtcNow();
+
+        entity.DoSomething(command.SomeValue, now);
+
+        await repository.SaveAsync(entity, cancellationToken);
+
+        return Result.Success(new __USECASE__Result(entity.Id, now));
+    }
+}
+
+// --- Endpoint ---------------------------------------------------------------
+// Musí žít uvnitř modulu; odkazuje na internal handler.
+
+internal static class __USECASE__Endpoint
+{
+    public static void Map(IEndpointRouteBuilder group) =>
+        group.MapPost("/__usecase__", Handle)
+             .WithName("__USECASE__")
+             .Produces<__USECASE__Result>()
+             .ProducesValidationProblem()
+             .Produces(StatusCodes.Status404NotFound);
+
+    private static async Task<IResult> Handle(
+        __USECASE__Command command,
+        __USECASE__Handler handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(command, cancellationToken);
+
+        return result switch
+        {
+            { IsSuccess: true } => Results.Ok(result.Value),
+            { IsNotFound: true } => Results.NotFound(),
+            _ => Results.ValidationProblem(result.ToProblemDictionary()),
+        };
+    }
+}

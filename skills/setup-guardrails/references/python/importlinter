@@ -1,0 +1,17 @@
+# Architecture boundaries; the Python equivalent of the .NET branch's NetArchTest layer.
+# Installed at the target repo root as .importlinter (INI format).
+# Run: lint-imports (package import-linter). Replace __PACKAGE__ and the layers
+# with the real structure; first layer is the highest; a lower layer never
+# imports a higher one.
+
+[importlinter]
+root_package = __PACKAGE__
+
+[importlinter:contract:layers]
+name = Dependencies point inward; the domain is the center
+type = layers
+layers =
+    __PACKAGE__.api
+    __PACKAGE__.infrastructure
+    __PACKAGE__.application
+    __PACKAGE__.domain

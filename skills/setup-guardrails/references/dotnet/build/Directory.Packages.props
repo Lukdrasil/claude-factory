@@ -1,0 +1,47 @@
+<Project>
+
+  <!--
+    Central Package Management; versions in one place.
+    Without this, analyzer versions will drift across projects
+    and you'll get different warnings in different projects.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Analyzers">
+    <!-- Pin exact versions. Ranges (10.*) mean the build breaks
+         on its own the moment a version with a new rule is released. -->
+    <PackageVersion Include="SonarAnalyzer.CSharp" Version="10.32.0.713" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="3.0.173" />
+    <PackageVersion Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
+    <!-- Optional: guard against breaking changes in module public API -->
+    <!-- <PackageVersion Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.6.0" /> -->
+  </ItemGroup>
+
+  <ItemGroup Label="Custom Roslyn analyzers (analyzers/)">
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0" />
+    <!-- Analyzer tests -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.2" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Architecture testing">
+    <!-- The original NetArchTest.Rules has been unmaintained since 2021.
+         eNhancedEdition is an active fork, adds a Slices API
+         (cycle detection) and fixes generic types. -->
+    <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
+  </ItemGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="JunitXml.TestLogger" Version="6.1.0" />
+  </ItemGroup>
+
+</Project>

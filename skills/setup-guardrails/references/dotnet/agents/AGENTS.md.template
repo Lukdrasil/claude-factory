@@ -1,0 +1,125 @@
+# Rules for AI agents
+
+Copy into the repo root as `AGENTS.md`. Claude Code, Copilot, and Cursor
+all read it. For Copilot, also duplicate it to `.github/copilot-instructions.md`.
+
+The sections below are written to prevent the most common failure:
+an agent hits a rule that blocks it from finishing the task, and it
+**disables the rule** instead of fixing the code.
+
+---
+
+```markdown
+# Repository rules
+
+## Architecture
+
+Modular monolith. Each module is a hexagon:
+
+- `Domain`; entities and domain logic, depends on nothing
+- `Application/Ports`; interfaces the module needs from outside (public)
+- `Application/Contracts`; the API the module offers to the outside (public)
+- `Application/Features`; vertical slices, one use case = one folder (internal)
+- `Infrastructure`; adapters implementing ports (internal)
+
+Dependencies point inward. The domain is the center and knows no one.
+
+## Visibility
+
+Only these may be public:
+- types in `Contracts` and `Ports`
+- the registration extension `Add<Module>Module` / `Map<Module>Module`
+- EF `DesignTimeDbContextFactory`
+
+Everything else is `internal sealed`. Handlers, entities, DbContext,
+and adapters are implementation detail.
+
+When another module needs to see something, **add it to Contracts**;
+never widen the visibility of an existing internal type.
+
+## Slices
+
+A slice must not call another slice's handler. When two slices need the same thing:
+
+1. duplicate it (slices *are allowed* to duplicate; that's the point)
+2. or move it into the domain, if it's a genuine domain concept
+3. never call a sibling slice directly
+
+## Domain
+
+The domain must not:
+- read the clock (`DateTime.UtcNow`); time arrives as a parameter or via `TimeProvider`
+- generate identity (`Guid.NewGuid()`); the id comes from outside
+- log, read configuration, do I/O, or know about EF Core or HTTP
+
+These rules are enforced by `BannedSymbols.Domain.txt` at build time.
+The message for each banned symbol includes instructions for doing it correctly.
+
+## FORBIDDEN CHANGES
+
+Without explicit human approval, NEVER modify:
+
+- `.editorconfig`
+- `Directory.Build.props`, `Directory.Packages.props`
+- `BannedSymbols.*.txt`
+- anything under `tests/Architecture.Tests/`
+- `global.json`
+
+Specifically, **never** fix a build error by:
+- adding `#pragma warning disable`
+- adding a rule to `NoWarn`
+- lowering severity in `.editorconfig`
+- adding a namespace to `GrandfatheredNamespaces`
+- adding a suffix to `AllowedPublicTypeSuffixes`
+- raising `MaxGrandfatheredTypes`
+
+When a rule blocks you from finishing a task, **stop and ask.** Either
+your approach is wrong, or the rule is wrong; either way, it's a
+decision for a human, not for you.
+
+## How to read errors
+
+Architecture test and banned API error messages are shaped as
+"what's wrong + how to fix it". The second part is binding; if
+the message says "define a port interface", do that, don't look for a workaround.
+
+## Build
+
+    dotnet build                    # analyzers, warnings only locally
+    dotnet test                     # including architecture tests
+    dotnet format --verify-no-changes
+
+In CI, warnings are errors. Not locally, so iteration doesn't hurt.
+```
+
+---
+
+## Additional files
+
+If you use Claude Code, add a permission deny for config files to
+`.claude/settings.json`; it's a harder barrier than instructions in text:
+
+```json
+{
+  "permissions": {
+    "deny": [
+      "Edit(.editorconfig)",
+      "Edit(Directory.Build.props)",
+      "Edit(Directory.Packages.props)",
+      "Edit(build/BannedSymbols.*.txt)",
+      "Edit(tests/Architecture.Tests/**)"
+    ]
+  }
+}
+```
+
+## Why this works
+
+An agent that hits a red build looks for the shortest path to green.
+Without an explicit prohibition, disabling the rule is often shorter
+than fixing it; and it technically completes the task. The prohibition
+reverses the order: fixing becomes the only available path.
+
+That's also why every error message in the kit is written as an
+instruction. An agent that knows *how* to fix it will fix it; an agent
+that only knows something is wrong looks for a workaround.

@@ -1,0 +1,28 @@
+<Project>
+
+  <!--
+    Zapojení vlastních analyzerů do všech projektů.
+    Soubor žije v analyzers/ vedle Acme.Analyzers.csproj.
+    Vlož obsah do Directory.Build.props nebo importuj:
+      <Import Project="analyzers/analyzers-wireup.props" />
+  -->
+
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('Analyzers'))
+                        AND !$(MSBuildProjectName.EndsWith('Tests'))">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)Acme.Analyzers.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!--
+    Konfigurace prahů patří do .editorconfig, ne sem:
+
+      [**/*.Domain/**/*.cs]
+      ddd_aggregate_base_types = AggregateRoot,Entity
+      ddd_max_constructor_dependencies = 2
+
+      [**/Features/**/*.cs]
+      ddd_max_constructor_dependencies = 4
+  -->
+
+</Project>

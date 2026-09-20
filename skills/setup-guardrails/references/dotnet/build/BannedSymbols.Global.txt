@@ -1,0 +1,17 @@
+# Banned API across the whole solution.
+# Keep it short; only things that are ALWAYS wrong belong here.
+# Anything that's wrong only in a specific layer belongs in BannedSymbols.<Layer>.txt
+
+# --- Sync-over-async: the most common cause of thread pool starvation -------
+P:System.Threading.Tasks.Task`1.Result;Await the task instead of blocking. Blocking a thread pool thread on async work causes starvation under load.
+M:System.Threading.Tasks.Task.Wait;Await the task instead of blocking.
+M:System.Threading.Tasks.Task.WaitAll;Use await Task.WhenAll instead.
+M:System.Threading.Tasks.Task.WaitAny;Use await Task.WhenAny instead.
+M:System.Runtime.CompilerServices.TaskAwaiter.GetResult;Await the task instead of blocking.
+
+# --- Culture: a source of hard-to-reproduce bugs -----------------------------
+M:System.String.ToLower;Use ToLowerInvariant() unless you specifically need culture-aware casing.
+M:System.String.ToUpper;Use ToUpperInvariant() unless you specifically need culture-aware casing.
+
+# --- Legacy -----------------------------------------------------------------
+T:System.Web.HttpContext;Not available in ASP.NET Core. Use IHttpContextAccessor, or better, pass the value you need explicitly.

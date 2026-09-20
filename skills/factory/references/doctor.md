@@ -1,0 +1,29 @@
+# factory doctor
+
+A report over one clone in the standalone factory: what a factory session on it will find and what is
+missing. It gates nothing; the value is in the fixes you offer.
+
+## When
+
+- at the end of `init` and after `add-repo`;
+- when the user asks what is missing, or a session noted a toolset command it could not run;
+- before the first `solve` on a clone.
+
+## Steps
+
+- **Run.** `<plugin-root>/bin/factory-doctor.sh --root <root> --repo <clone-dir>` (`<root>` is
+  `WORK_DIR`; `--repo` defaults to the cwd). Completion: exit 0 and one line per check.
+- **Read the output.** `ok: …` needs nothing. `missing: <what> — <fix>` carries its fix after the dash:
+  - registration or `repos/<key>/toolset.md` → `references/add-repo.md`;
+  - a tool on PATH → the fix is its install command;
+  - `stack` or `test-globs` → edit the toolset's frontmatter (shape in `docs/design/toolset.md` of the
+    claude-os repo) and commit in the state repo;
+  - `docs/architecture` → the architecture-docs bootstrap (the `architecture-docs` skill); recommend it —
+    the architect review points run once the repo has a model.
+  Completion: every line is sorted into one of these.
+- **Offer the fixes.** One AskUserQuestion per missing tool, naming its install command; run the command
+  after the human answered yes to that tool, then rerun doctor. For `docs/architecture`, ask whether to start
+  the architecture-docs bootstrap now or later. Completion: every `missing:` line has a recorded answer, and
+  the ones answered yes now print `ok:`.
+- **Report.** Repeat the remaining `missing:` lines to the user with what each costs a session: a toolset
+  command noted and skipped, no architect review without a model. Completion: the user has the list.

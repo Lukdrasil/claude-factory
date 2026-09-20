@@ -1,0 +1,35 @@
+// Jediný legitimní důvod, proč mít v Infrastructure druhý public typ.
+//
+// `dotnet ef migrations add` běží mimo hostitelskou aplikaci a potřebuje
+// veřejnou továrnu, aby DbContext vůbec vytvořil. DbContext samotný
+// zůstává internal.
+//
+// Proto je "DesignTimeDbContextFactory" v AllowedPublicTypeSuffixes
+// v ArchitectureConventions.cs. Bez toho by PublicSurfaceTests padaly.
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
+
+namespace Acme.__MODULE__.Infrastructure.Persistence;
+
+public sealed class __MODULE__DesignTimeDbContextFactory
+    : IDesignTimeDbContextFactory<__MODULE__DbContext>
+{
+    public __MODULE__DbContext CreateDbContext(string[] args)
+    {
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .AddEnvironmentVariables()
+            .Build();
+
+        var options = new DbContextOptionsBuilder<__MODULE__DbContext>()
+            .UseSqlServer(
+                configuration.GetConnectionString("__MODULE__")
+                ?? "Server=(localdb)\\mssqllocaldb;Database=__MODULE___Design;Trusted_Connection=True;")
+            .Options;
+
+        return new __MODULE__DbContext(options);
+    }
+}

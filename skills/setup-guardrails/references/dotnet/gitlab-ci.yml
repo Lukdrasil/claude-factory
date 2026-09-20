@@ -1,0 +1,98 @@
+# Quality checks. Insert into an existing pipeline or use as an include.
+#
+# Splitting into separate jobs is deliberate: when architecture fails,
+# you want to see that separately from formatting. Nobody reads one
+# red job that could mean ten different things.
+
+variables:
+  DOTNET_NOLOGO: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  CI: "true"          # activates ContinuousIntegrationBuild → escalation to error
+  NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget"
+
+default:
+  image: mcr.microsoft.com/dotnet/sdk:10.0
+  cache:
+    key:
+      files: [Directory.Packages.props]
+    paths: [.nuget/]
+
+stages: [verify, test, report]
+
+# --- Formatting: fast, fails first ------------------------------------------
+format:
+  stage: verify
+  script:
+    - dotnet format --verify-no-changes --verbosity diagnostic
+  # When rolling out on an existing codebase, start with allow_failure: true
+  # and turn it off once the first bulk `dotnet format` has run.
+  allow_failure: false
+
+# --- Analyzers: build with escalation to error ------------------------------
+analyzers:
+  stage: verify
+  script:
+    - dotnet restore
+    - dotnet build --no-restore -c Release
+  artifacts:
+    when: always
+    reports:
+      # SARIF for the GitLab Code Quality widget in the MR.
+      # Requires -p:ErrorLog in Directory.Build.props, see below.
+      codequality: analysis.sarif
+    paths: [analysis.sarif]
+    expire_in: 1 week
+
+# --- Architecture: separate, so it's clear what failed ----------------------
+architecture:
+  stage: test
+  script:
+    - dotnet test tests/Architecture.Tests --logger "junit;LogFilePath=arch.xml"
+  artifacts:
+    when: always
+    reports:
+      junit: arch.xml
+
+# --- Remaining tests ---------------------------------------------------------
+tests:
+  stage: test
+  script:
+    - dotnet test --filter "FullyQualifiedName!~Architecture.Tests"
+        --logger "junit;LogFilePath=tests.xml"
+        --collect:"XPlat Code Coverage"
+  artifacts:
+    when: always
+    reports:
+      junit: tests.xml
+
+# --- Debt trend: non-blocking, just measures --------------------------------
+debt-report:
+  stage: report
+  script:
+    - |
+      COUNT=$(dotnet build -warnaserror- 2>&1 | grep -c "warning" || true)
+      echo "Analyzer warnings: $COUNT"
+      echo "$COUNT" > debt.txt
+    - |
+      dotnet build -warnaserror- 2>&1 \
+        | grep -oP '(?<=warning )[A-Z]+[0-9]+' \
+        | sort | uniq -c | sort -rn | head -20 | tee debt-breakdown.txt
+  artifacts:
+    paths: [debt.txt, debt-breakdown.txt]
+    expire_in: 90 days
+  allow_failure: true
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ---------------------------------------------------------------------------
+# For SARIF output, add to Directory.Build.props:
+#
+#   <PropertyGroup Condition="'$(ContinuousIntegrationBuild)' == 'true'">
+#     <ErrorLog>$(MSBuildProjectDirectory)/analysis.sarif,version=2.1</ErrorLog>
+#   </PropertyGroup>
+#
+# SARIF is also an ideal input for an AI agent: structured JSON
+# with rule ID, position, and message. The agent fixes it in a targeted
+# way, instead of parsing the build's text output.
+# ---------------------------------------------------------------------------

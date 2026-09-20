@@ -1,0 +1,152 @@
+root = true
+
+# =============================================================================
+#  BASICS
+# =============================================================================
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.{cs,csx}]
+indent_size = 4
+
+[*.{json,yml,yaml,xml,csproj,props,targets}]
+indent_size = 2
+
+
+# =============================================================================
+#  GLOBAL RULES FOR C#
+#
+#  The path convention below assumes (matching templates/ and DiscoverModules()):
+#    src/Modules/<Module>/<Root>.<Module>.Domain/
+#    src/Modules/<Module>/<Root>.<Module>.Application/{Contracts,Ports,Features}/
+#    src/Modules/<Module>/<Root>.<Module>.Infrastructure/
+#  If you have a different structure, adjust the glob patterns in the sections below.
+#  The sections are written so that if the glob doesn't match, they simply don't apply;
+#  nothing breaks, the rule just doesn't kick in.
+# =============================================================================
+[*.cs]
+
+## --- Visibility: the foundation of the whole model --------------------------
+# Without this, internal becomes public by accident and no one notices.
+dotnet_style_require_accessibility_modifiers = always
+dotnet_diagnostic.IDE0040.severity = warning
+dotnet_diagnostic.CA1812.severity = suggestion
+
+## --- Async correctness: real production bugs, not style --------------------
+dotnet_diagnostic.VSTHRD002.severity = error   # blocking .Result / .Wait()
+dotnet_diagnostic.VSTHRD100.severity = error   # async void
+dotnet_diagnostic.VSTHRD103.severity = error   # sync call in async context
+dotnet_diagnostic.VSTHRD110.severity = warning # unawaited Task
+dotnet_diagnostic.CA2012.severity = error      # ValueTask misuse
+dotnet_diagnostic.CA2016.severity = error      # unpropagated CancellationToken
+
+## --- Banned API ------------------------------------------------------------
+dotnet_diagnostic.RS0030.severity = error
+
+## --- Noise: disable globally -------------------------------------------------
+dotnet_diagnostic.CA2007.severity = none       # ConfigureAwait: unnecessary in ASP.NET Core
+dotnet_diagnostic.MA0004.severity = none       # same rule from Meziantou
+dotnet_diagnostic.CA1303.severity = none       # literal localization
+dotnet_diagnostic.CA1031.severity = suggestion # catch(Exception) has legitimate uses
+dotnet_diagnostic.CA1848.severity = suggestion # LoggerMessage: only for hot paths
+
+## --- Code style ------------------------------------------------------------
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_diagnostic.IDE0005.severity = warning   # unused usings
+dotnet_diagnostic.IDE0051.severity = warning   # dead private member
+
+
+# =============================================================================
+#  DOMAIN; the strictest layer
+#  The domain changes least often and is read the most. Worth keeping clean.
+# =============================================================================
+[**/*.Domain/**/*.cs]
+
+# SRP proxy: coupling and size. These aren't proof of an SRP violation,
+# they're signals of "look here".
+dotnet_diagnostic.S1200.severity = warning     # class coupling (SRP proxy)
+dotnet_diagnostic.S1448.severity = warning     # too many methods
+dotnet_diagnostic.CA1506.severity = warning    # class coupling
+dotnet_diagnostic.S3776.severity = warning     # cognitive complexity
+
+# Immutability and closedness
+dotnet_diagnostic.MA0053.severity = warning    # sealed by default
+dotnet_diagnostic.CA1815.severity = warning    # Equals on value type
+
+# Primary constructor is a trap on entities:
+# captured parameters can't be made readonly.
+dotnet_diagnostic.IDE0290.severity = none
+csharp_style_prefer_primary_constructors = false
+
+
+# =============================================================================
+#  CONTRACTS; the module's public API, protect from accidental change
+# =============================================================================
+[**/Contracts/**/*.cs]
+
+# If you use PublicApiAnalyzers, uncomment.
+# Every contract change then requires an explicit entry in PublicAPI.Shipped.txt
+# and is visible in the MR diff.
+# dotnet_diagnostic.RS0016.severity = error
+# dotnet_diagnostic.RS0017.severity = error
+
+dotnet_diagnostic.CA1724.severity = suggestion
+
+
+# =============================================================================
+#  PORTS; interfaces only, no logic
+# =============================================================================
+[**/Ports/**/*.cs]
+dotnet_diagnostic.CA1040.severity = suggestion  # empty interface (marker)
+
+
+# =============================================================================
+#  VERTICAL SLICES; small, self-contained use cases
+#  A slice that outgrows itself isn't a slice.
+# =============================================================================
+[**/Features/**/*.cs]
+dotnet_diagnostic.S3776.severity = warning     # cognitive complexity
+dotnet_diagnostic.S138.severity = warning      # method length
+dotnet_diagnostic.S107.severity = suggestion   # parameter count (DI constructors)
+
+# Here a primary constructor is actually desirable
+csharp_style_prefer_primary_constructors = true:warning
+
+
+# =============================================================================
+#  INFRASTRUCTURE; adapters, higher coupling is fine
+# =============================================================================
+[**/*.Infrastructure/**/*.cs]
+dotnet_diagnostic.CA1506.severity = none
+dotnet_diagnostic.S1200.severity = none
+
+
+# =============================================================================
+#  GENERATED CODE
+# =============================================================================
+[**/Migrations/**/*.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+[**/*.{g,generated,designer}.cs]
+generated_code = true
+dotnet_analyzer_diagnostic.severity = none
+
+
+# =============================================================================
+#  TESTS
+# =============================================================================
+[**/*{Tests,Test}/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none       # underscores in test names
+dotnet_diagnostic.VSTHRD200.severity = none    # Async suffix
+dotnet_diagnostic.S1200.severity = none
+dotnet_diagnostic.CA1506.severity = none
+dotnet_diagnostic.S3776.severity = none
+dotnet_diagnostic.MA0053.severity = none

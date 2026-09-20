@@ -1,0 +1,36 @@
+# CI gate for the Python guardrails. Merge into the target repo's .gitlab-ci.yml.
+# Locally findings are advisory; here they block the merge; the equivalent of
+# the .NET branch's TreatWarningsAsErrors-only-in-CI.
+
+.base_ruff:
+  stage: test
+  interruptible: true
+  image:
+    name: ghcr.io/astral-sh/ruff:0.16.3-alpine
+
+ruff-check:
+  extends: .base_ruff
+  script:
+    - ruff check --output-format=gitlab --output-file=code-quality-report.json
+  artifacts:
+    reports:
+      codequality: code-quality-report.json
+
+ruff-format:
+  extends: .base_ruff
+  script:
+    - ruff format --diff
+
+typecheck:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install pyright
+    - pyright
+
+architecture:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - pip install import-linter
+    - lint-imports

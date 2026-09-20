@@ -1,0 +1,85 @@
+<Project>
+
+  <!--
+    Place at the repo root.
+    Strictness is controlled by the QualityLevel property, not by rewriting this file:
+      Baseline  = bugs/security only, nothing fails → start on an existing codebase
+      Standard  = + design and maintainability      → target after a month
+      Strict    = + metrics and code style          → target after a quarter
+    Set it in Directory.Build.props or via -p:QualityLevel=Standard
+  -->
+
+  <PropertyGroup>
+    <QualityLevel Condition="'$(QualityLevel)' == ''">Baseline</QualityLevel>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <ContinuousIntegrationBuild Condition="'$(CI)' != ''">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!-- ANALYSIS -->
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <!--
+      AnalysisLevel: PIN to a specific version once the code is clean.
+      'latest' means an SDK upgrade adds new rules and breaks the build.
+    -->
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <AnalysisMode Condition="'$(QualityLevel)' == 'Baseline'">Minimum</AnalysisMode>
+    <AnalysisMode Condition="'$(QualityLevel)' == 'Standard'">Recommended</AnalysisMode>
+    <AnalysisMode Condition="'$(QualityLevel)' == 'Strict'">Recommended</AnalysisMode>
+
+    <!-- categories can be tightened independently; security is always worth it -->
+    <AnalysisModeSecurity>All</AnalysisModeSecurity>
+
+    <EnforceCodeStyleInBuild Condition="'$(QualityLevel)' == 'Strict'">true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!-- ESCALATE TO ERROR: only in CI, so local iteration doesn't hurt -->
+  <PropertyGroup Condition="'$(ContinuousIntegrationBuild)' == 'true' AND '$(QualityLevel)' != 'Baseline'">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <CodeAnalysisTreatWarningsAsErrors>true</CodeAnalysisTreatWarningsAsErrors>
+    <!-- exceptions you don't want to be blocking -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);CS1591</WarningsNotAsErrors>
+  </PropertyGroup>
+
+  <!-- ANALYZERS -->
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <PackageReference Include="Meziantou.Analyzer" PrivateAssets="all" Condition="'$(QualityLevel)' != 'Baseline'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Global.txt" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)CodeMetricsConfig.txt"
+                     Condition="'$(QualityLevel)' == 'Strict'" />
+  </ItemGroup>
+
+  <!-- Domain projects also get the stricter banned list.
+       Convention: a project ending in .Domain. Adjust if yours is different. -->
+  <ItemGroup Condition="$(MSBuildProjectName.EndsWith('.Domain'))">
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.Domain.txt" />
+  </ItemGroup>
+
+  <!-- TEST PROJECTS: looser mode -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('Tests')) OR $(MSBuildProjectName.EndsWith('.Test'))">
+    <IsTestProject>true</IsTestProject>
+    <AnalysisMode>Minimum</AnalysisMode>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- GENERATED CODE: exclude from analysis entirely -->
+  <ItemGroup>
+    <Compile Update="**/Migrations/**/*.cs">
+      <ExcludeFromCodeCoverage>true</ExcludeFromCodeCoverage>
+    </Compile>
+  </ItemGroup>
+
+</Project>

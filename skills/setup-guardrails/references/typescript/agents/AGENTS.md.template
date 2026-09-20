@@ -1,0 +1,47 @@
+# Rules for AI agents; TypeScript/JavaScript
+
+Copy the fenced block below into the target repo root as `AGENTS.md`. The surrounding text is instructions for you, not content. Rewrite the Architecture section to match the repo's real structure. Keep the FORBIDDEN CHANGES section verbatim, only fixing the paths to where the files actually got installed.
+
+---
+
+```markdown
+# Repository rules
+
+## Architecture
+
+Layered architecture, dependencies point inward; the domain is the center:
+
+- `domain`; domain logic, depends on nothing (no I/O, DB, HTTP)
+- `application`; use cases, orchestrates the domain
+- `infrastructure`; adapters (DB, HTTP, queues)
+- `api`/`ui`; entry layer
+
+## Async
+
+Every Promise is awaited or explicitly handed off; `no-floating-promises` is an error and the fix is `await`/`void` with a reason, not disabling the rule. AbortSignal propagates down like a CancellationToken.
+
+## FORBIDDEN CHANGES
+
+Without explicit human approval, NEVER edit:
+
+- `eslint.config.js`
+- `tsconfig.json` (and every `tsconfig.*.json`)
+- `eslint-suppressions.json`
+
+Specifically, **never** fix a red lint/typecheck by:
+
+- adding `// eslint-disable` or `// @ts-ignore` / `// @ts-expect-error`
+- running `eslint --suppress-all` or `--suppress-rule`
+- adding `any` or an `as` cast to silence a type error
+- turning off a compiler flag or a rule in the config
+
+When a rule blocks you from finishing the task, **stop and ask.** Either your approach is wrong or the rule is wrong; both are a human's decision, not yours.
+
+## Build
+
+    npx eslint .                  # lint (suppressed debt stays silent, a new finding fails)
+    npx tsc --noEmit              # types
+    npm test                      # tests
+
+Locally findings are warnings for you; in CI they block the merge.
+```

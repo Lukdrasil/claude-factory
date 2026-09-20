@@ -1,0 +1,11 @@
+{
+  "name": "claude-factory",
+  "owner": { "name": "Lukdrasil" },
+  "plugins": [
+    {
+      "name": "claude-factory",
+      "source": "./",
+      "description": "Archetype skills, agents and policy hooks for the spec-to-merge factory loop."
+    }
+  ]
+}

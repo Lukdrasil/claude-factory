@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Acme.__MODULE__.Application</RootNamespace>
+    <AssemblyName>Acme.__MODULE__.Application</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Acme.__MODULE__.Domain\Acme.__MODULE__.Domain.csproj" />
+  </ItemGroup>
+
+  <!-- Slice endpointy (viz Slice.cs.template) žijí ve Features, tedy tady;
+       IEndpointRouteBuilder/Results vyžadují shared framework. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Acme.__MODULE__.Infrastructure" />
+    <InternalsVisibleTo Include="Acme.__MODULE__.Tests" />
+  </ItemGroup>
+
+</Project>

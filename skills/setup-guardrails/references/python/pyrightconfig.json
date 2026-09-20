@@ -1,0 +1,7 @@
+{
+  "include": ["src"],
+  "exclude": ["**/__pycache__", "**/.venv", "**/node_modules"],
+  "extraPaths": ["src"],
+  "typeCheckingMode": "standard",
+  "strict": ["src/app/domain"]
+}

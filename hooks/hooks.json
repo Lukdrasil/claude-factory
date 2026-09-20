@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/session-start.sh" }
+    ] }],
+    "PreToolUse": [
+      { "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/policy-guard.sh" }] },
+      { "matcher": "Bash|Write|Edit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/architect-gate.sh" }] },
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/comment-gate.sh" }] },
+      { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/dash-gate.sh" }] },
+      { "matcher": ".*", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/compact-tripwire.sh" }] }
+    ],
+    "PreCompact": [{ "hooks": [
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/pre-compact.sh" }
+    ] }],
+    "Stop": [{ "hooks": [
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/self-report-check.sh" }
+    ] }]
+  }
+}
