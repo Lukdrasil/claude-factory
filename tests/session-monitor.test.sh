@@ -1,6 +1,7 @@
 #!/bin/sh
 # session-monitor.sh over a throwaway state repo: a ready unowned task is dispatched, an owned one is not,
-# a task with no worktree is skipped, and the manual mode prints a command instead of spawning anything.
+# a task with no worktree is skipped, the manual mode prints a command instead of spawning anything, and a
+# parent with an open block MR gets its mr-watch.sh pass.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -40,5 +41,24 @@ check 'T-001 is printed'            '^T-001 printed '
 check 'T-001 gets a claude command' 'claude --model .* "/claude-factory:block-feature '
 check 'T-002 is skipped'            '^T-002 skipped '
 if printf '%s\n' "$out" | grep -q '^T-003'; then printf 'FAIL owned task dispatched\n'; fail=1; else printf 'PASS owned task left alone\n'; fi
+
+# a block in `review` with its MR open: the no-argument mode watches its parent for the merge
+cat > "$state/repos/demo/tasks/T-004-01.md" <<'EOF'
+---
+id: T-004-01
+repo: demo
+status: review
+archetype: feature
+tier: green
+complexity: low
+mr_url: https://forge.test/mr/1
+---
+
+# Goal
+feat(demo): a block whose MR is open
+EOF
+
+out=$(sh "$bin/session-monitor.sh" --state "$state" --dry-run 2>/dev/null)
+check 'the open block MR is watched' "mr-watch.sh T-004 --once --state $state"
 
 exit $fail

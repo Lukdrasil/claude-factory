@@ -8,7 +8,9 @@
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
-# `review` with an `mr_url` is waiting for the developer, a block in `changes_requested` is a fix round.
+# `review` with an `mr_url` is waiting for the developer, so step 11 steps over it to the next block that still
+# needs work and only prints the reminder with the open MRs when every remaining block is one of those; a block
+# in `changes_requested` is a fix round.
 #
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
 # beginning `Completion:`, and under `Commands:` the commands to run, two spaces in front of each. The work
@@ -208,7 +210,7 @@ wave_of() { # <block id>: the number of the wave line naming it, or nothing
       sub(/wave[[:space:]]*/, "", n); print n; exit }'
 }
 
-pending=''
+pending='' waiting=''
 for b in $ordered; do
   bf=$(task_of "$b" || :)
   [ -n "$bf" ] || continue
@@ -218,6 +220,13 @@ for b in $ordered; do
   case "$bs" in
     done|closed) continue ;;
   esac
+  # why: an open block MR is the developer's turn, not a stall: the blocks behind it are still worked on, and
+  # why: the reminder below is printed only when nothing else is left to do
+  if [ "$bs" = review ] && [ -n "$(fm "$bf" mr_url)" ]; then
+    waiting="$waiting$b
+"
+    continue
+  fi
   pending=$b
   break
 done
@@ -247,11 +256,6 @@ if [ -n "$pending" ]; then
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
-  elif [ "$bs" = review ] && [ -n "$(fm "$bf" mr_url)" ]; then
-    emit "Step 11 of 16: $pending waits for the developer" "mr-watch.sh printed an event for $pending and you acted on it: merged sets the block done and retargets the stack, changes-requested and new-comments open the fix round through state-report.sh --set-status changes_requested."
-    cmd "$bin/mr-watch.sh $id --once --state $state"
-    cmd "$bin/mr-watch.sh $id --interval 300 --state $state"
-    cmd "$bin/state-report.sh --task $pending --set-status changes_requested --message 'chore($pending): changes requested'"
   elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ]; then
     emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
@@ -281,6 +285,22 @@ if [ -n "$pending" ]; then
     cmd "$bin/block-mr.sh $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): MR open'"
   fi
+  exit 0
+fi
+
+if [ -n "$waiting" ]; then
+  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block through task-new.sh with depends_on on that block."
+  for b in $waiting; do
+    bf=$(task_of "$b" || :)
+    [ -n "$bf" ] || continue
+    bbase=$(sed -n 's/^base:[[:space:]]*//p' "$state/repos/$key/progress/$b.md" 2>/dev/null | head -n1)
+    cmd "$b $(fm "$bf" mr_url) -> ${bbase:-$branch}"
+  done
+  cmd "$bin/mr-watch.sh $id --once --state $state"
+  cmd "$bin/mr-watch.sh $id --interval 300 --state $state"
+  cmd "$bin/mr-watch.sh $id --comments <block-id> --state $state"
+  cmd "$bin/state-report.sh --task <block-id> --set-status changes_requested --message 'chore(<block-id>): changes requested'"
+  cmd "$bin/task-template.sh block > $harness/extra.md && $bin/task-new.sh --repo $key --parent $id --file $harness/extra.md --state $state"
   exit 0
 fi
 

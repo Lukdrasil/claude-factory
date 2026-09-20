@@ -7,7 +7,9 @@
 #
 # Two modes:
 #   --parent T-NNN   the blocks of one wave of a solve cut, from bin/spawn-plan.sh
-#   no argument      every task with `status: ready` and no owner, across the state repo
+#   no argument      every task with `status: ready` and no owner, across the state repo, and one
+#                    `mr-watch.sh <T-NNN> --once` pass per parent with an open block MR, whose event lines are
+#                    printed through, so a merge after the solve session ended still becomes state
 #
 # `spawn:` in <state>/factory.yml decides how: `herdr` opens the sessions, `manual` (the default, and what a
 # machine without herdr falls back to) prints them. --dry-run prints whatever it would do and changes nothing.
@@ -105,6 +107,29 @@ else
       "/claude-factory:block-$(field "$task" archetype) $task"
   done > "$units"
 fi
+
+# --- the open block MRs --------------------------------------------------------------------------------------
+# why: T-164, the solve session that opened the block MRs may be over, so the standalone monitor is what turns
+# why: a merge on the forge into state
+if [ -z "$parent" ]; then
+  parents=$(
+    for task in "$state"/repos/*/tasks/*.md; do
+      [ -f "$task" ] || continue
+      [ "$(field "$task" status)" = review ] || continue
+      case "$(field "$task" mr_url)" in ''|null) continue ;; esac
+      bid=$(field "$task" id)
+      case "$bid" in T-[0-9][0-9][0-9]-[0-9][0-9]) printf '%s\n' "${bid%-*}" ;; esac
+    done | sort -u
+  )
+  for p in $parents; do
+    if [ -n "$dry" ]; then
+      printf '  sh %s/mr-watch.sh %s --once --state %s\n' "$bin" "$p" "$state"
+    elif ! sh "$bin/mr-watch.sh" "$p" --once --state "$state"; then
+      echo "session-monitor: mr-watch.sh refused $p" >&2
+    fi
+  done
+fi
+
 [ -s "$units" ] || { echo "nothing to dispatch"; exit 0; }
 
 # --- dispatch ------------------------------------------------------------------------------------------------

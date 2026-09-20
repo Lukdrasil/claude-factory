@@ -58,8 +58,15 @@ it with `state-report.sh --mr-url`. A conflict is a cut defect: rebase the later
 `<plugin-root>/bin/mr-watch.sh <T-NNN>` prints one line per forge event, armed through the Monitor tool; on
 `merged` it retargets the children and sets the block done. On `changes-requested` set the block
 `changes_requested`, spawn one implement subagent with the threads as acceptance, then
-`<plugin-root>/bin/restack.sh <T-NNN> <block-id>`, whose exit 3 is a question for the human. The session may
-end while the MRs wait.
+`<plugin-root>/bin/restack.sh <T-NNN> <block-id>`, whose exit 3 is a question for the human. On `new-comments`
+read the threads with `mr-watch.sh <T-NNN> --comments <block-id>` first and answer each one on its own terms: a
+thread asking for a code change is that same fix round on the block branch, a question is answered on the MR by
+hand, since `forge.sh` only reads, and a thread asking for work outside the block's acceptance is a new draft
+block through `<plugin-root>/bin/task-new.sh` with `depends_on` on that block, never a fix round.
+
+A block waiting on its open MR does not hold the stack: the later blocks are worked on past it, and only when
+every remaining block is a `review` with an `mr_url` does step 11 list the open MRs as `<block> <mr-url> ->
+<base>` and ask the human to review and merge them. The session may end while the MRs wait.
 
 ## Identity and refusals
 
