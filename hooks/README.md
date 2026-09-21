@@ -10,6 +10,9 @@ that used to sit in that key lives here instead.
 - The guard hooks (`policy-guard.sh`, `architect-gate.sh`) waive only the cwd rule outside `WORK_DIR`
   unless `HARNESS_WORKER=1` (ADR-0049). The session hooks — `SessionStart`, `PreCompact`, the PreToolUse
   tripwire — run everywhere.
+- `attribution-gate.sh` runs on `Bash` as well as the write tools: a commit, a tag and a forge command
+  carry their text in the command, an MR description and a progress file in a file. It scans only those,
+  so a source file mentioning any of the banned phrases passes.
 - `Stop` has exactly one hook. Both Stop scripts write into the same state clone, so `bin/session-stats.sh`
   is chained from the end of `self-report-check.sh` rather than running beside it over one git index.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
