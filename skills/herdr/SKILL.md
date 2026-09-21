@@ -41,8 +41,18 @@ starts `claude` there and sends the prompt. On `manual`, or on a machine with no
 `cd … && claude …` lines for the human to run. Either way it prints one `<id> <spawned|printed|skipped> <cwd>`
 line per unit, so the main session learns what went out without reading any of the work.
 
+```sh
+sh <plugin-root>/bin/session-monitor.sh --parent T-NNN --step grill   # one parent-level step of factory herd
+```
+
 `--max N` caps a batch, default 5. A unit with no worktree is skipped: run
-`<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again.
+`<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. `--spawn herdr` overrides `spawn:` for
+one call, and the tabs are created in `$HERDR_WORKSPACE_ID` unless `--workspace` names another, so a
+dispatched session lands in the caller's own group.
+
+`<plugin-root>/bin/herd-watch.sh <T-NNN>` is the other half: it prints one line per status, phase or agent
+change of that parent and its blocks, so the monitor session follows the work without reading any of it
+(`<plugin-root>/skills/factory/references/herd.md`).
 
 Three reasons to drive herdr yourself instead: a layout the user asked for, reading a spawned session's
 output, or answering one that is blocked.

@@ -3,16 +3,26 @@
 # coordinator's own context. With herdr each session gets its own tab in its own worktree; without herdr the
 # same lines are printed for the human to run.
 #
-#   session-monitor.sh [--parent <T-NNN> [--wave N]] [--max N] [--state <dir>] [--dry-run]
+#   session-monitor.sh [--parent <T-NNN> [--wave N] [--step <name>]] [--max N] [--workspace <id>]
+#                      [--state <dir>] [--dry-run]
 #
-# Two modes:
+# Three modes:
 #   --parent T-NNN   the blocks of one wave of a solve cut, from bin/spawn-plan.sh
+#   --parent T-NNN --step <name>
+#                    one session for a parent-level step of `factory herd`: triage, grill,
+#                    plan-check or decompose. It runs in the registered clone, or in the session
+#                    worktree once there is one.
 #   no argument      every task with `status: ready` and no owner, across the state repo, and one
 #                    `mr-watch.sh <T-NNN> --once` pass per parent with an open block MR, whose event lines are
 #                    printed through, so a merge after the solve session ended still becomes state
 #
+# --workspace <id> is the herdr workspace the tabs are created in, default $HERDR_WORKSPACE_ID, so a
+# dispatched session lands in the caller's own group and not in whatever workspace another client has
+# focused.
+#
 # `spawn:` in <state>/factory.yml decides how: `herdr` opens the sessions, `manual` (the default, and what a
-# machine without herdr falls back to) prints them. --dry-run prints whatever it would do and changes nothing.
+# machine without herdr falls back to) prints them. --spawn <herdr|manual> overrides it for one call, which is
+# what `factory herd` passes, since herd is the herdr flow whatever the config says. --dry-run prints whatever it would do and changes nothing.
 # --max caps how many go out at once, default 5, the width cap of solve.md.
 #
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
@@ -25,18 +35,26 @@ die() { printf 'session-monitor: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-parent='' wave='' state='' dry='' max=5
+parent='' wave='' state='' dry='' max=5 step='' spawn='' workspace=${HERDR_WORKSPACE_ID:-}
 while [ $# -gt 0 ]; do
   case "$1" in
     --parent) [ $# -ge 2 ] || die "--parent needs a value"; parent=$2; shift 2 ;;
     --wave) [ $# -ge 2 ] || die "--wave needs a value"; wave=$2; shift 2 ;;
+    --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --max) [ $# -ge 2 ] || die "--max needs a value"; max=$2; shift 2 ;;
+    --workspace) [ $# -ge 2 ] || die "--workspace needs a value"; workspace=$2; shift 2 ;;
+    --spawn) [ $# -ge 2 ] || die "--spawn needs a value"; spawn=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     --dry-run) dry=1; shift ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
 case "$max" in ''|*[!0-9]*) die "--max takes a number, not '$max'" ;; esac
+case "$step" in
+  ''|triage|grill|plan-check|decompose) ;;
+  *) die "--step takes triage, grill, plan-check or decompose, not '$step'" ;;
+esac
+[ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --parent it is a step of"
 
 # see: solve-next.sh and spawn-plan.sh, the one state resolution of the factory scripts
 if [ -z "$state" ]; then
@@ -56,6 +74,7 @@ if [ -f "$state/factory.yml" ]; then
   mode=$(sed -n 's/^spawn:[[:space:]]*//p' "$state/factory.yml" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
   [ -n "$mode" ] || mode=manual
 fi
+[ -z "$spawn" ] || mode=$spawn
 case "$mode" in
   herdr|manual) ;;
   *) die "spawn: in $state/factory.yml is '$mode'; it takes herdr or manual" ;;
@@ -72,6 +91,16 @@ if [ "$mode" = herdr ] && [ "${HERDR_ENV:-}" != 1 ]; then
 fi
 
 field() { sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//'; }
+# see: solve-next.sh, the `path:` of a repo in this state clone's own repos.yml; nothing when it has none
+clone_path() { # <key>
+  [ -f "$state/repos.yml" ] || return 0
+  awk -v want="$1" '
+    /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
+    index($0, "path:") && k == want {
+      p = $0; sub(/.*path:[ \t]*/, "", p); sub(/[ \t]*[,}].*$/, "", p); sub(/[ \t]+#.*$/, "", p)
+      gsub(/^["'"'"']|["'"'"']$/, "", p); if (p != "") { print p; exit }
+    }' "$state/repos.yml"
+}
 json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);process.stdout.write(String(process.argv[1].split(".").reduce((a,k)=>a&&a[k],o)||""))}catch(e){}})' "$1"; }
 
 # --- the work list -------------------------------------------------------------------------------------------
@@ -85,14 +114,39 @@ if [ -n "$parent" ]; then
   [ -n "${ptask:-}" ] && [ -f "$ptask" ] || die "no task file with 'id: $parent'"
   key=$(field "$ptask" repo)
   [ -n "$key" ] || die "task $parent has no 'repo:' field"
-  set -- "$parent"
-  [ -z "$wave" ] || set -- "$@" --wave "$wave"
-  plan=$(sh "$bin/spawn-plan.sh" "$@" --state "$state") || die "spawn-plan refused the cut of $parent"
-  printf '%s\n' "$plan" | while IFS=' ' read -r bid agent model brief; do
-    [ -n "$bid" ] || continue
-    printf '%s\t%s\t%s\t%s\n' "$bid" "$root/$key/$bid" "$model" \
-      "You are $agent. Read $brief and do exactly what it says."
-  done > "$units"
+  if [ -n "$step" ]; then
+    # a parent-level step runs before the session worktree exists, so the cwd is the registered clone and the
+    # worktree only once step 10 has made one
+    cwd="$root/$key/$parent"
+    [ -e "$cwd/.git" ] || cwd=$(clone_path "$key")
+    [ -n "$cwd" ] || die "repo '$key' has no path: in repos.yml and $parent has no worktree, so there is nowhere to run $step"
+    plugin=$(dirname -- "$bin")
+    case "$step" in
+      triage)
+        model=$(sh "$bin/model-for.sh" triage "$(field "$ptask" tier)" '' 0 \
+          "$(field "$ptask" complexity)" 2>/dev/null || echo sonnet)
+        prompt="Triage $parent. Read $plugin/skills/_shared/investigate.md and $ptask, gather the recon it asks for, write ## Context into the task, set tier: and archetype:, and report with $bin/state-report.sh --task $parent --no-status." ;;
+      grill)
+        model=opus
+        prompt="/claude-factory:grill $ptask" ;;
+      plan-check)
+        model=opus
+        prompt="/claude-factory:architect-review plan-check $ptask" ;;
+      decompose)
+        model=opus
+        prompt="/claude-factory:decompose $ptask" ;;
+    esac
+    printf '%s\t%s\t%s\t%s\n' "$parent-$step" "$cwd" "$model" "$prompt" > "$units"
+  else
+    set -- "$parent"
+    [ -z "$wave" ] || set -- "$@" --wave "$wave"
+    plan=$(sh "$bin/spawn-plan.sh" "$@" --state "$state") || die "spawn-plan refused the cut of $parent"
+    printf '%s\n' "$plan" | while IFS=' ' read -r bid agent model brief; do
+      [ -n "$bid" ] || continue
+      printf '%s\t%s\t%s\t%s\n' "$bid" "$root/$key/$bid" "$model" \
+        "You are $agent. Read $brief and do exactly what it says."
+    done > "$units"
+  fi
 else
   for task in "$state"/repos/*/tasks/*.md; do
     [ -f "$task" ] || continue
@@ -152,7 +206,10 @@ while IFS='	' read -r id cwd model prompt; do
   fi
   # herdr agent names are [a-z][a-z0-9_-]{0,31} and unique among live agents
   name=$(printf '%s' "$id" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
-  pane=$(herdr tab create --cwd "$cwd" --label "$id" --no-focus | json result.root_pane.pane_id)
+  # the tab belongs to the caller's own workspace, not to whatever another client has focused
+  set -- tab create --cwd "$cwd" --label "$id" --no-focus
+  [ -z "$workspace" ] || set -- "$@" --workspace "$workspace"
+  pane=$(herdr "$@" | json result.root_pane.pane_id)
   if [ -z "$pane" ]; then
     echo "session-monitor: herdr tab create gave no pane id for $id" >&2
     rc=2; continue

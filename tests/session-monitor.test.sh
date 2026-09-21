@@ -61,4 +61,18 @@ EOF
 out=$(sh "$bin/session-monitor.sh" --state "$state" --dry-run 2>/dev/null)
 check 'the open block MR is watched' "mr-watch.sh T-004 --once --state $state"
 
+# --step: one session for a parent-level step, in the registered clone when there is no session worktree yet
+mkdir -p "$tmp/clone"
+printf 'demo: { path: %s }\n' "$tmp/clone" > "$state/repos.yml"
+task T-005 null feature
+out=$(sh "$bin/session-monitor.sh" --parent T-005 --step grill --state "$state" 2>/dev/null)
+check 'the grill step runs in the clone' "^T-005-grill printed $tmp/clone\$"
+check 'the grill step prompts the skill' '"/claude-factory:grill '
+
+if sh "$bin/session-monitor.sh" --parent T-005 --step nonsense --state "$state" >/dev/null 2>&1; then
+  printf 'FAIL an unknown step was accepted\n'; fail=1
+else
+  printf 'PASS an unknown step is refused\n'
+fi
+
 exit $fail
