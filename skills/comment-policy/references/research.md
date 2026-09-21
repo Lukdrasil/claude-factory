@@ -1,5 +1,10 @@
 # Code comments: a sourced reference for a near-zero-comment policy
 
+> The policy this repo now enforces is stricter than the allowed-class list below: a doc comment on a
+> public class, interface or method is the only comment that passes, and the `why:`, `invariant:`, `warn:`
+> and `see:` classes are written as code, a test or a ticket instead. Read this document as the sourced
+> argument, `../SKILL.md` and `classes.md` as the rule.
+
 Scope: when is a comment justified in C# or shell source, under a policy whose
 target is close to zero comment lines. Rule of thumb the policy encodes: **a
 comment is allowed only if it states something a reader cannot derive from the

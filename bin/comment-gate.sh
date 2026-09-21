@@ -1,10 +1,10 @@
 #!/bin/sh
 # PreToolUse comment gate (P7 "the text describes, the hook enforces"): the deterministic twin of the
 # comment-policy skill. A Write/Edit/MultiEdit into a code file inside a task work dir may add a comment line
-# only when it belongs to an allowed class, recognised by its prefix — `why:`, `invariant:`, `warn:`, `see:` —
-# or is a doc comment (`///`), a shebang, a license header, or a tool directive. Every other new comment line is denied with the
-# three-question test and the replacements on stderr, so the agent says it in a name, a method, a test or the
-# commit message instead. exit 2 = deny, the reason on stderr reaches the agent.
+# only when it is a doc comment on a public type or member (`///`, `/**`), a shebang, a license header, or a
+# tool directive. Every other new comment line is denied with the two-question test and the replacements on
+# stderr, so the agent says it in a name, a method, a test or the commit message instead.
+# exit 2 = deny, the reason on stderr reaches the agent.
 # Deny on positive evidence only: a file outside a task work dir, a non-code extension, a repo whose toolset
 # says `comments: free`, and a comment line that already stood in the text being replaced all pass.
 set -eu
@@ -87,14 +87,12 @@ comment_lines() { # <text> — one trimmed comment line per output line
     dash)  printf '%s\n' "$1" | sed -n 's/^[[:space:]]*\(--.*\)$/\1/p' ;;
   esac
 }
-# the classes that pass: a doc comment, a shebang, a license header, a directive a tool reads, and the four
-# prefixed classes of the comment-policy skill. Case matters: the prefix is the contract the reviewer greps for.
+# the one class that passes: a doc comment on a public type or member, plus a shebang, a license header and a
+# directive a tool reads. Nothing else, prefixed or not: a comment inside a body is a claim the compiler never
+# checks.
 allowed() { # <trimmed comment line>
   case "$1" in
     '///'*|'/**'*|'#!'*) return 0 ;;
-    '// why: '?*|'// invariant: '?*|'// warn: '?*|'// see: '?*) return 0 ;;
-    '# why: '?*|'# invariant: '?*|'# warn: '?*|'# see: '?*) return 0 ;;
-    '-- why: '?*|'-- invariant: '?*|'-- warn: '?*|'-- see: '?*) return 0 ;;
     '// Copyright'*|'// SPDX-'*|'# Copyright'*|'# SPDX-'*|'-- Copyright'*|'-- SPDX-'*) return 0 ;;
     '# shellcheck '*|'# noqa'*|'# type: '*|'# pragma: '*|'# fmt: '*|'# pylint: '*|'#Requires '*|'#requires '*) return 0 ;;
     '* '*|'*/'*|'*') return 0 ;;
@@ -119,4 +117,10 @@ EOF
 [ $n -eq 0 ] && exit 0
 
 deny "$n new comment line(s) in '$abs' (comment-policy):$added
-A comment passes only when it states what the reader cannot get from the code, its names, its tests or the docs. Ask three questions: (1) can a name, a method, a type or an assertion say it? then write that instead; (2) is it the history, the intent of the change, or a todo? then it belongs in the commit message, the progress file or a task; (3) is it a reason, an invariant, a warning or an external reference the code cannot express? then keep it with its class prefix — '// why: <the non-obvious reason, a link for a workaround, numbers for a measurement>', '// invariant: <what must hold and who relies on it>', '// warn: <what breaks when this changes>', '// see: <url|ADR|issue> <what it settles>' ('#' or '--' for the file's syntax). Doc comments ('///'), a shebang, a license header and tool directives pass as they are. Restated code, section headers, commented-out code and TODOs never pass. Rewrite the edit and retry; the reference is \${CLAUDE_PLUGIN_ROOT}/skills/comment-policy/SKILL.md."
+This harness writes no comments in code. Ask two questions: (1) can a name, a method, a type, an assertion or
+a test say it? then write that instead; (2) is it the history, the intent of the change, a todo or a section
+header? then it belongs in the commit message, the progress file or a task. The only comment that passes is a
+doc comment on a public class, interface or method ('///' or '/**'), written only where the contract is not
+obvious from the signature, and kept to one short summary plus the parameters that need one. A shebang, a
+license header and tool directives pass as they are. Restated code, commented-out code, TODOs and prefixed
+notes never pass. Rewrite the edit and retry; the reference is \${CLAUDE_PLUGIN_ROOT}/skills/comment-policy/SKILL.md."

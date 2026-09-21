@@ -19,8 +19,9 @@ Read by `block-feature` and `block-bugfix` when the progress file has a `## Hand
 - Characterization tests must stay green; if one fails, that is a regression inside the blast radius.
 - Every member you write or edit follows `<plugin-root>/skills/modern-idioms/SKILL.md`: the stack's current
   construct within the project's language version, free of the inefficient idioms its reference lists.
-- Every comment line you add passes `<plugin-root>/skills/comment-policy/SKILL.md`: a reason, an invariant, a warning or
-  an external reference the code cannot carry, with its class prefix; the comment gate denies the rest.
+- You write no comments in code, per `<plugin-root>/skills/comment-policy/SKILL.md`: the one exception is a
+  short doc comment on a public class, interface or method whose signature does not carry the contract, and
+  the comment gate denies the rest.
 - Every log call and catch block you write follows `<plugin-root>/skills/logging-decisions/SKILL.md`: who acts
   on the entry decides its level, expected exceptions are caught first and quietly, and no personal data or
   secret goes into a log.

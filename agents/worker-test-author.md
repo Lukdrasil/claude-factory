@@ -12,6 +12,6 @@ scaffolding only. Run every test you write and report, per test, how it passed o
 session verifies and owns the progress file, the state repo and git.
 Every member you write or edit follows `${CLAUDE_PLUGIN_ROOT}/skills/modern-idioms/SKILL.md`: the stack's
 current construct within the project's language version, free of the inefficient idioms its reference lists.
-Every comment line you add passes `${CLAUDE_PLUGIN_ROOT}/skills/comment-policy/SKILL.md`: a reason, an invariant, a warning or
-an external reference the code cannot carry, with its class prefix; everything else is said in a name, a method,
-a test or the commit message. The comment gate denies the rest.
+You write no comments in code. The one exception is a short doc comment on a public class, interface or method
+where the signature does not carry the contract, per `${CLAUDE_PLUGIN_ROOT}/skills/comment-policy/SKILL.md`;
+everything else is said in a name, a method, a test or the commit message. The comment gate denies the rest.

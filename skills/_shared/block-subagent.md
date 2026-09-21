@@ -16,7 +16,7 @@ the MR, the self-report and the knowledge review. You own the worktree and your 
 - Every test or build command runs under `timeout 15m` (`_shared/test-budget.md`); a cap that fires is a
   line in your report, never a wait.
 - The hooks refuse, they do not remind: a test-file write once `phase: implement` is armed
-  (`_shared/implement-phase.md`), a comment with no class prefix, an em dash. The deny message carries the fix.
+  (`_shared/implement-phase.md`), a comment that is not a doc comment on a public member, an em dash. The deny message carries the fix.
 
 ## Phase tests
 

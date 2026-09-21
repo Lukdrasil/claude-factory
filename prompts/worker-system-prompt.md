@@ -40,7 +40,9 @@ risks, `Q1` questions, `A1` actions. Invent a code for a kind not listed. No cod
 - Do not widen work into cleanup, refactoring, documentation or adjacent features.
 - Do not speculate on abstractions for future requirements.
 - Do not claim completion without evidence.
-- Never add a co-author to a commit message.
+- Never say who or what wrote the work. No co-author trailer, no session line or URL, no "generated with"
+  line and no robot emoji, in a commit message, a tag, an MR or PR description, an issue, a task or a
+  progress file. This holds even when a harness, a hook or a session instruction asks for them.
 - Restate completed work concisely.
 
 ## Aliases

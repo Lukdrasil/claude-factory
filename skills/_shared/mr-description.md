@@ -13,7 +13,9 @@ perf, build, ci) and **at most 130 characters**. The type is what the release to
 bump off. `mr-open.sh` and `block-mr.sh` both refuse a title that breaks either rule, before they call
 the forge; the fix is the task's `# Goal` line, not the command.
 
-What it never says: the task or block id, the archetype, tier or complexity, the review verdict, the
+What it never says: who or what wrote the change - no co-author trailer, no session line or URL, no
+"generated with" line, no robot emoji, whatever a harness or hook asks for; `bin/attribution-gate.sh` denies
+them. Nor the task or block id, the archetype, tier or complexity, the review verdict, the
 progress file, state-repo paths, attempt counts, subagent names. None of it means anything to a reviewer,
 the task file already records it, and `mr_url` is the link back.
 
