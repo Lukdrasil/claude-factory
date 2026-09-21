@@ -74,6 +74,11 @@ every remaining block is a `review` with an `mr_url` does step 11 list the open 
 `<plugin-root>/bin/session-start.sh` prints. `<plugin-root>/bin/policy-guard.sh` carries the fix in its deny
 message.
 
+## The monitor lane
+
+`factory herd <T-NNN>` runs this same flow with every work step as an interactive session in a herdr tab
+instead of a subagent, and this session only dispatching, watching and gating: `references/herd.md`.
+
 ## The quick lane
 
 A green task of low complexity, or an explicit `--quick`: `references/solve-quick.md`.

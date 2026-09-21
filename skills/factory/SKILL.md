@@ -1,6 +1,6 @@
 ---
 name: factory
-description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, approve and done for the human gates. Use when the user says factory, or solve, approve, done, list, curate, consolidate, doctor, add-repo or init against it.
+description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, approve and done for the human gates. Use when the user says factory, or solve, herd, approve, done, list, curate, consolidate, doctor, add-repo or init against it.
 ---
 
 # factory
@@ -20,6 +20,7 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | `curate` | the proposal queues one proposal at a time, applied through `curate-apply.sh`, every decision a commit | `references/curate.md` |
 | `consolidate` | duplicates, contradictions and staleness in one or more memory scopes, as proposals | `references/consolidate.md` |
 | `solve` | one problem end to end: triage, grill, decompose, blocks in their own worktrees, the MR | `references/solve.md`, quick lane `references/solve-quick.md` |
+| `herd` | one problem end to end like `solve`, but every work step runs as an interactive session in a herdr tab and this session only dispatches, watches and gates | `references/herd.md` |
 | `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh` starts ready tasks, or a wave of blocks, as their own sessions, and without a parent also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |
