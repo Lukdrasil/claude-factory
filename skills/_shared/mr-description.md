@@ -11,7 +11,9 @@ The title is `# Goal` as it stands, with no id in front of it, so the goal line 
 **Conventional Commits** (`type(scope): subject`, type one of feat, fix, chore, docs, refactor, test,
 perf, build, ci) and **at most 130 characters**. The type is what the release tooling reads the semver
 bump off. `mr-open.sh` and `block-mr.sh` both refuse a title that breaks either rule, before they call
-the forge; the fix is the task's `# Goal` line, not the command.
+the forge; the fix is the task's `# Goal` line, not the command. `bin/policy-guard.sh` holds a `gh pr` or
+`glab mr` command that writes a `--title` itself to the same rule, so the hand-written path cannot open what
+the scripts refuse.
 
 What it never says: who or what wrote the change - no co-author trailer, no session line or URL, no
 "generated with" line, no robot emoji, whatever a harness or hook asks for; `bin/attribution-gate.sh` denies

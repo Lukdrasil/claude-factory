@@ -599,6 +599,21 @@ guard_bash() {
   if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab[[:space:]]+mr|gh[[:space:]]+pr)[[:space:]]+create([[:space:]]|$)'; then
     DENY_FIX="$DENY_FIX Pass the description as a file, 'glab mr create --description-file <path>' or 'gh pr create --body-file <path>': an inline description is split on ';', '&&' and '|' and its pieces are judged as commands."
   fi
+  # the MR title rule of skills/_shared/mr-description.md, on the path that does not go through mr-open.sh or
+  # block-mr.sh: a forge command writing a title is held to the same mr_title_check those two apply. A title
+  # nothing can be extracted from is not denied, as a quote inside it would make the guard lie.
+  if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab[[:space:]]+mr|gh[[:space:]]+pr)[[:space:]]+(create|edit|update)([[:space:]]|$)' \
+     && printf '%s' "$c" | grep -q -- '--title'; then
+    t=''
+    case "$c" in
+      *'--title "'*|*'--title="'*) t=$(printf '%s' "$c" | sed -n 's/.*--title[ =]"\([^"]*\)".*/\1/p') ;;
+      *"--title '"*|*"--title='"*) t=$(printf '%s' "$c" | sed -n "s/.*--title[ =]'\([^']*\)'.*/\1/p") ;;
+      *) t=$(printf '%s' "$c" | sed -n 's/.*--title[ =]\([^ ]*\).*/\1/p') ;;
+    esac
+    if [ -n "$t" ] && ! reason=$(mr_title_check "$t"); then
+      deny "the MR title '$t' breaks the contract: $reason. It is the task's '# Goal' line, and bin/mr-open.sh or bin/block-mr.sh opens the MR with it rather than a hand-written title"
+    fi
+  fi
   if printf '%s' "$c" | grep -Eq 'git([[:space:]]+[^|;&]*)?[[:space:]]push([[:space:]][^|;&]*)?([[:space:]](-f|--force)([[:space:]]|$)|[[:space:]]\+)'; then
     deny "force push is forbidden (block-* skills, ADR-0012)"
   fi
