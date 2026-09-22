@@ -1,8 +1,12 @@
 #!/bin/sh
 # Stop hook (ADR-0009): a session must not end without a self-report the controller can see —
-# status review|blocked|failed in the task, delivered through state-report.sh: the Task API with a dashboard
-# (ADR-0047), a commit + push from the state clone without one (ADR-0050).
+# status review|blocked|failed in the task, delivered through state-report.sh: by default a commit and a push
+# from the session's own state clone (ADR-0050, the standalone posture), or through the Task API in the
+# alternative posture where DASHBOARD_URL is set (ADR-0047).
 # The hook is the writer: it sends the report itself, so the agent cannot forget to.
+# A task that already carries a terminal status, `done` or `closed`, is finished and is skipped by every loop
+# below (T-186): it has no self-report left to make, and re-reporting it is a transition state-report.sh refuses,
+# which used to block the Stop for the whole round budget.
 set -eu
 
 stdin=$(cat)
@@ -69,12 +73,13 @@ rounds="$stamp/.harness-stop-rounds"
 
 # Issue #313 point 2: the budget must never end in a silent pass — that silence is the failure mode being fixed.
 # The unresolved violation is written where the controller and a human already look: a line in the task's
-# `## Attempts`, in the shape session-stats.sh and Orchestrator.SetStatusAsync already write there — sent through
-# state-report.sh, which is the only write path left (ADR-0047). Idempotent (a repeated Stop must not append a
+# `## Attempts`, in the shape session-stats.sh and Orchestrator.SetStatusAsync already write there, sent through
+# state-report.sh, which is the one write path either posture has (ADR-0050, and ADR-0047 where a dashboard is
+# configured). Idempotent (a repeated Stop must not append a
 # second line) and never fatal — a failure to record must not take the session down on top of everything else.
 record_unresolved() { # <a short label of what stayed unresolved>
-  # the line is written by the dashboard, so the local clone never gains it and grepping the task file cannot
-  # deduplicate any more: the marker is a file in the work dir, next to the round counter. The `<!-- sid:… -->`
+  # under a dashboard the line is written server side, so the local clone never gains it and grepping the task
+  # file cannot deduplicate any more: the marker is a file in the work dir, next to the round counter. The `<!-- sid:… -->`
   # marker of session-stats.sh stays deliberately unshared — it greps for exactly that string to skip its own
   # duplicate, so sharing it would silently suppress the stats line for this session.
   marker="$stamp/.harness-stop-unresolved"
@@ -118,6 +123,8 @@ for i in $ids; do
   t=$(task_of "$i")
   [ -n "${t:-}" ] && [ -f "$t" ] || continue
   s=$(sed -n 's/^status:[[:space:]]*//p' "$t" | head -n1)
+  # T-186: a task already at a terminal status is finished, and a finished task has no self-report left to make.
+  case "$s" in done|closed) continue ;; esac
 
   # Evidence gate: a terminal "it worked" status is a claim, and the claim must be checkable — the proving
   # command, its exit code and the key output line under `## Evidence` in the progress snapshot
@@ -190,23 +197,26 @@ if [ -s "$edits" ]; then
     "test files changed with no '## Test deviations' in the progress file (issues #290/#308): $(sort -u "$edits" | tr '\n' ' ')"
 fi
 
-# ADR-0047: the state clone cannot push, so "is it committed and pushed" is no longer a question about the clone —
-# the hook delivers the report itself through the Task API and the dashboard is the only pusher. There is no git
-# fallback: a second write path is exactly what ADR-0047 removes. An undeliverable report therefore blocks, and
-# once the round budget is spent block() records the violation and lets the session go. Without a dashboard
-# (ADR-0050) state-report.sh is the pusher itself, and the same exit codes carry the same meaning.
+# "is it committed and pushed" is not a question the agent answers: the hook delivers the report itself through
+# state-report.sh, which in the standalone posture (ADR-0050) commits in the state clone and pushes it, and under
+# a configured DASHBOARD_URL sends it to the Task API instead (ADR-0047), where there is deliberately no git
+# fallback because a second write path is exactly what that ADR removes. The exit codes carry the same meaning in
+# both. An undeliverable report therefore blocks, and once the round budget is spent block() records the
+# violation and lets the session go.
 for i in $ids; do
   t=$(task_of "$i")
   [ -n "${t:-}" ] && [ -f "$t" ] || continue
   s=$(sed -n 's/^status:[[:space:]]*//p' "$t" | head -n1)
+  # T-186 again: nothing to deliver for a finished task, and the report would be refused as a transition
+  case "$s" in done|closed) continue ;; esac
   set +e
   report=$(sh "$(dirname -- "$0")/state-report.sh" --task "$i" --message "progress: $i $s" 2>&1 >/dev/null)
   report_rc=$?
   set -e
   case "$report_rc" in
     0) ;;
-    1) add "Stop blocked: the dashboard refused the self-report of task $i. $report Fix what it names in $t or in $state/repos/*/progress/$i.md and stop again — the report is sent for you, you do not commit or push it." \
-         "the dashboard refused the self-report of $i: $report" ;;
+    1) add "Stop blocked: state-report.sh refused the self-report of task $i. $report Fix what it names in $t or in $state/repos/*/progress/$i.md and stop again: the report is sent for you, you do not commit or push it." \
+         "state-report.sh refused the self-report of $i: $report" ;;
     *) if [ -n "${DASHBOARD_URL:-}" ]; then
          add "Stop blocked: the self-report of task $i never reached the controller. $report The state clone cannot push it instead (ADR-0047) — check DASHBOARD_URL and DASHBOARD_API_TOKEN in the session environment, note what happened in the progress file and stop again." \
            "the self-report of $i never reached the dashboard: $report"
