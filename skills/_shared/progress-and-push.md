@@ -2,7 +2,8 @@
 
 ## Progress snapshot
 
-`../state/repos/<key>/progress/<id>.md`, a rewritten file.
+`$WORK_DIR/state/repos/<key>/progress/<id>.md`, a rewritten file (the state clone of the standalone layout,
+ADR-0049; `../state` only where the clone really is a sibling of your worktree).
 Read mid-flight: **under 200 words**, one line per bullet, the state in the first line. Cite
 `path/file.ext:line` or a SHA instead of retelling; what you considered and declined stays out.
 
@@ -43,6 +44,9 @@ state clone and pushes. Rewrite the progress file, then:
 sh "<plugin-root>/bin/state-report.sh" --task <id> [--set-status <status>]
 ```
 
+The first report of a session is its claim, and it carries two more flags, `--set-status in_progress` and
+`--owner`; the archetype's step 1 has the exact line.
+
 `<plugin-root>` is the plugin root the skill that sent you here names. Run it at every milestone: that
 report is the liveness signal (ADR-0009), so a long operation goes after one. Exit 1 = refused, the reason
 is on stderr; fix it and run again. Exit 2 = the push did not land; the local commit stays, note it and carry
@@ -51,7 +55,7 @@ on. The Stop hook reports for you at the end.
 A **new file** of your own — a research report, an ADR or memory proposal, a plan — still goes through git:
 
 ```sh
-git -C ../state add repos/<key>/research/<id>-<slug>.md
-git -C ../state commit -m "research: <id>"
-git -C ../state pull --rebase --autostash -X theirs && git -C ../state push
+git -C "$WORK_DIR/state" add repos/<key>/research/<id>-<slug>.md
+git -C "$WORK_DIR/state" commit -m "research: <id>"
+git -C "$WORK_DIR/state" pull --rebase --autostash -X theirs && git -C "$WORK_DIR/state" push
 ```

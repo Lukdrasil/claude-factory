@@ -32,8 +32,18 @@ first. The rest is the worker procedure.
 
 ## Steps
 
-1. Write the progress snapshot of `<plugin-root>/skills/_shared/progress-and-push.md`, titled
-   `# <id> - triage <repo>#<number>`, and report it with `${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh`.
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: the snapshot is the one of
+   `<plugin-root>/skills/_shared/progress-and-push.md`, titled `# <id> - triage <repo>#<number>`.
 2. Read the issue with `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh issue <url> --assets ../issue-assets`, per
    `references/issue.md`: the comments, the milestone and the `from attachments` row of the draft.
 3. Follow `<plugin-root>/skills/_shared/investigate.md` for a feature, bugfix or refactor source, and paste

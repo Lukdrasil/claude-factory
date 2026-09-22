@@ -23,7 +23,17 @@ gets only what you pushed. The argument is the task file's path in the state clo
 
 ## Procedure
 
-1. Snapshot and `state-report.sh`, the first heartbeat.
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: that is the first heartbeat.
 2. **Analysis and blast radius.** How far the change reaches: files, modules, public APIs `## Acceptance`
    rests on, with the reasoning, into the progress file as you go.
 3. **Green baseline.** The existing tests over the blast radius under

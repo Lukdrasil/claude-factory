@@ -7,11 +7,17 @@ The session mechanics of the implement archetypes, read with `<plugin-root>/skil
 ## Preconditions
 
 - cwd is the task worktree `<plugin-root>/bin/worktree-add.sh <task-id>` printed, on the branch from the
-  frontmatter, with the state clone in `../state`; otherwise change nothing and self-report `failed`.
+  frontmatter; otherwise change nothing and self-report `failed`.
+- The state clone is `$WORK_DIR/state` (ADR-0049: the worktrees are `$WORK_DIR/<key>/<T-NNN>`, so the clone is
+  not a sibling of cwd). `WORK_DIR` comes from your environment, and the SessionStart context names the same
+  path in its "Factory context for repo `<key>` from the state repo at `<WORK_DIR>/state`" line. Only in the
+  older layout, where the clone really is next to the worktree, is it `../state`; `ls $WORK_DIR/state` is what
+  settles it in one call.
 - `<id>`, `<key>` and `<branch>` come from the frontmatter; the progress file is
-  `../state/repos/<key>/progress/<id>.md`.
-- `CLAUDE.md` in cwd carries this repo's memory. Do not commit it. Its **toolset** section (ADR-0039) binds
-  command names to what this repo runs; call them by name, never guess a stack.
+  `$WORK_DIR/state/repos/<key>/progress/<id>.md`.
+- This repo's memory arrives as SessionStart additionalContext, not as a file: a standalone worker has no
+  `CLAUDE.md` in cwd to read. Its **toolset** section (ADR-0039) binds command names to what this repo runs;
+  call them by name, never guess a stack.
   A command the toolset does not have is not a failure: note it in the progress file and move on.
 
 ## Architecture model
@@ -52,8 +58,12 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 | `blocked` | you need a human decision; question per `<plugin-root>/skills/_shared/blocked-question.md` |
 | `failed` | acceptance could not be met; `state-report.sh --attempts "<N>, <model>, <why>"` |
 
-You write `status:` and `mr_url:`, nothing else: `owner`, `attempt` and `plan_hash` are the controller's,
-`ready` and `done` the human's (P5). Never write `done`, `ready`, `in_progress` or `stalled`.
+You write `status:` and `mr_url:`, nothing else: `attempt` and `plan_hash` are the controller's, `ready` and
+`done` the human's (P5). Never write `done`, `ready` or `stalled`, and never a status or an `owner` on a task
+that is not yours.
+
+The one exception is your own claim: the task you were dispatched for goes `in_progress` under your own owner
+string, through `state-report.sh` and never by hand, as step 1 of your archetype spells out.
 
 ## WIP push and liveness
 
