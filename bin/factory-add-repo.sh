@@ -54,9 +54,24 @@ echo "$key"
 # --- what is pending ---------------------------------------------------------------------------------------
 need_yml=0
 grep -q "^$key:" "$state/repos.yml" || need_yml=1
-yml_line=$(printf '%s: {url: "%s", default_branch: %s, path: "%s"}' "$key" "$url" "$branch" "$top")
 
 files=$(git -C "$top" ls-files)
+
+# E (2026-09-22, MR !412): the plugin capped the MR title at 130 and the product repo's CI ran commitlint,
+# whose config-conventional caps the header at 100 - the job failed on a title the factory had already opened.
+# A clone that lints its own titles gets that cap written into its registry entry, so mr_title_check refuses
+# the goal while the task is being authored instead of the forge refusing the MR.
+. "$(dirname -- "$0")/lib-tasks.sh"
+title_max='' title_src=''
+if cc=$(commitlint_cap "$top"); then
+  title_max=${cc%%	*}
+  title_src=${cc#*	}
+  echo "note: $title_src lints the MR title - mr_title_max: $title_max for $key"
+fi
+
+yml_line=$(printf '%s: {url: "%s", default_branch: %s, path: "%s"%s}' \
+  "$key" "$url" "$branch" "$top" "${title_max:+, mr_title_max: $title_max}")
+
 if printf '%s\n' "$files" | grep -qE '\.(sln|slnx|csproj)$'; then stack=dotnet
 elif printf '%s\n' "$files" | grep -qE '(^|/)pyproject\.toml$'; then stack=python
 elif printf '%s\n' "$files" | grep -qE '(^|/)package\.json$'; then stack=typescript

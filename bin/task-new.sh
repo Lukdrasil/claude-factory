@@ -136,6 +136,20 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   process.stdout.write(id+"\n"+slug+"\n"+s);
 })' < "$file") || exit 1
 
+# E (2026-09-22, MR !412): the `# Goal` line becomes the MR title as written, and until now nothing looked at
+# it before mr-open.sh did - after the human had approved the task and plan_hash pinned the body. The one rule
+# lives in lib-tasks.sh; this shells out to it rather than restating the regex and the cap in the node
+# validator above. A triage or research goal never becomes a title, so neither is held to it.
+arch=$(sed -n 's/^archetype:[[:space:]]*//p' "$file" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+case "$arch" in
+  triage|research) ;;
+  *)
+    goal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$file")
+    [ -n "$goal" ] || die "the draft has no '# Goal' line, and it is the MR title"
+    reason=$(mr_title_check "$goal" "$repo") || die "the '# Goal' line cannot be an MR title: $reason; rewrite it in $file"
+    ;;
+esac
+
 id=$(printf '%s\n' "$res" | sed -n 1p)
 slug=$(printf '%s\n' "$res" | sed -n 2p)
 rel="repos/$repo/tasks/$id${slug:+-$slug}.md"

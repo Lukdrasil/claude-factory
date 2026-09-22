@@ -99,6 +99,32 @@ if [ -f "$state/repos.yml" ]; then
   fi
 fi
 
+# --- the MR title cap ----------------------------------------------------------------------------------------
+# E (2026-09-22, MR !412): the factory opened a 113-character title and the repo's own commitlint job refused
+# it at 100. When the clone lints its titles, its registry entry has to carry a cap no larger than that lint's,
+# or the factory will keep authoring goals the forge cannot take.
+. "$plugin/bin/lib-tasks.sh"
+if cc=$(commitlint_cap "$top"); then
+  cc_max=$(printf '%s' "$cc" | cut -f1)
+  cc_src=$(printf '%s' "$cc" | cut -f2)
+  cur=''
+  [ ! -f "$state/repos.yml" ] || cur=$(awk -v want="$key" '
+    /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
+    /mr_title_max:/ && k == want {
+      v = $0; sub(/.*mr_title_max:[ \t]*/, "", v); sub(/[ \t]*[,}].*$/, "", v); sub(/[ \t]+#.*$/, "", v)
+      gsub(/^["'"'"']|["'"'"']$/, "", v); if (v ~ /^[0-9]+$/) { print v; exit }
+    }' "$state/repos.yml")
+  if [ -z "$cur" ]; then
+    missing "mr_title_max for $key in state/repos.yml ($cc_src caps the MR title at $cc_max)" \
+      "add mr_title_max: $cc_max to its line, otherwise the factory authors goals the title lint refuses"
+  elif [ "$cur" -gt "$cc_max" ]; then
+    missing "an mr_title_max for $key no larger than the repo's own lint (is $cur, $cc_src caps at $cc_max)" \
+      "lower mr_title_max to $cc_max in its line"
+  else
+    ok "mr_title_max $cur for $key ($cc_src caps at $cc_max)"
+  fi
+fi
+
 # --- toolset + stack ---------------------------------------------------------------------------------------------
 toolset="$state/repos/$key/toolset.md"
 stack=''
