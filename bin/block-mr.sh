@@ -7,9 +7,13 @@
 #   block-mr.sh <block-id> [--dry-run] [--state <dir>] [--worktree <dir>]
 #
 # The forge follows the origin host, the routing of bin/forge.sh: github.com goes to gh, every other host to
-# glab. --dry-run prints the push and create commands and the description and exits 0, touching neither the
-# forge nor the state clone. A block whose task file already carries an mr_url is a resume: the existing MR is
-# printed and nothing is created.
+# glab. --dry-run prints the push, the create and the update commands and the description and exits 0,
+# touching neither the forge nor the state clone. A block whose task file already carries an mr_url is a
+# resume: nothing is created, the existing MR is printed, and its description is refreshed when the freshly
+# built one differs from what the forge carries. Why the refresh: MR !414 went out with a truncated bullet, a
+# re-run of this script only printed the URL, and the body was then written by hand with the harness footer in
+# it (see bin/attribution-gate.sh). stdout stays one line, the URL; "description updated" goes to stderr, so
+# every caller of this contract keeps reading what it read before.
 #
 # Exit 0 with the MR URL on stdout. Exit 1 with the reason on stderr when the block resolves to no task file,
 # when it carries no branch, when its progress file has no `## Done` or `## Evidence` bullets, when the
@@ -76,8 +80,20 @@ if [ -z "$base" ]; then
   [ -n "$base" ] && [ "$base" != null ] || die "block $id has no 'base:' in $progress and $parent has no branch:"
 fi
 
-# see: bin/mr-open.sh, the same description contract: the sections in its order, prose and not a nested list
-bullets() { awk -v h="$1" '$0 == h { f = 1; next } f && /^#/ { exit } f' "$progress" | sed -n 's/^-[[:space:]]*//p'; }
+# see: bin/mr-open.sh, the same description contract: the sections in its order, prose and not a nested list.
+# why: a bullet wrapped over several physical lines used to lose everything after the first line, and MR !414
+# went out with a half sentence in it. A continuation line, indented by two spaces or a tab, joins its bullet.
+bullets() {
+  awk -v h="$1" '
+    $0 == h { f = 1; next }
+    f && /^#/ { exit }
+    !f { next }
+    /^-[[:space:]]/ || /^-$/ { if (cur != "") print cur; sub(/^-[[:space:]]*/, ""); cur = $0; next }
+    (/^[ ][ ]/ || /^\t/) && cur != "" { sub(/^[[:space:]]+/, ""); cur = cur " " $0; next }
+    { if (cur != "") { print cur; cur = "" } }
+    END { if (cur != "") print cur }
+  ' "$progress"
+}
 oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
@@ -116,9 +132,11 @@ if [ -n "$dry" ]; then
   printf 'git -C %s push --force-with-lease -u origin %s\n' "$worktree" "$branch"
   if [ "$forge" = gh ]; then
     printf 'gh pr create --base %s --head %s --title "%s" --body-file %s\n' "$base" "$branch" "$goal" "$desc"
+    printf 'or, when the PR is already open and its body differs: gh pr edit <url> --body-file %s\n' "$desc"
   else
     printf 'glab mr create --source-branch %s --target-branch %s --title "%s" --description-file %s --yes\n' \
       "$branch" "$base" "$goal" "$desc"
+    printf 'or, when the MR is already open and its description differs: glab mr update <iid> --description-file %s\n' "$desc"
   fi
   cat "$desc"
   exit 0
@@ -128,28 +146,54 @@ cd "$worktree" || die "cannot enter $worktree"
 git push --force-with-lease -u origin "$branch" >/dev/null 2>"$desc_dir/push.err" \
   || die "the push of $branch failed; the reason is in $desc_dir/push.err and the description stayed at $desc"
 
+# the description the forge carries now, compared with what this run built; \r so a forge that stores CRLF
+# does not read as a difference on every run
+json_field() { node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+let o;try{o=JSON.parse(s)}catch(err){process.exit(1)}
+const v=o[process.argv[1]];process.stdout.write(v==null?"":String(v))})' "$1" 2>/dev/null || :; }
+want=$(tr -d '\r' < "$desc")
+
 url=$have
 out=''
-if [ -z "$url" ]; then
-  if [ "$forge" = gh ]; then
-    url=$(gh pr view "$branch" --json url -q .url 2>/dev/null || :)
-    if [ -z "$url" ]; then
-      out=$(gh pr create --base "$base" --head "$branch" --title "$goal" --body-file "$desc") \
-        || die "gh pr create failed; the description stayed at $desc"
+if [ "$forge" = gh ]; then
+  [ -n "$url" ] || url=$(gh pr view "$branch" --json url -q .url 2>/dev/null || :)
+  if [ -n "$url" ]; then
+    have_body=$(gh pr view "$branch" --json body -q .body 2>/dev/null | tr -d '\r' || :)
+    if [ "$have_body" != "$want" ]; then
+      gh pr edit "$url" --body-file "$desc" >/dev/null \
+        || die "gh pr edit failed for $url; the description stayed at $desc"
+      printf 'description updated on %s\n' "$url" >&2
     fi
   else
-    # why: glab exits 1 and prints {"error":{"message":"no open merge request available for …"}} on STDOUT
-    # why: for a branch with no MR, so "it printed something" is not "an MR exists": that read the error
-    # why: object as a found MR, took no web_url out of it, never ran the create and blamed the forge for
-    # why: printing no URL. The exit status is the answer, and a payload with no web_url is not one either.
-    if out=$(glab mr view "$branch" -F json 2>/dev/null); then
-      url=$(printf '%s\n' "$out" | sed -n 's/.*"web_url"[^"]*"\([^"]*\)".*/\1/p' | head -n1)
-      out=''
+    out=$(gh pr create --base "$base" --head "$branch" --title "$goal" --body-file "$desc") \
+      || die "gh pr create failed; the description stayed at $desc"
+  fi
+else
+  # why: glab exits 1 and prints {"error":{"message":"no open merge request available for …"}} on STDOUT
+  # why: for a branch with no MR, so "it printed something" is not "an MR exists": that read the error
+  # why: object as a found MR, took no web_url out of it, never ran the create and blamed the forge for
+  # why: printing no URL. The exit status is the answer, and a payload with no web_url is not one either.
+  iid='' have_body=''
+  if out=$(glab mr view "$branch" -F json 2>/dev/null); then
+    [ -n "$url" ] || url=$(printf '%s\n' "$out" | sed -n 's/.*"web_url"[^"]*"\([^"]*\)".*/\1/p' | head -n1)
+    iid=$(printf '%s' "$out" | json_field iid)
+    have_body=$(printf '%s' "$out" | json_field description | tr -d '\r')
+    out=''
+  fi
+  if [ -n "$url" ]; then
+    [ -n "$iid" ] || iid=${url##*/}
+    if [ "$have_body" != "$want" ]; then
+      case "$iid" in
+        *[!0-9]*|'') printf 'the MR iid is unknown, so %s kept its description\n' "$url" >&2 ;;
+        *) glab mr update "$iid" --description-file "$desc" >/dev/null \
+             || die "glab mr update $iid failed; the description stayed at $desc"
+           printf 'description updated on %s\n' "$url" >&2 ;;
+      esac
     fi
-    if [ -z "$url" ]; then
-      out=$(glab mr create --source-branch "$branch" --target-branch "$base" --title "$goal" \
-        --description-file "$desc" --yes) || die "glab mr create failed; the description stayed at $desc"
-    fi
+  else
+    out=$(glab mr create --source-branch "$branch" --target-branch "$base" --title "$goal" \
+      --description-file "$desc" --yes) || die "glab mr create failed; the description stayed at $desc"
   fi
 fi
 if [ -z "$url" ]; then

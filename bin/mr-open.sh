@@ -7,7 +7,15 @@
 #   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
 #
 # The `Issues` file is what `mr-issue-linker` answered: its `closes #12` / `refs #30` lines become the `Issues`
-# line, everything else in it is ignored. --dry-run prints the command and the description and exits 0.
+# line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
+#
+# It is not create-only. When the MR or PR is already open, the freshly built description is compared with the
+# one the forge carries and pushed with `gh pr edit --body-file` / `glab mr update --description-file` when
+# they differ, so a body is fixed by fixing the progress file and running this again. Why: MR !414 went out
+# with a truncated bullet, a re-run only printed the URL, and the body was then written by hand with the
+# harness footer in it (see bin/attribution-gate.sh). stdout stays one line, the URL; "description updated"
+# goes to stderr, so every caller of this contract keeps reading what it read before.
+#
 # Exit 1 with the reason when the progress file carries no `## Done` or `## Evidence` bullets to build the
 # description from, or when the description runs over the contract's 120 words.
 set -eu
@@ -52,8 +60,20 @@ reason=$(mr_title_check "$goal") || die "task $id: $reason; fix the '# Goal' lin
 progress="$state/repos/$key/progress/$id.md"
 [ -f "$progress" ] || die "no progress file at $progress"
 
-# the bullets of one section of the progress file, as one line: the description is prose, not a nested list
-bullets() { awk -v h="$1" '$0 == h { f = 1; next } f && /^#/ { exit } f' "$progress" | sed -n 's/^-[[:space:]]*//p'; }
+# the bullets of one section of the progress file, as one line: the description is prose, not a nested list.
+# why: a bullet wrapped over several physical lines used to lose everything after the first line, and MR !414
+# went out with a half sentence in it. A continuation line, indented by two spaces or a tab, joins its bullet.
+bullets() {
+  awk -v h="$1" '
+    $0 == h { f = 1; next }
+    f && /^#/ { exit }
+    !f { next }
+    /^-[[:space:]]/ || /^-$/ { if (cur != "") print cur; sub(/^-[[:space:]]*/, ""); cur = $0; next }
+    (/^[ ][ ]/ || /^\t/) && cur != "" { sub(/^[[:space:]]+/, ""); cur = cur " " $0; next }
+    { if (cur != "") { print cur; cur = "" } }
+    END { if (cur != "") print cur }
+  ' "$progress"
+}
 oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
@@ -116,20 +136,37 @@ esac
 if [ -n "$dry" ]; then
   if [ "$forge" = gh ]; then
     printf 'gh pr create --base %s --head %s --title "%s" --body-file %s\n' "$base" "$branch" "$goal" "$desc"
+    printf 'or, when the PR is already open and its body differs: gh pr edit <url> --body-file %s\n' "$desc"
   else
     printf 'glab mr create --source-branch %s --target-branch %s --title "%s" --description-file %s --yes\n' \
       "$branch" "$base" "$goal" "$desc"
+    printf 'or, when the MR is already open and its description differs: glab mr update <iid> --description-file %s\n' "$desc"
   fi
   cat "$desc"
   exit 0
 fi
+
+# the description the forge carries now, compared with what this run built; \r so a forge that stores CRLF
+# does not read as a difference on every run
+json_field() { node -e '
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+let o;try{o=JSON.parse(s)}catch(err){process.exit(1)}
+const v=o[process.argv[1]];process.stdout.write(v==null?"":String(v))})' "$1" 2>/dev/null || :; }
+want=$(tr -d '\r' < "$desc")
 
 cd "$worktree" || die "cannot enter $worktree"
 url=''
 out=''
 if [ "$forge" = gh ]; then
   url=$(gh pr view "$branch" --json url -q .url 2>/dev/null || :)
-  if [ -z "$url" ]; then
+  if [ -n "$url" ]; then
+    have_body=$(gh pr view "$branch" --json body -q .body 2>/dev/null | tr -d '\r' || :)
+    if [ "$have_body" != "$want" ]; then
+      gh pr edit "$url" --body-file "$desc" >/dev/null \
+        || die "gh pr edit failed for $url; the description stayed at $desc"
+      printf 'description updated on %s\n' "$url" >&2
+    fi
+  else
     out=$(gh pr create --base "$base" --head "$branch" --title "$goal" --body-file "$desc") \
       || die "gh pr create failed; the description stayed at $desc"
   fi
@@ -138,11 +175,24 @@ else
   # why: a branch with no MR, so "it printed something" is not "an MR exists": that read the error object as
   # why: a found MR, took no web_url out of it, never ran the create and blamed the forge for printing no
   # why: URL. The exit status is the answer, and a payload with no web_url is not one either.
+  iid='' have_body=''
   if out=$(glab mr view "$branch" -F json 2>/dev/null); then
     url=$(printf '%s\n' "$out" | sed -n 's/.*"web_url"[^"]*"\([^"]*\)".*/\1/p' | head -n1)
+    iid=$(printf '%s' "$out" | json_field iid)
+    have_body=$(printf '%s' "$out" | json_field description | tr -d '\r')
     out=''
   fi
-  if [ -z "$url" ]; then
+  if [ -n "$url" ]; then
+    [ -n "$iid" ] || iid=${url##*/}
+    if [ "$have_body" != "$want" ]; then
+      case "$iid" in
+        *[!0-9]*|'') printf 'the MR iid is unknown, so %s kept its description\n' "$url" >&2 ;;
+        *) glab mr update "$iid" --description-file "$desc" >/dev/null \
+             || die "glab mr update $iid failed; the description stayed at $desc"
+           printf 'description updated on %s\n' "$url" >&2 ;;
+      esac
+    fi
+  else
     out=$(glab mr create --source-branch "$branch" --target-branch "$base" --title "$goal" \
       --description-file "$desc" --yes) || die "glab mr create failed; the description stayed at $desc"
   fi

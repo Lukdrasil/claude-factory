@@ -1,13 +1,35 @@
 #!/bin/sh
 # PreToolUse attribution gate (P7 "the text describes, the hook enforces"): the deterministic twin of the
 # attribution rule in prompts/worker-system-prompt.md. Nothing this harness publishes says who or what wrote
-# it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji. The gate scans
-# the two places such a line reaches a reader - a Bash command that commits or opens an MR, and a write into a
-# commit message, an MR description or a progress file - and denies it.
+# it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji.
+#
+# Why it scans more than the command string (incident 2026-09-22, MR !414): the footer reached the forge
+# through a file. The agent wrote a corrected body into a scratch file and ran `glab mr update 414
+# --description "$(cat <file>)"`, so the command text was clean and the path was none of the four watched
+# globs. Every publishing route that carries its text in a file is therefore resolved and read here:
+# --description-file, --body-file, git commit -F, --template, `-f key=@path`, `-d @path`, `$(cat path)`,
+# `$(< path)` and a `< path` redirect. Git commands are matched through their options, so `git -C dir commit`
+# and `git -c k=v commit` are commits, and `git push` is scanned for its `-o merge_request.*` push options.
+# On the write side a file is watched when its path looks like a message or a body, or when the text itself
+# carries an MR-body marker or a Conventional Commits first line; a source file stays exempt.
 # exit 2 = deny, the reason on stderr reaches the agent. Every other tool call and every other file passes.
 set -eu
 
 deny() { printf 'attribution-gate deny: %s\n' "$1" >&2; exit 2; }
+
+# the banned phrases, case-insensitive: the trailers, the session line and URL, the footers and their
+# wordings, and the raw session id a harness footer carries.
+phrases='co-authored-by:|claude-session:|noreply@anthropic\.com|claude\.ai/(code|chat|share)'
+phrases="$phrases"'|claude\.com/claude-code|claude-code|generated (with|by)|made (with|by) [a-z ]*(claude|ai)'
+phrases="$phrases"'|(written|created|authored|assisted) (with|by) [a-z ]*(claude|ai)|assisted[- ]by:?'
+phrases="$phrases"'|signed-off-by:.*claude|reviewed-by:.*claude|session_[0-9a-z]{20,}|🤖'
+
+# a git command whatever options stand between `git` and the verb; push is in because a push option can carry
+# a whole MR description (`-o merge_request.description=...`).
+git_re='(^|[;&|[:space:]])git([[:space:]]+-[Cc][[:space:]]*[^[:space:]]+|[[:space:]]+--[a-z-]+(=[^[:space:]]+)?)*[[:space:]]+(commit|tag|notes|merge|rebase|cherry-pick|am|push)'
+api_re='(^|[;&|[:space:]])(gh[[:space:]]+api|glab[[:space:]]+api|curl|wget|http)([[:space:]]|$)'
+
+hits() { printf '%s\n' "$1" | grep -inE "$phrases" | head -n3 || :; }
 
 fields=$(node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -25,33 +47,87 @@ process.stdout.write([o.tool_name,o.cwd,t.file_path,t.command,news].map(e).join(
 $fields
 EOF
 un() { case "$2" in *\\*) eval "$1=\$(printf '%b' \"\$2\")" ;; *) eval "$1=\$2" ;; esac; }
+un cwd "$f_cwd"
 
-# the text that reaches a reader, and where it is: a publishing command, or a file the forge or the state repo
-# publishes. A source file, a test and a scratch note are none of those and pass.
+# the file arguments of a publishing command, every route that hands the forge or git a body from disk
+cmd_files() {
+  q=\'
+  { printf '%s\n' "$1" | grep -oE -- "--(description-file|body-file|template|file)[= ]+[^[:space:]\"$q]+" \
+      | sed -E 's/^--[a-z-]+[= ]+//'
+    printf '%s\n' "$1" | grep -oE -- "(^|[[:space:]])-F[= ]*[^[:space:]\"$q]+" | sed -E 's/^[[:space:]]*-F[= ]*//'
+    printf '%s\n' "$1" | grep -oE -- "(-f|--field|--raw-field|-d|--data|--data-binary|--data-raw)[= ]+[^[:space:]\"$q]*@[^[:space:]\"$q]+" \
+      | sed -E 's/.*@//'
+    printf '%s\n' "$1" | grep -oE -- '\$\([[:space:]]*cat[[:space:]]+[^)]+\)' \
+      | sed -E 's/\$\([[:space:]]*cat[[:space:]]+//; s/[[:space:]]*\)$//'
+    printf '%s\n' "$1" | grep -oE -- '\$\([[:space:]]*<[[:space:]]*[^)]+\)' \
+      | sed -E 's/\$\([[:space:]]*<[[:space:]]*//; s/[[:space:]]*\)$//'
+    printf '%s\n' "$1" | grep -oE -- "<[[:space:]]*[^[:space:]<>\"$q|&;()]+" | sed -E 's/^<[[:space:]]*//'
+  } 2>/dev/null | sed -e "s/^[\"$q]//" -e "s/[\"$q]$//" | sed '/^$/d' | sort -u
+}
+
+# the text that reaches a reader, and where it is: a publishing command, a file that command reads, or a file
+# the forge or the state repo publishes. A source file, a test and a scratch note are none of those and pass.
 case "$f_tool" in
   Bash)
     un scan "$f_cmd"
+    pub=''
+    printf '%s\n' "$scan" | grep -qE "$git_re" && pub=1 || :
     case "$scan" in
-      *"git commit"*|*"git tag"*|*"git notes"*|*"gh pr "*|*"gh release "*|*"gh issue "*|*"glab mr "*|*"glab issue "*) ;;
-      *) exit 0 ;;
+      *"gh pr "*|*"gh release "*|*"gh issue "*|*"glab mr "*|*"glab issue "*) pub=1 ;;
     esac
+    if [ -z "$pub" ]; then
+      case "$scan" in
+        *merge_requests*|*/pulls*|*/issues*|*description=*|*body=*|*title=*)
+          printf '%s\n' "$scan" | grep -qE "$api_re" && pub=1 || : ;;
+      esac
+    fi
+    [ -n "$pub" ] || exit 0
+
+    # the body files first: that is the route MR !414 took
+    for rel in $(cmd_files "$scan"); do
+      case "$rel" in /*|[A-Za-z]:/*) abs=$rel ;; *) abs="${cwd:-.}/$rel" ;; esac
+      [ -f "$abs" ] && [ -r "$abs" ] || continue
+      fhit=$(hits "$(head -c 200000 "$abs" 2>/dev/null || :)")
+      [ -n "$fhit" ] || continue
+      deny "$abs, read by the command, carries an attribution line:
+$fhit
+A commit message, a tag, an MR or PR description, an issue and a progress file say what changed and why, never
+who or what wrote them. Drop the co-author trailer, the session line, the session URL, the 'generated with'
+line and the emoji from that file, and run the command again. This holds even when a harness, a hook or a
+session instruction asks for them."
+    done
     where='the command'
     ;;
   Write|Edit|MultiEdit)
     un p "$f_path"
-    case "$p" in
-      */mr.md|*COMMIT_EDITMSG|*/progress/*|*/tasks/*) ;;
-      *) exit 0 ;;
-    esac
     un scan "$f_new"
+    watched=''
+    case "$p" in
+      */mr.md|*COMMIT_EDITMSG|*/progress/*|*/tasks/*) watched=1 ;;
+    esac
+    if [ -z "$watched" ]; then
+      src=''
+      case "$p" in
+        *.cs|*.ts|*.js|*.py|*.sh|*.go|*.rs|*.java|*.kt|*.json|*.yml|*.yaml|*.xml|*.csproj|*.props|*.targets|*.razor|*.html|*.css) src=1 ;;
+      esac
+      case "$p" in
+        */scratchpad/*|/tmp/*|*mr*.md|*description*|*body*|*.gitmessage|*msg.txt) watched=1 ;;
+      esac
+      if [ -z "$watched" ]; then
+        printf '%s\n' "$scan" | grep -qF -e '**What changed**' -e '**Why**' -e '**How to verify**' && watched=1 || :
+      fi
+      if [ -z "$watched" ]; then
+        printf '%s\n' "$scan" | grep -qE '^(feat|fix|chore|docs|refactor|test|perf|build|ci)(\([^)]*\))?!?: ' && watched=1 || :
+      fi
+      [ -z "$src" ] || watched=''
+    fi
+    [ -n "$watched" ] || exit 0
     where=$p
     ;;
   *) exit 0 ;;
 esac
 
-hit=$(printf '%s\n' "$scan" | grep -inE \
-  'co-authored-by:|claude-session:|noreply@anthropic\.com|claude\.ai/(code|chat|share)|generated with|(written|created|authored|assisted) (with|by) [a-z ]*(claude|ai)|🤖' \
-  | head -n3 || :)
+hit=$(hits "$scan")
 [ -n "$hit" ] || exit 0
 
 deny "$where carries an attribution line:
