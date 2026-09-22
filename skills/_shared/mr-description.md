@@ -9,7 +9,9 @@ sentences, written for whoever reviews the MR and not for the factory.
 
 The title is `# Goal` as it stands, with no id in front of it, so the goal line is written as a title:
 **Conventional Commits** (`type(scope): subject`, type one of feat, fix, chore, docs, refactor, test,
-perf, build, ci) and **at most 130 characters**. The type is what the release tooling reads the semver
+perf, build, ci) and **at most 100 characters**, or the repo's own `mr_title_max` from `repos.yml` when it
+sets one (100 is what commitlint's config-conventional caps a header at, and a product repo that lints its MR
+titles is the one that decides). The type is what the release tooling reads the semver
 bump off. `mr-open.sh` and `block-mr.sh` both refuse a title that breaks either rule, before they call
 the forge; the fix is the task's `# Goal` line, not the command. `bin/policy-guard.sh` holds a `gh pr` or
 `glab mr` command that writes a `--title` itself to the same rule, so the hand-written path cannot open what

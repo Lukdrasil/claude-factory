@@ -614,19 +614,68 @@ guard_bash() {
   if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab[[:space:]]+mr|gh[[:space:]]+pr)[[:space:]]+create([[:space:]]|$)'; then
     DENY_FIX="$DENY_FIX Pass the description as a file, 'glab mr create --description-file <path>' or 'gh pr create --body-file <path>': an inline description is split on ';', '&&' and '|' and its pieces are judged as commands."
   fi
-  # the MR title rule of skills/_shared/mr-description.md, on the path that does not go through mr-open.sh or
-  # block-mr.sh: a forge command writing a title is held to the same mr_title_check those two apply. A title
-  # nothing can be extracted from is not denied, as a quote inside it would make the guard lie.
-  if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab[[:space:]]+mr|gh[[:space:]]+pr)[[:space:]]+(create|edit|update)([[:space:]]|$)' \
-     && printf '%s' "$c" | grep -q -- '--title'; then
-    t=''
-    case "$c" in
-      *'--title "'*|*'--title="'*) t=$(printf '%s' "$c" | sed -n 's/.*--title[ =]"\([^"]*\)".*/\1/p') ;;
-      *"--title '"*|*"--title='"*) t=$(printf '%s' "$c" | sed -n "s/.*--title[ =]'\([^']*\)'.*/\1/p") ;;
-      *) t=$(printf '%s' "$c" | sed -n 's/.*--title[ =]\([^ ]*\).*/\1/p') ;;
-    esac
-    if [ -n "$t" ] && ! reason=$(mr_title_check "$t"); then
-      deny "the MR title '$t' breaks the contract: $reason. It is the task's '# Goal' line, and bin/mr-open.sh or bin/block-mr.sh opens the MR with it rather than a hand-written title"
+  # The MR title rule of skills/_shared/mr-description.md, on the path that does not go through mr-open.sh or
+  # block-mr.sh: a forge command writing a title is held to the same mr_title_check those two apply, with the
+  # cap of the repo the cwd belongs to. Every way a title reaches the forge is covered - `--title`, its short
+  # `-t`, and the raw `glab api`/`gh api` field - because MR !412 was retitled by hand in the UI and the next
+  # hand-written title is the one this has to catch. A title that is present but cannot be read out (a
+  # variable, a substitution, a heredoc) is denied rather than passed: the guard cannot judge it, and the two
+  # scripts can.
+  mt_flag=0 mt_api=0
+  if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab[[:space:]]+mr|gh[[:space:]]+pr)[[:space:]]+(create|edit|update)([[:space:]]|$)'; then mt_flag=1; fi
+  if printf '%s' "$c" | grep -Eq '(^|[[:space:]])(glab|gh)[[:space:]]+api([[:space:]]|$)'; then mt_api=1; fi
+  # the first pattern that yields something wins; each one reads the last occurrence of the option, quoted
+  # either around the whole `title=…` pair or around the value alone, and bare last
+  mt_take() { # <ERE with one capturing group for the value, group 2>
+    printf '%s' "$c" | sed -nE "s/$1/\\2/p"
+  }
+  mt_seen='' mt_title=''
+  if [ "$mt_flag" = 1 ] && printf '%s' "$c" | grep -Eq -- '[[:space:]](--title|-t)([ =]|$)'; then
+    mt_seen='--title'
+    for mt_p in \
+      '.*[[:space:]](--title|-t)[ =]"([^"]*)".*' \
+      ".*[[:space:]](--title|-t)[ =]'([^']*)'.*" \
+      '.*[[:space:]](--title|-t)[ =]([^ "'"'"']+).*'
+    do
+      mt_title=$(mt_take "$mt_p")
+      [ -z "$mt_title" ] || break
+    done
+  elif [ "$mt_api" = 1 ] && printf '%s' "$c" | grep -Eq -- '[[:space:]](-f|--field|--raw-field)[ =]("|'"'"')?title='; then
+    mt_seen='title='
+    for mt_p in \
+      '.*[[:space:]](-f|--field|--raw-field)[ =]title="([^"]*)".*' \
+      '.*[[:space:]](-f|--field|--raw-field)[ =]"title=([^"]*)".*' \
+      ".*[[:space:]](-f|--field|--raw-field)[ =]title='([^']*)'.*" \
+      ".*[[:space:]](-f|--field|--raw-field)[ =]'title=([^']*)'.*" \
+      '.*[[:space:]](-f|--field|--raw-field)[ =]title=([^ "'"'"']+).*'
+    do
+      mt_title=$(mt_take "$mt_p")
+      [ -z "$mt_title" ] || break
+    done
+  fi
+  if [ -n "$mt_seen" ]; then
+    case "$mt_title" in ''|*'$'*|*'`'*) mt_title='' ;; esac
+    if [ -z "$mt_title" ]; then
+      deny "a forge command writes $mt_seen but the title cannot be checked here: open the MR through bin/mr-open.sh or bin/block-mr.sh, which take it from the task's # Goal line"
+    fi
+    # the registered key of this cwd, so the repo's own mr_title_max holds here too; the registry's `path:`
+    # is matched as a prefix when the cwd is not the toplevel of the clone (a worktree under $WORK_DIR/<key>/)
+    mt_key=$(repo_key_of_cwd "$cwd" 2>/dev/null || :)
+    if [ -z "$mt_key" ] && [ -f "$WORK_DIR/state/repos.yml" ]; then
+      mt_key=$(repo_clone_paths | while IFS="$(printf '\t')" read -r mt_k mt_p; do
+          mt_p=$(norm_path "$mt_p")
+          case "$cwd/" in "$mt_p"/*) printf '%s\n' "$mt_k"; break ;; esac
+        done | head -n1)
+    fi
+    if [ -z "$mt_key" ] && [ -f "$WORK_DIR/state/repos.yml" ]; then
+      case "$cwd/" in
+        "$WORK_DIR"/*)
+          mt_key=${cwd#"$WORK_DIR"/}; mt_key=${mt_key%%/*}
+          grep -q "^$mt_key:" "$WORK_DIR/state/repos.yml" || mt_key='' ;;
+      esac
+    fi
+    if ! reason=$(mr_title_check "$mt_title" "$mt_key"); then
+      deny "the MR title '$mt_title' breaks the contract: $reason. It is the task's '# Goal' line, and bin/mr-open.sh or bin/block-mr.sh opens the MR with it rather than a hand-written title"
     fi
   fi
   if printf '%s' "$c" | grep -Eq 'git([[:space:]]+[^|;&]*)?[[:space:]]push([[:space:]][^|;&]*)?([[:space:]](-f|--force)([[:space:]]|$)|[[:space:]]\+)'; then

@@ -234,14 +234,64 @@ repo_key_of_cwd() { # <cwd>
   done
 }
 
+# the state clone whose repos.yml the title cap is read from: an explicit $STATE_DIR, the caller's own `$state`
+# (every task script resolves one before it reads a task), the standalone $WORK_DIR/state, and the cwd's layout
+# last - the same order and the same resolver solve-next.sh and decompose.sh use for their own --state default.
+mr_title_state() { # -> the state dir on stdout, or nothing
+  if [ -n "${STATE_DIR:-}" ] && [ -f "$STATE_DIR/repos.yml" ]; then printf '%s' "$STATE_DIR"; return 0; fi
+  if [ -n "${state:-}" ] && [ -f "$state/repos.yml" ]; then printf '%s' "$state"; return 0; fi
+  if [ -n "${WORK_DIR:-}" ] && [ -f "$WORK_DIR/state/repos.yml" ]; then printf '%s' "$WORK_DIR/state"; return 0; fi
+  mts_d=$(resolve_state_dir "$(pwd)")
+  case "$mts_d" in /*|[A-Za-z]:/*) ;; *) mts_d="$(pwd)/$mts_d" ;; esac
+  [ -f "$mts_d/repos.yml" ] || return 0
+  printf '%s' "$mts_d"
+}
+
+# E (2026-09-22, MR !412): the plugin capped the title at 130, the product repo's CI ran commitlint with
+# @commitlint/config-conventional, whose `header-max-length` is 100 - a 113-character title passed here and
+# failed there, and a human retitled in the forge UI. The cap is per repo now: `mr_title_max:` in the entry
+# repos.yml holds for that key (factory-add-repo.sh writes it when it finds such a lint), and 100 otherwise,
+# which is what config-conventional enforces out of the box. The same awk as repo_clone_paths, so a flow
+# entry (`key: {…, mr_title_max: 130}`) and a block entry read alike.
+mr_title_limit() { # <repo key> -> the cap on stdout, 100 when the registry says nothing
+  mtl_state=$(mr_title_state)
+  mtl_n=''
+  if [ -n "$mtl_state" ] && [ -n "${1:-}" ]; then
+    mtl_n=$(awk -v want="$1" '
+      /^[A-Za-z0-9_-]+:/ { key = $1; sub(/:$/, "", key) }
+      /mr_title_max:/ && key == want {
+        v = $0; sub(/.*mr_title_max:[ \t]*/, "", v); sub(/[ \t]*[,}].*$/, "", v); sub(/[ \t]+#.*$/, "", v)
+        gsub(/^["'"'"']|["'"'"']$/, "", v)
+        if (v ~ /^[0-9]+$/ && v + 0 > 0) { print v; exit }
+      }' "$mtl_state/repos.yml")
+  fi
+  case "${mtl_n:-}" in ''|*[!0-9]*) mtl_n=100 ;; esac
+  printf '%s' "$mtl_n"
+}
+
+# the length of a title in characters, not bytes: a scope or a subject with an accent or a dash is one
+# character per glyph to commitlint and to the forge, and `wc -m` only agrees in a UTF-8 locale. A machine
+# without C.UTF-8 falls back to a plain `wc -m`, which is the old behaviour rather than a refusal.
+mr_title_chars() { # <title> -> the character count on stdout
+  if [ "$(printf '\303\251' | LC_ALL=C.UTF-8 wc -m 2>/dev/null | tr -d '[:space:]')" = 1 ]; then
+    printf '%s' "$1" | LC_ALL=C.UTF-8 wc -m | tr -d '[:space:]'
+  else
+    printf '%s' "$1" | wc -m | tr -d '[:space:]'
+  fi
+}
+
 # The MR title is the task's `# Goal` line, and the forge takes it as written: Conventional Commits
-# (`type(scope): subject`) so the release tooling can read the semver bump off it, and at most 130 characters
-# so no forge truncates it. Both MR scripts check it before they call the forge, so a goal that cannot be a
-# title is a task defect caught here and not a bad title on the forge.
-mr_title_check() { # <title> -> 0, or the reason on stdout and 1
-  n=$(printf '%s' "$1" | wc -m | tr -d '[:space:]')
-  if [ "$n" -gt 130 ]; then
-    printf 'the title is %s characters and the cap is 130\n' "$n"
+# (`type(scope): subject`) so the release tooling can read the semver bump off it, and at most the repo's
+# `mr_title_max` characters (default 100) so the product repo's own title lint cannot refuse what the factory
+# opened. Both MR scripts check it before they call the forge, and task-new.sh, decompose.sh and
+# task-approve.sh check the `# Goal` line that becomes the title, so a goal that cannot be a title is a task
+# defect caught while the task is being authored and not a bad title on the forge.
+mr_title_check() { # <title> [<repo key>] -> 0, or the reason on stdout and 1
+  cap=$(mr_title_limit "${2:-}")
+  n=$(mr_title_chars "$1")
+  if [ "$n" -gt "$cap" ]; then
+    printf 'the title is %s characters and the cap is %s (repo %s: mr_title_max, default 100 from commitlint config-conventional)\n' \
+      "$n" "$cap" "${2:--}"
     return 1
   fi
   if printf '%s' "$1" | grep -Eq '^(feat|fix|chore|docs|refactor|test|perf|build|ci)(\([a-z0-9._/-]+\))?!?: .+'; then
@@ -249,4 +299,31 @@ mr_title_check() { # <title> -> 0, or the reason on stdout and 1
   fi
   printf '%s\n' 'the title is not Conventional Commits; write it as `type(scope): subject` with type one of feat, fix, chore, docs, refactor, test, perf, build, ci'
   return 1
+}
+
+# Does this clone lint its own MR titles, and at what length? A commitlint config, or a CI file that names
+# commitlint or CI_MERGE_REQUEST_TITLE, means the forge judges the title a second time, and the factory's cap
+# has to be no larger than that one (MR !412). An explicit `header-max-length` in the commitlint config wins;
+# otherwise it is the 100 of @commitlint/config-conventional. Prints `<cap><TAB><the file it found>` and
+# returns 0 when the clone lints its titles, nothing and 1 when it does not.
+commitlint_cap() { # <clone dir>
+  cc_top=$1
+  [ -d "$cc_top" ] || return 1
+  cc_files=$(git -C "$cc_top" ls-files 2>/dev/null) || return 1
+  cc_cfg=$(printf '%s\n' "$cc_files" \
+    | grep -E '(^|/)(commitlint\.config\.(js|cjs|mjs|ts|json)|\.commitlintrc(\.(js|cjs|mjs|ts|json|yml|yaml))?)$' | head -n1)
+  cc_ci=''
+  for cc_f in $(printf '%s\n' "$cc_files" | grep -E '^(\.gitlab-ci\.ya?ml|\.gitlab/.*\.ya?ml|\.github/workflows/.*\.ya?ml)$'); do
+    if grep -qE 'CI_MERGE_REQUEST_TITLE|commitlint' "$cc_top/$cc_f" 2>/dev/null; then cc_ci=$cc_f; break; fi
+  done
+  [ -n "$cc_cfg" ] || [ -n "$cc_ci" ] || return 1
+  cc_n=''
+  if [ -n "$cc_cfg" ] && [ -f "$cc_top/$cc_cfg" ]; then
+    # the rule reads `header-max-length: [2, 'always', 120]`: the number that matters is the last one before
+    # the closing bracket, the first is the severity, so "the first number after the key" would read 2 as a cap
+    cc_seg=$(tr '\n' ' ' < "$cc_top/$cc_cfg" | sed -n 's/.*header-max-length\([^]]*\).*/\1/p')
+    cc_n=$(printf '%s' "$cc_seg" | awk '{ v = ""; for (i = 1; i <= NF; i++) { gsub(/[^0-9]/, "", $i); if ($i != "") v = $i } print v }')
+  fi
+  case "${cc_n:-}" in ''|*[!0-9]*|0) cc_n=100 ;; esac
+  printf '%s\t%s\n' "$cc_n" "${cc_cfg:-$cc_ci}"
 }

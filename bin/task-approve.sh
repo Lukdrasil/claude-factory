@@ -38,6 +38,21 @@ case "$from" in
   *) die "task $id is '$from' — in_progress cannot be approved to ready (TaskTransitions.Allowed)" ;;
 esac
 
+# E (2026-09-22, MR !412): approving is the last gate before the body is frozen - plan_hash pins exactly this
+# text, and the `# Goal` line in it is the MR title mr-open.sh will use. A goal that cannot be a title was
+# caught at the forge until now, after the human had approved it; it is caught here, before anything is
+# written. Triage and research goals never become titles.
+arch=$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+key=$(sed -n 's/^repo:[[:space:]]*//p' "$task" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+case "$arch" in
+  triage|research) ;;
+  *)
+    goal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$task")
+    [ -n "$goal" ] || die "task $id has no '# Goal' line, and it is the MR title"
+    reason=$(mr_title_check "$goal" "$key") || die "task $id cannot be approved: the '# Goal' line cannot be an MR title: $reason; fix it in $task"
+    ;;
+esac
+
 setf "$task" status ready
 if [ "$from" = failed ]; then
   attempt=$(sed -n 's/^attempt:[[:space:]]*//p' "$task" | head -n1)
