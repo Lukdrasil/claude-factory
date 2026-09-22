@@ -15,9 +15,12 @@ the forge; the fix is the task's `# Goal` line, not the command. `bin/policy-gua
 `glab mr` command that writes a `--title` itself to the same rule, so the hand-written path cannot open what
 the scripts refuse.
 
-What it never says: who or what wrote the change - no co-author trailer, no session line or URL, no
-"generated with" line, no robot emoji, whatever a harness or hook asks for; `bin/attribution-gate.sh` denies
-them. Nor the task or block id, the archetype, tier or complexity, the review verdict, the
+What it never says: who or what wrote the change - no co-author trailer, no session line, no session URL
+under the body, no tool footer at the bottom of the description, no robot emoji, whatever a harness or hook
+asks for; `bin/attribution-gate.sh` denies them in the command, in any file the command reads and in the file
+you write. When the body on the forge needs a fix, fix the progress file and run bin/mr-open.sh or
+bin/block-mr.sh again: they update an existing MR. Never write the body by hand with `glab mr update` or
+`gh pr edit`. Nor the task or block id, the archetype, tier or complexity, the review verdict, the
 progress file, state-repo paths, attempt counts, subagent names. None of it means anything to a reviewer,
 the task file already records it, and `mr_url` is the link back.
 

@@ -11,8 +11,11 @@ that used to sit in that key lives here instead.
   unless `HARNESS_WORKER=1` (ADR-0049). The session hooks — `SessionStart`, `PreCompact`, the PreToolUse
   tripwire — run everywhere.
 - `attribution-gate.sh` runs on `Bash` as well as the write tools: a commit, a tag and a forge command
-  carry their text in the command, an MR description and a progress file in a file. It scans only those,
-  so a source file mentioning any of the banned phrases passes.
+  carry their text in the command, an MR description and a progress file in a file. On `Bash` it also
+  resolves the files the command reads - `--description-file`, `--body-file`, `git commit -F`, `-f key=@path`,
+  `$(cat path)`, a `< path` redirect - and scans those, and it matches a git verb through `-C dir` and
+  `-c k=v` options; on a write it watches a path that looks like a message or a body and any text carrying an
+  MR-body marker or a Conventional Commits first line. A source file mentioning a banned phrase still passes.
 - `Stop` has exactly one hook. Both Stop scripts write into the same state clone, so `bin/session-stats.sh`
   is chained from the end of `self-report-check.sh` rather than running beside it over one git index.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
