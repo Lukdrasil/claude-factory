@@ -3,18 +3,28 @@
 # coordinator's own context. With herdr each session gets its own tab in its own worktree; without herdr the
 # same lines are printed for the human to run.
 #
-#   session-monitor.sh [--parent <T-NNN> [--wave N] [--step <name>]] [--max N] [--workspace <id>]
+#   session-monitor.sh [--task <T-NNN> [--wave N] [--step <name>]] [--all] [--max N] [--workspace <id>]
 #                      [--state <dir>] [--dry-run]
 #
-# Three modes:
-#   --parent T-NNN   the blocks of one wave of a solve cut, from bin/spawn-plan.sh
-#   --parent T-NNN --step <name>
+# Four modes:
+#   --task T-NNN     one named task as a unit, and nothing else: the current wave of its ready, unowned
+#                    T-NNN-NN blocks when it has any (the plan of bin/spawn-plan.sh), and otherwise the task
+#                    itself when it is a ready, unowned leaf, with its archetype skill as the prompt.
+#                    `--parent` is the old spelling of the same flag and still works.
+#   --task T-NNN --step <name>
 #                    one session for a parent-level step of `factory herd`: triage, grill,
 #                    plan-check or decompose. It runs in the registered clone, or in the session
 #                    worktree once there is one.
-#   no argument      every task with `status: ready` and no owner, across the state repo, and one
+#   --all            every task with `status: ready` and no owner, across the state repo, and one
 #                    `mr-watch.sh <T-NNN> --once` pass per parent with an open block MR, whose event lines are
 #                    printed through, so a merge after the solve session ended still becomes state
+#   no argument      the ready, unowned tasks are listed, one `<id> <repo> <status> <archetype> <goal>` per
+#                    line, and nothing is dispatched (exit 1).
+#
+# why: on 2026-09-22 a `/claude-factory:herdr approve` session ran this script bare and the dry run listed
+# why: eight ready tasks across five repos - foreign work that only `--max 1` kept from spawning. A herd starts
+# why: from one task the user named, so the batch mode now has to be asked for by name (`--all`) and the bare
+# why: call only shows what there is to choose from.
 #
 # --workspace <id> is the herdr workspace the tabs are created in, default $HERDR_WORKSPACE_ID, so a
 # dispatched session lands in the caller's own group and not in whatever workspace another client has
@@ -25,9 +35,18 @@
 # what `factory herd` passes, since herd is the herdr flow whatever the config says. --dry-run prints whatever it would do and changes nothing.
 # --max caps how many go out at once, default 5, the width cap of solve.md.
 #
+# Every unit that is really dispatched (not a dry run) is claimed first, through the one write path:
+# `state-report.sh --task <id> --set-status in_progress --owner factory@<host>:pending-<id>`. The spawned
+# session's own session id does not exist yet, so the claim carries a placeholder owner and the prompt opens
+# with the exact reclaim command (`--set-status in_progress --owner factory@<host>:<its session id>`, the one
+# step 1 of every block skill gives), which is what makes the owner-based Stop lookup of lib-tasks.sh find the
+# task again. Re-reporting `in_progress` over `in_progress` is no transition, so the one command fits both a
+# task this dispatch claimed and one a session picked up by hand. A claim the state clone refuses is a warning,
+# not a failure: the session still starts, and its own first heartbeat is the claim that counts.
+#
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
-# the parent cannot be resolved, 2 when herdr was asked for and a spawn failed.
+# the task cannot be resolved and when no mode was named, 2 when herdr was asked for and a spawn failed.
 set -eu
 . "$(dirname -- "$0")/lib-tasks.sh"
 
@@ -35,10 +54,12 @@ die() { printf 'session-monitor: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-parent='' wave='' state='' dry='' max=5 step='' spawn='' workspace=${HERDR_WORKSPACE_ID:-}
+parent='' wave='' state='' dry='' max=5 step='' spawn='' all='' workspace=${HERDR_WORKSPACE_ID:-}
 while [ $# -gt 0 ]; do
   case "$1" in
-    --parent) [ $# -ge 2 ] || die "--parent needs a value"; parent=$2; shift 2 ;;
+    # --parent is the old spelling of --task, kept so `factory herd` and every recipe that names it keep working
+    --task|--parent) [ $# -ge 2 ] || die "$1 needs a value"; parent=$2; shift 2 ;;
+    --all) all=1; shift ;;
     --wave) [ $# -ge 2 ] || die "--wave needs a value"; wave=$2; shift 2 ;;
     --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --max) [ $# -ge 2 ] || die "--max needs a value"; max=$2; shift 2 ;;
@@ -54,7 +75,8 @@ case "$step" in
   ''|triage|grill|plan-check|decompose) ;;
   *) die "--step takes triage, grill, plan-check or decompose, not '$step'" ;;
 esac
-[ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --parent it is a step of"
+[ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --task it is a step of"
+[ -z "$parent" ] || [ -z "$all" ] || die "--task names one task and --all takes every ready one; pass one of them"
 
 # see: solve-next.sh and spawn-plan.sh, the one state resolution of the factory scripts
 if [ -z "$state" ]; then
@@ -103,8 +125,84 @@ clone_path() { # <key>
 }
 json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);process.stdout.write(String(process.argv[1].split(".").reduce((a,k)=>a&&a[k],o)||""))}catch(e){}})' "$1"; }
 
+# the goal line of a task: the first non-empty line under its first heading, the shape every task template
+# writes and the one factory-list.sh reads too
+goal_of() { awk 'h && NF { print; exit } /^#/ { h = 1 }' "$1"; }
+
+unowned() { case "$1" in ''|null|none|'~') return 0 ;; esac; return 1; }
+
+# the T-NNN-NN blocks of a parent, and the ones a dispatch could still pick up
+blocks_of() { # <T-NNN>
+  for t in "$state"/repos/*/tasks/*.md; do
+    [ -f "$t" ] || continue
+    b=$(field "$t" id)
+    case "$b" in "$1"-[0-9][0-9]) printf '%s\n' "$b" ;; esac
+  done
+}
+ready_blocks_of() { # <T-NNN>
+  for t in "$state"/repos/*/tasks/*.md; do
+    [ -f "$t" ] || continue
+    b=$(field "$t" id)
+    case "$b" in "$1"-[0-9][0-9]) ;; *) continue ;; esac
+    [ "$(field "$t" status)" = ready ] || continue
+    unowned "$(field "$t" owner)" || continue
+    printf '%s\n' "$b"
+  done
+}
+
+# one unit of work out of one task file: the archetype skill is the prompt, the way the batch mode has always
+# built it, with the claim command in front of it
+unit_line() { # <task file> <id> <repo key>
+  ul_model=$(sh "$bin/model-for.sh" "$(field "$1" archetype)" "$(field "$1" tier)" \
+    "$(field "$1" phase)" 1 "$(field "$1" complexity)" 2>/dev/null || echo opus)
+  printf '%s\t%s\t%s\t%s\t%s\n' "$2" "$root/$3/$2" "$ul_model" "$2" \
+    "$(claim_prompt "$2")/claude-factory:block-$(field "$1" archetype) $1"
+}
+
+# the ready, unowned tasks of the whole state repo, one `<id> <repo> <status> <archetype> <goal>` per line
+list_ready() {
+  for t in "$state"/repos/*/tasks/*.md; do
+    [ -f "$t" ] || continue
+    [ "$(field "$t" status)" = ready ] || continue
+    unowned "$(field "$t" owner)" || continue
+    printf '%s %s %s %s %s\n' "$(field "$t" id)" "$(field "$t" repo)" "$(field "$t" status)" \
+      "$(field "$t" archetype)" "$(goal_of "$t")"
+  done
+}
+
+host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
+[ -n "$host" ] || host=localhost
+
+# the claim at spawn: the unit is in_progress under a placeholder owner before its session exists, so nothing
+# else picks it up in the seconds before that session makes its own first heartbeat. state-report.sh resolves
+# its state clone from the cwd, so it runs in the state clone itself (the triage-session case of
+# resolve_state_dir). A refusal is a warning: the session still starts and claims the task itself.
+claim() { # <id>
+  ( cd "$state" && sh "$bin/state-report.sh" --task "$1" --set-status in_progress \
+      --owner "factory@$host:pending-$1" --message "claim: $1 dispatched by session-monitor" >/dev/null ) \
+    || printf 'session-monitor: the claim of %s was refused; its session claims it with its own first heartbeat\n' "$1" >&2
+}
+
+# why: on 2026-09-22 every herdr-spawned worker's first heartbeat was refused and each one read
+# why: state-report.sh's source to find the claim. The exact command is the first thing the prompt says now.
+# No backtick, no redirection and no dollar sign in it: the prompt is pasted inside a double-quoted
+# `claude "<prompt>"` line that a human runs.
+claim_prompt() { # <id>
+  printf 'First take ownership of %s, the one command of step 1 of your skill: sh %s/state-report.sh --task %s --set-status in_progress --owner factory@%s:YOUR-SESSION-ID, with the session_id of your SessionStart identity line in place of YOUR-SESSION-ID (it is already in_progress for you under the placeholder owner factory@%s:pending-%s, and the owner-based Stop lookup only finds it once it carries your own id). Then: ' \
+    "$1" "$bin" "$1" "$host" "$host" "$1"
+}
+
+# no mode at all is not a batch: it is the question "which task", and the answer is a list to choose from
+if [ -z "$parent" ] && [ -z "$all" ]; then
+  list_ready
+  echo "session-monitor: name one task: --task T-NNN (--all dispatches every ready task, and only a user who asked for that by name gets it)" >&2
+  exit 1
+fi
+
 # --- the work list -------------------------------------------------------------------------------------------
-# `<id>\t<cwd>\t<model>\t<prompt>`, one unit per line
+# `<id>\t<cwd>\t<model>\t<claim id>\t<prompt>`, one unit per line; the claim id is the task the dispatch
+# claims before it starts the session, and `-` for a unit that claims nothing (a parent-level step). A literal
+# `-`, not an empty field: `read` with IFS=tab folds two tabs into one, and the prompt would land in claimid.
 units=$(mktemp)
 trap 'rm -f "$units"' EXIT
 
@@ -136,29 +234,39 @@ if [ -n "$parent" ]; then
         model=opus
         prompt="/claude-factory:decompose $ptask" ;;
     esac
-    printf '%s\t%s\t%s\t%s\n' "$parent-$step" "$cwd" "$model" "$prompt" > "$units"
-  else
+    printf '%s\t%s\t%s\t%s\t%s\n' "$parent-$step" "$cwd" "$model" - "$prompt" > "$units"
+  elif [ -n "$(ready_blocks_of "$parent")" ]; then
+    # the parent is a cut: its current wave goes out, one session per block, and nothing outside this cut does
     set -- "$parent"
     [ -z "$wave" ] || set -- "$@" --wave "$wave"
     plan=$(sh "$bin/spawn-plan.sh" "$@" --state "$state") || die "spawn-plan refused the cut of $parent"
     printf '%s\n' "$plan" | while IFS=' ' read -r bid agent model brief; do
       [ -n "$bid" ] || continue
-      printf '%s\t%s\t%s\t%s\n' "$bid" "$root/$key/$bid" "$model" \
-        "You are $agent. Read $brief and do exactly what it says."
+      printf '%s\t%s\t%s\t%s\t%s\n' "$bid" "$root/$key/$bid" "$model" "$bid" \
+        "$(claim_prompt "$bid")You are $agent. Read $brief and do exactly what it says."
     done > "$units"
+  elif [ -n "$(blocks_of "$parent")" ]; then
+    echo "nothing to dispatch: every block of $parent is claimed, in review or done"
+    exit 0
+  else
+    # a leaf task, the bugfix a single session solves: it is the unit, with its archetype skill as the prompt,
+    # exactly as --all builds it
+    pstatus=$(field "$ptask" status)
+    cwd="$root/$key/$parent"
+    if [ "$pstatus" != ready ] || ! unowned "$(field "$ptask" owner)"; then
+      printf '%s skipped %s\n' "$parent" "$cwd"
+      printf 'session-monitor: %s is %s and owned by %s; only a ready, unowned task is dispatched\n' \
+        "$parent" "$pstatus" "$(field "$ptask" owner)" >&2
+      exit 0
+    fi
+    unit_line "$ptask" "$parent" "$key" > "$units"
   fi
 else
   for task in "$state"/repos/*/tasks/*.md; do
     [ -f "$task" ] || continue
     [ "$(field "$task" status)" = ready ] || continue
-    owner=$(field "$task" owner)
-    case "$owner" in ''|null|none) ;; *) continue ;; esac
-    id=$(field "$task" id)
-    key=$(basename -- "$(dirname -- "$(dirname -- "$task")")")
-    model=$(sh "$bin/model-for.sh" "$(field "$task" archetype)" "$(field "$task" tier)" \
-      "$(field "$task" phase)" 1 "$(field "$task" complexity)" 2>/dev/null || echo opus)
-    printf '%s\t%s\t%s\t%s\n' "$id" "$root/$key/$id" "$model" \
-      "/claude-factory:block-$(field "$task" archetype) $task"
+    unowned "$(field "$task" owner)" || continue
+    unit_line "$task" "$(field "$task" id)" "$(basename -- "$(dirname -- "$(dirname -- "$task")")")"
   done > "$units"
 fi
 
@@ -188,7 +296,7 @@ fi
 
 # --- dispatch ------------------------------------------------------------------------------------------------
 rc=0 n=0
-while IFS='	' read -r id cwd model prompt; do
+while IFS='	' read -r id cwd model claimid prompt; do
   n=$((n + 1))
   if [ "$n" -gt "$max" ]; then
     printf '%s skipped %s\n' "$id" "$cwd"
@@ -199,6 +307,9 @@ while IFS='	' read -r id cwd model prompt; do
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
   fi
+  # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
+  # changes nothing, so it claims nothing
+  [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
     printf '  cd %s && claude --model %s "%s"\n' "$cwd" "$model" "$prompt"

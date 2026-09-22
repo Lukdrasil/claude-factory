@@ -72,6 +72,30 @@ case "$planabs" in
   *) rel="repos/$repo/plans/${planabs##*/}" ;;
 esac
 
+# E (2026-09-22, MR !412): a proposal's `goal:` is written straight into the block's `# Goal`, and that line is
+# the MR title the block will open. The check runs over the plan before any file is written, so a plan whose
+# goals cannot be titles leaves nothing behind, the way every other refusal here does. Triage and research
+# goals never become titles.
+goals=$(awk '
+  function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+  /^##[ \t]+Proposed tasks[ \t]*$/ { ps = 1; next }
+  /^##[ \t]/ { if (ps && have) { print arch "\t" goal; have = 0 } ; ps = 0; next }
+  !ps { next }
+  /^###[ \t]/ { if (have) print arch "\t" goal; arch = ""; goal = ""; have = 1; next }
+  /^-[ \t]*goal:/ { g = $0; sub(/^-[ \t]*goal:[ \t]*/, "", g); goal = trim(g); next }
+  /^-[ \t]*archetype:/ { a = $0; sub(/^-[ \t]*archetype:[ \t]*/, "", a); sub(/[ \t,].*$/, "", a); arch = trim(a); next }
+  END { if (ps && have) print arch "\t" goal }
+' "$plan")
+badgoals=$(printf '%s\n' "$goals" | while IFS="$(printf '\t')" read -r garch ggoal; do
+    [ -n "$ggoal" ] || continue
+    case "$garch" in triage|research) continue ;; esac
+    reason=$(mr_title_check "$ggoal" "$repo") || printf 'the `goal:` of a proposal cannot be the MR title it becomes: %s (`%s`)\n' "$reason" "$ggoal"
+  done)
+if [ -n "$badgoals" ]; then
+  printf '%s\n' "$badgoals" | sed 's/^/decompose: /' >&2
+  exit 1
+fi
+
 mkdir -p "$out"
 result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
              -v today="$(date +%Y-%m-%d)" '

@@ -18,8 +18,18 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
 
 ## Procedure
 
-1. Snapshot and `state-report.sh`, your only liveness signal: repeat it at every milestone and before a
-   long run (ADR-0009).
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: that heartbeat is your only liveness signal, so repeat it at every milestone and
+   before a long run (ADR-0009).
 2. `git fetch origin && git checkout <branch>`; the diff is `git diff origin/<base>...HEAD`, `<base>` being
    `default_branch` for `<key>` in `../state/repos.yml`. Read the MR with
    `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh mr <mr_url>`; a description not matching it is a finding.

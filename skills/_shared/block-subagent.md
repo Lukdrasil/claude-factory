@@ -12,6 +12,9 @@ the MR, the self-report and the knowledge review. You own the worktree and your 
   `## Handoff` of the tests phase when one ran, and the toolset command table. Read the task file in full.
 - Never: `git push`, an edit of the task file or of anything under the state clone, `state-report.sh`, an MR,
   a proposal, a knowledge review. Commit on the block branch after every green.
+- A block MR body that needs a fix is a line in your report: the coordinator fixes the progress file and runs
+  `block-mr.sh` again, which updates the open MR. Nobody writes the body by hand with `glab mr update` or
+  `gh pr edit`.
 - `## Acceptance` is never edited. Nothing from `## Out of scope` enters the diff.
 - Every test or build command runs under `timeout 15m` (`_shared/test-budget.md`); a cap that fires is a
   line in your report, never a wait.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# The local twin of the dashboard's approve action (ADR-0050, the posture without a dashboard): `<from> → ready`
+# The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
 # as two commits, so plan_hash pins exactly the body a human approved — the first commit flips the status (and
 # bumps `attempt` from failed, sets `phase: implement` from tests_ready, as StateRepository does), the second
 # writes the SHA of that commit into plan_hash. Nothing is pushed.
@@ -36,6 +36,21 @@ from=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
 case "$from" in
   draft|triaged|ready|claimed|tests_ready|review|blocked|stalled|failed|done|closed) ;;
   *) die "task $id is '$from' — in_progress cannot be approved to ready (TaskTransitions.Allowed)" ;;
+esac
+
+# E (2026-09-22, MR !412): approving is the last gate before the body is frozen - plan_hash pins exactly this
+# text, and the `# Goal` line in it is the MR title mr-open.sh will use. A goal that cannot be a title was
+# caught at the forge until now, after the human had approved it; it is caught here, before anything is
+# written. Triage and research goals never become titles.
+arch=$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+key=$(sed -n 's/^repo:[[:space:]]*//p' "$task" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+case "$arch" in
+  triage|research) ;;
+  *)
+    goal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$task")
+    [ -n "$goal" ] || die "task $id has no '# Goal' line, and it is the MR title"
+    reason=$(mr_title_check "$goal" "$key") || die "task $id cannot be approved: the '# Goal' line cannot be an MR title: $reason; fix it in $task"
+    ;;
 esac
 
 setf "$task" status ready

@@ -29,33 +29,62 @@ TUI.
 
 ## Starting factory tasks
 
-`<plugin-root>/bin/session-monitor.sh` does this for you, and it is the path to take:
+One task per start, and the user names it. On 2026-09-22 a bare `session-monitor.sh` listed eight ready tasks
+across five repos and would have spawned foreign work; a start is a dialog now, not a batch.
+
+1. The ready, unowned tasks:
 
 ```sh
-sh <plugin-root>/bin/session-monitor.sh --parent T-NNN   # the blocks of one wave
-sh <plugin-root>/bin/session-monitor.sh                  # every ready, unowned task
+sh <plugin-root>/bin/session-monitor.sh                # lists them: <id> <repo> <status> <archetype> <goal>
+sh <plugin-root>/bin/factory-list.sh --root <work-dir> --status ready
+```
+
+2. Ask **which one** with AskUserQuestion, one option per ready task with its goal line, nothing
+   pre-selected. Ask even when only one task is ready. Never spawn before the answer. Skip the question only
+   when the user's own message already named exactly one task id.
+
+3. Start it, and only it:
+
+```sh
+sh <plugin-root>/bin/session-monitor.sh --task T-NNN --spawn herdr
+```
+
+   It dispatches the current wave of that task's ready blocks, or the task alone when it is a ready leaf, and
+   claims each unit `in_progress` under `factory@<host>:pending-<id>` before the session starts. The prompt it
+   sends opens with the reclaim command, so the spawned session's first heartbeat is not a refused guess.
+
+4. Arm the watcher through the Monitor tool, before anything else:
+
+```sh
+sh <plugin-root>/bin/herd-watch.sh T-NNN --interval 60
+```
+
+   Then say it: this session is now the monitor of T-NNN. It runs the loop of
+   `<plugin-root>/skills/factory/references/herd.md` until the task is `done` or `closed`, and it never writes
+   the change itself.
+
+`--all` dispatches every ready, unowned task across the state repo. It is for a user who asked for every ready
+task in those words, and for nobody else.
+
+```sh
+sh <plugin-root>/bin/session-monitor.sh --task T-NNN --step grill   # one parent-level step of factory herd
 ```
 
 It reads `spawn:` from `<state>/factory.yml`. On `herdr` it opens one tab per unit, in that unit's worktree,
 starts `claude` there and sends the prompt. On `manual`, or on a machine with no herdr, it prints the same
-`cd … && claude …` lines for the human to run. Either way it prints one `<id> <spawned|printed|skipped> <cwd>`
-line per unit, so the main session learns what went out without reading any of the work.
-
-```sh
-sh <plugin-root>/bin/session-monitor.sh --parent T-NNN --step grill   # one parent-level step of factory herd
-```
+`cd ... && claude ...` lines for the human to run. Either way it prints one `<id> <spawned|printed|skipped>
+<cwd>` line per unit, so the main session learns what went out without reading any of the work.
 
 `--max N` caps a batch, default 5. A unit with no worktree is skipped: run
 `<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. `--spawn herdr` overrides `spawn:` for
 one call, and the tabs are created in `$HERDR_WORKSPACE_ID` unless `--workspace` names another, so a
 dispatched session lands in the caller's own group.
 
-`<plugin-root>/bin/herd-watch.sh <T-NNN>` is the other half: it prints one line per status, phase or agent
-change of that parent and its blocks, so the monitor session follows the work without reading any of it
-(`<plugin-root>/skills/factory/references/herd.md`).
+## Driving herdr by hand
 
-Three reasons to drive herdr yourself instead: a layout the user asked for, reading a spawned session's
-output, or answering one that is blocked.
+Three reasons, and no others: a layout the user asked for, reading a spawned session's output, or answering
+one that is blocked. Starting a task by hand with `herdr tab create` and `herdr agent start` is none of them,
+it walks around the claim and the prompt contract above.
 
 ```sh
 herdr agent list                       # what is live, and its state

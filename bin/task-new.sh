@@ -1,6 +1,6 @@
 #!/bin/sh
-# The local twin of TaskWriter (ADR-0050, the posture without a dashboard): a new task written straight into a
-# state clone — the id and slug computed the way the server computes them, the frontmatter validated against
+# Writes a new task straight into a state clone, which in the standalone posture (ADR-0050) is how every task
+# comes into being: the id and slug computed the way TaskWriter computes them, the frontmatter validated against
 # docs/design/task-format.md (TaskSchema + TaskWriter.Validate), then one commit. A clone without an origin
 # stays local. A clone with an origin syncs first and pushes after: the id is one more than the highest id
 # taken, so two machines on one state remote could otherwise both hand out the same number — a push the
@@ -135,6 +135,20 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   const slug=e.SLUG||slugOf(title(body(s),id));
   process.stdout.write(id+"\n"+slug+"\n"+s);
 })' < "$file") || exit 1
+
+# E (2026-09-22, MR !412): the `# Goal` line becomes the MR title as written, and until now nothing looked at
+# it before mr-open.sh did - after the human had approved the task and plan_hash pinned the body. The one rule
+# lives in lib-tasks.sh; this shells out to it rather than restating the regex and the cap in the node
+# validator above. A triage or research goal never becomes a title, so neither is held to it.
+arch=$(sed -n 's/^archetype:[[:space:]]*//p' "$file" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+case "$arch" in
+  triage|research) ;;
+  *)
+    goal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$file")
+    [ -n "$goal" ] || die "the draft has no '# Goal' line, and it is the MR title"
+    reason=$(mr_title_check "$goal" "$repo") || die "the '# Goal' line cannot be an MR title: $reason; rewrite it in $file"
+    ;;
+esac
 
 id=$(printf '%s\n' "$res" | sed -n 1p)
 slug=$(printf '%s\n' "$res" | sed -n 2p)

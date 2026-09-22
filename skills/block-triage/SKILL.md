@@ -32,8 +32,18 @@ first. The rest is the worker procedure.
 
 ## Steps
 
-1. Write the progress snapshot of `<plugin-root>/skills/_shared/progress-and-push.md`, titled
-   `# <id> - triage <repo>#<number>`, and report it with `${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh`.
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: the snapshot is the one of
+   `<plugin-root>/skills/_shared/progress-and-push.md`, titled `# <id> - triage <repo>#<number>`.
 2. Read the issue with `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh issue <url> --assets ../issue-assets`, per
    `references/issue.md`: the comments, the milestone and the `from attachments` row of the draft.
 3. Follow `<plugin-root>/skills/_shared/investigate.md` for a feature, bugfix or refactor source, and paste
@@ -43,8 +53,10 @@ first. The rest is the worker procedure.
    draft, never something you carry out. A source you cannot decide an archetype for is `blocked`, with the
    question in the progress file as `## Question`.
 5. Check no task in `repos/*/tasks/*.md` already references this issue; one that does **is** the result.
-6. Write the draft from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, through the Task API per
-   `references/draft-api.md`.
+6. Write the draft body from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, then create the task. The
+   writer depends on one switch, `DASHBOARD_URL`: empty or unset (the standalone posture, and the ordinary
+   case) means `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>`; set means the Task
+   API per `references/draft-api.md`, which is the only reason to open that file.
 7. Append the draft's `## Issue update` to the issue description per `references/issue.md`; a failed write
    is not fatal.
 8. Commit the progress file and self-report `review` per `references/self-report.md`; `mr_url` stays `null`.
