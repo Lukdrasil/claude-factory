@@ -6,6 +6,9 @@
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
 # `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets a one-line nudge towards the
 # factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and prints nothing. Exit 0 always.
+# Two lines ride along with that context when they apply: the standalone-posture line (T-187, with no
+# DASHBOARD_URL there is no dashboard and no gate that is not a command) and the stale-plugin warning of
+# incident C below.
 set -u
 [ "${HARNESS_WORKER:-}" != 1 ] || exit 0
 
@@ -48,6 +51,41 @@ index_line() { # <memory file> → its first non-empty line after the frontmatte
     }
   ' "$1"
 }
+# Incident C (2026-09-22): the installed plugin cache is keyed by the version in `.claude-plugin/plugin.json`,
+# so three merged PRs shipped nothing. The cache stayed at 0.12.0, `claude plugin update` saw no new version and
+# refreshed nothing, and the day's sessions ran without attribution-gate.sh and the MR title rule while the repo
+# had both. The cheapest tell is a file the running plugin root should have and does not; the version and, for a
+# dev checkout, the commit are the other two. Everything here is best effort: a hook that fails tells nobody
+# anything, so every step falls through to silence.
+stale_plugin_warning() {
+  spw_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." 2>/dev/null && pwd) || return 0
+  [ -n "${spw_root:-}" ] || return 0
+  spw_why=''
+  [ -f "$spw_root/bin/attribution-gate.sh" ] || spw_why='bin/attribution-gate.sh is missing from it'
+  spw_ver=''
+  if [ -f "$spw_root/.claude-plugin/plugin.json" ]; then
+    spw_ver=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+      "$spw_root/.claude-plugin/plugin.json" | head -n1)
+  fi
+  spw_inst=${HOME:-}/.claude/plugins/installed_plugins.json
+  if [ -z "$spw_why" ] && [ -n "$spw_ver" ] && [ -f "$spw_inst" ]; then
+    # the one entry of this plugin, from its key to the end of its array; no JSON parser for two flat fields
+    spw_entry=$(sed -n '/"claude-factory@/,/^[[:space:]]*\]/p' "$spw_inst" 2>/dev/null) || spw_entry=''
+    spw_iver=$(printf '%s\n' "$spw_entry" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+    if [ -n "$spw_iver" ] && [ "$spw_iver" != "$spw_ver" ]; then
+      spw_why="the installed version is $spw_iver and this repo says $spw_ver"
+    elif [ -e "$spw_root/.git" ]; then
+      spw_isha=$(printf '%s\n' "$spw_entry" | sed -n 's/.*"gitCommitSha"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)
+      spw_head=$(git -C "$spw_root" rev-parse HEAD 2>/dev/null) || spw_head=''
+      if [ -n "$spw_isha" ] && [ -n "$spw_head" ] && [ "$spw_isha" != "$spw_head" ]; then
+        spw_why="it was installed from $(printf '%.8s' "$spw_isha") and HEAD is $(printf '%.8s' "$spw_head")"
+      fi
+    fi
+  fi
+  [ -n "$spw_why" ] || return 0
+  printf 'Warning: the installed claude-factory plugin is older than the repo (%s): run `claude plugin update claude-factory`.\n' "$spw_why"
+}
+
 {
   # lesson C (2026-09-07): nothing told the session its own session_id, so the coordinator wrote an owner: it
   # guessed (a bridge/cse_ id) and the owner-based Stop lookup (owned_task_ids) never found its tasks. The id
@@ -57,6 +95,13 @@ index_line() { # <memory file> → its first non-empty line after the frontmatte
     [ -n "$host" ] || host=localhost
     printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
   fi
+  # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
+  # every text they had read named one and the single sentence that says otherwise lives in a skill a worker
+  # never loads. The switch is DASHBOARD_URL, the same one state-report.sh and policy-guard.sh read.
+  if [ -z "${DASHBOARD_URL:-}" ]; then
+    printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
+  fi
+  stale_plugin_warning
   printf 'Factory context for repo %s from the state repo at %s/state (ADR-0049): the sections below are concatenated from there, not files of this clone — do not edit them here; a lesson worth keeping goes through a memory proposal (ADR-0011).\n' "$key" "$WORK_DIR"
   if [ -n "${FACTORY_MEMORY_OVER_BUDGET:-}" ]; then
     printf 'Warning: the %s memory is over its budget — consolidate it (memory-consolidate) before adding to it.\n' "$FACTORY_MEMORY_OVER_BUDGET"

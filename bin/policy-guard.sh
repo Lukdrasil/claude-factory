@@ -294,13 +294,28 @@ EOF
 }
 
 # T-003 rule (b): the human gate, enforced. A worktree under $WORK_DIR/<key>/<task-id>/ opens only for a task
-# that is `ready` with the body the `plan_hash` commit carries (the twin of DispatchGate.BodyUnchanged — the
-# dashboard refuses to dispatch on any other basis), or one this very session already holds: `owner:
+# that is `ready` with the body the `plan_hash` commit carries (the twin of DispatchGate.BodyUnchanged: nothing
+# dispatches on any other basis, and `ready` with a plan_hash is what task-approve.sh writes in the standalone
+# posture and what the dashboard writes where one is configured), or one this very session already holds: `owner:
 # factory@<host>:<session_id>` with the session id off the hook stdin. A block (`T-NNN-NN`) is created `claimed`
 # by the coordinator and never carries a plan_hash of its own, so `claimed` + owner is the whole gate for it.
 # It reads what load_task_context already parsed out of the frontmatter — nothing here opens the file twice.
+# T-187: the two denials below name the approver, and the approver is a command in the standalone posture and a
+# dashboard only where DASHBOARD_URL is set. Telling a standalone session to go to a dashboard it does not have
+# is what sent four sessions to tell their user to "close it in the dashboard".
+approval_stale() { # <the target that asked for it> <the plan_hash it was approved as>
+  if [ -z "${DASHBOARD_URL:-}" ]; then
+    deny "the body of $task changed since it was approved as $2 (DispatchGate.BodyUnchanged): re-approve it with $(dirname -- "$0")/task-approve.sh $task --state $state before working in its worktree: $1"
+  fi
+  deny "the body of $task changed since it was approved as $2 (DispatchGate.BodyUnchanged), so re-approve it in the dashboard before working in its worktree: $1"
+}
 approval_gate() { # <the target that asked for it>
-  [ -n "$taskfile" ] || deny "no task file for '$task' in $state — a worktree is only created for a task the dashboard approved (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
+  if [ -z "$taskfile" ]; then
+    if [ -z "${DASHBOARD_URL:-}" ]; then
+      deny "no task file for '$task' in $state: a worktree is only created for a task approved with task-approve.sh (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
+    fi
+    deny "no task file for '$task' in $state: a worktree is only created for a task the dashboard approved (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
+  fi
   case "$status" in
     ready)
       case "${plan_hash%%[ 	#]*}" in
@@ -334,7 +349,7 @@ approval_gate() { # <the target that asked for it>
         { cur = cur $0 "\n" }
         END { a = norm(body(approved)); b = norm(body(cur))
               exit (a != "" && a == b) ? 0 : 1 }' "$taskfile" \
-        || deny "the body of $task changed since it was approved as $gph (DispatchGate.BodyUnchanged) — re-approve it in the dashboard before working in its worktree: $1"
+        || approval_stale "$1" "$gph"
       ;;
     claimed|in_progress|tests_ready|review|blocked|failed)
       case "$owner" in

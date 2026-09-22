@@ -1,8 +1,12 @@
-# Creating the draft
+# Creating the draft through the Task API
 
-`DASHBOARD_URL` and `DASHBOARD_API_TOKEN` are in the session environment; the controller sets them for
-triage. Two parallel triages once computed "highest number + 1" from their own clones and both produced
-`T-005`, so the API allocates under a lock and refuses a taken id, which git does not.
+**Only when `DASHBOARD_URL` is set.** In the standalone posture (no `DASHBOARD_URL`) skip this file: write the
+draft with `${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>`, which allocates the id, runs
+the same frontmatter validation and commits and pushes it. There is no dashboard to send anything to.
+
+With `DASHBOARD_URL` and `DASHBOARD_API_TOKEN` in the session environment (the controller sets them for
+triage), the API is the writer instead. Two parallel triages once computed "highest number + 1" from their own
+clones and both produced `T-005`, so the API allocates under a lock and refuses a taken id, which git does not.
 
 - `<new-id>` is `T-` plus the highest number in `GET /api/tasks` plus 1, zero-padded to three digits.
 - `<slug>` is 2 to 4 words from the issue title, lowercase and hyphenated; the file becomes `<new-id>-<slug>.md`.
@@ -28,6 +32,5 @@ jq -n --arg repo "<key>" --arg id "<new-id>" --arg slug "<slug>" --rawfile markd
 | `401` | The token is missing or wrong. Self-report `failed` with that reason. |
 | connection failed or `5xx` | The dashboard is unreachable. Self-report `failed`; nothing was created. |
 
-Without `DASHBOARD_API_TOKEN` in the environment, fall back to writing the file into `repos/<key>/tasks/`
-with the **Write** tool and committing it with the self-report, knowing the id can collide with a parallel
-triage.
+With `DASHBOARD_URL` set but no `DASHBOARD_API_TOKEN` in the environment, fall back to
+`${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh`, the standalone writer named at the top of this file.

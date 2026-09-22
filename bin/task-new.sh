@@ -1,6 +1,6 @@
 #!/bin/sh
-# The local twin of TaskWriter (ADR-0050, the posture without a dashboard): a new task written straight into a
-# state clone — the id and slug computed the way the server computes them, the frontmatter validated against
+# Writes a new task straight into a state clone, which in the standalone posture (ADR-0050) is how every task
+# comes into being: the id and slug computed the way TaskWriter computes them, the frontmatter validated against
 # docs/design/task-format.md (TaskSchema + TaskWriter.Validate), then one commit. A clone without an origin
 # stays local. A clone with an origin syncs first and pushes after: the id is one more than the highest id
 # taken, so two machines on one state remote could otherwise both hand out the same number — a push the

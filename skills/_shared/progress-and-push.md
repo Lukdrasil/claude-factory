@@ -37,7 +37,10 @@ record the command, its exit code and the key output line. The Stop hook bounces
 
 The task's `status:` and the progress file are written only through `state-report.sh`, which in the
 standalone posture of this plugin (ADR-0050, `DASHBOARD_URL` unset) validates the transition, commits in the
-state clone and pushes. Rewrite the progress file, then:
+state clone and pushes. There is no dashboard in that posture, so never send the user to one: a task with an
+MR ends in `done` and a triage, ops or research task ends in `closed`, both through
+`<plugin-root>/bin/task-done.sh <id>` once the human has said so, and `ready` comes the same way, from
+`<plugin-root>/bin/task-approve.sh <id>`. Rewrite the progress file, then:
 
 ```sh
 sh "<plugin-root>/bin/state-report.sh" --task <id> [--set-status <status>]

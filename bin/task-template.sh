@@ -60,11 +60,11 @@ For the issue author, **under 150 words**, opening with the one sentence that sa
 done. Then the problem as you understood it, the suggested approach, what is in and out of scope, and how the
 result will be verified. Classify the work in plain words (kind of change, size, risk).
 No claude-os internals here: no repo-key, task ids, state repo, sessions, tiers or archetypes.
-This section is what gets appended to the issue description and what the dashboard
-write-back button sends. Only when the source is a forge issue; for a roadmap draft, omit the section.
+This section is what gets appended to the issue description, which is written back to the issue
+by bin/forge.sh. Only when the source is a forge issue; for a roadmap draft, omit the section.
 
 ## Internal
-- triage: <the id of this triage task; it pairs the auto-close, approving the draft closes the triage task>
+- triage: <the id of the triage task this draft came out of; that task ends in closed via bin/task-done.sh once the draft is approved>
 - forge issue: <the issue URL>
 - issue title: <title>
 - milestone: <milestone, or "none">

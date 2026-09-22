@@ -55,6 +55,10 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 You write `status:` and `mr_url:`, nothing else: `owner`, `attempt` and `plan_hash` are the controller's,
 `ready` and `done` the human's (P5). Never write `done`, `ready`, `in_progress` or `stalled`.
 
+The posture is standalone unless `DASHBOARD_URL` is set in your environment, which it usually is not: there is
+then no dashboard anywhere, every human gate is a command (`task-approve.sh`, `task-done.sh`, `factory approve`
+/ `factory done`), and telling the user to do something in a dashboard is always wrong.
+
 ## WIP push and liveness
 
 `git push -u origin <branch>` after every green, never `--force`. Report progress before a long operation or the
