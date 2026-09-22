@@ -26,7 +26,17 @@ takes a large well-scoped step; the red-green rhythm itself is serial.
 
 ## Procedure
 
-1. Write the progress snapshot and run `state-report.sh`. Done when the first heartbeat is in.
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: done when the first heartbeat is in.
 2. Get your bearings: `CLAUDE.md`, the affected code, the existing tests. Done when you know what verifies
    `## Acceptance` and where the change belongs.
 3. TDD in the smallest steps: a test that fails for the right reason, proved by running `test-filter` over it;

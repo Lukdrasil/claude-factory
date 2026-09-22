@@ -11,7 +11,7 @@ this repo that change solves or touches. You never open the MR and you never edi
 List the open issues with the forge the origin remote names:
 
     gh issue list --state open --limit 100
-    glab issue list --state opened --per-page 100
+    glab issue list --per-page 100          # glab defaults to open; there is no --state flag
     tea issues list
 
 Read the candidates whose title looks related (`gh issue view <n>`, `glab issue view <n>`, `tea issues <n>`).

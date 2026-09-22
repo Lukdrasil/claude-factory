@@ -26,8 +26,18 @@ and `CONTEXT.md` applies only then.
 
 ## Procedure
 
-1. Snapshot and `state-report.sh`, the first heartbeat and your only liveness signal: repeat it after every
-   answered sub-question and before any long search (ADR-0009).
+1. **Claim the task, then snapshot.** The claim is one command, and the exact one, so nobody has to read
+   `state-report.sh` to find it:
+
+   ```sh
+   sh ${CLAUDE_PLUGIN_ROOT}/bin/state-report.sh --task <id> --set-status in_progress --owner factory@<host>:<session_id>
+   ```
+
+   `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
+   owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
+   `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
+   snapshot and run `state-report.sh --task <id>` again: that heartbeat is your only liveness signal, so repeat it after every answered
+   sub-question and before any long search (ADR-0009).
 2. Cut `# Goal` into sub-questions under `## Remaining`, then answer them one at a time. The source of truth
    is the **code**, documentation only a supplement. Every claim carries a `path/file.ext:line` or a SHA.
 3. Write the report to `../state/repos/<key>/research/<id>-<slug>.md`. A human reads it later (ADR-0025), so

@@ -3,13 +3,19 @@
 # herdr agents dispatched for them, and prints one line per change since its last run, so the monitor session
 # learns what the spawned sessions did without reading any of their output.
 #
-#   herd-watch.sh <T-NNN> [--once] [--interval <s>] [--state <dir>]
+#   herd-watch.sh <T-NNN> [--once] [--interval <s>] [--no-mr] [--state <dir>]
 #
-# The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>` and `<id> agent <old> -> <new>`,
-# with a first sighting written without the arrow. The agent states are herdr's own - working, idle, blocked,
+# The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
+# `<id> mr <old> -> <new>`, with a first sighting written without the arrow. The agent states are herdr's own - working, idle, blocked,
 # done, unknown - plus `gone` for a name that is no longer live, which is how a finished or closed session
 # reads. What has already been reported is kept in `<root>/<key>/.harness/<T-NNN>/herd-watch.state`, one
-# `<id> <status> <phase> <agent>` per line, so a pass with nothing new prints nothing.
+# `<id> <status> <phase> <agent> <mr>` per line, so a pass with nothing new prints nothing.
+#
+# why: on 2026-09-22 the monitors that ran stopped at `review` and missed the merges and a `need_rebase`. A
+# task is not over at `review`, so every pass also runs `mr-watch.sh <T-NNN> --once` - which is what retargets
+# the stack and sets a merged block `done` - and turns its state file into the `<id> mr <old> -> <new>` lines
+# above, in this watcher's own vocabulary. mr-watch's own stdout is not passed through, so a merge is one line
+# and not two. `--no-mr` leaves the forge alone, for a repo that has none.
 #
 # The units are the parent, every T-NNN-NN block of it, and the parent-level step sessions
 # `<T-NNN>-<triage|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step session is
@@ -26,17 +32,20 @@ set -eu
 
 die() { printf 'herd-watch: %s\n' "$1" >&2; exit 1; }
 
-id='' once='' interval=60 state=''
+bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+id='' once='' interval=60 state='' nomr=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --once) once=1; shift ;;
+    --no-mr) nomr=1; shift ;;
     --interval) [ $# -ge 2 ] || die "--interval needs a value"; interval=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: herd-watch.sh <T-NNN> [--once] [--interval <s>] [--state <dir>]"
+[ -n "$id" ] || die "usage: herd-watch.sh <T-NNN> [--once] [--interval <s>] [--no-mr] [--state <dir>]"
 case "$id" in
   T-[0-9][0-9][0-9]) ;;
   *) die "'$id' is not a parent task id of the shape T-NNN" ;;
@@ -60,6 +69,7 @@ key=${key%%/*}
 case "$state" in */state) root=${state%/state} ;; *) root=$(dirname -- "$state") ;; esac
 harness="$root/$key/.harness/$id"
 seen="$harness/herd-watch.state"
+mrseen="$harness/mr-watch.state"
 
 field() { sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//'; }
 
@@ -73,12 +83,22 @@ agent_state() { # <unit id>
     catch(e){process.stdout.write("unknown")}})'
 }
 
-prior() { # <unit id> <column: 2 status | 3 phase | 4 agent>
+# the forge state of one block, as mr-watch.sh last recorded it: `<block> <state> <comment count>`
+mr_state() { # <unit id>
+  [ -f "$mrseen" ] || { printf 'none'; return 0; }
+  mw=$(awk -v u="$1" '$1 == u { print $2; exit }' "$mrseen")
+  printf '%s' "${mw:-none}"
+}
+
+prior() { # <unit id> <column: 2 status | 3 phase | 4 agent | 5 mr>
   [ -f "$seen" ] || return 0
   awk -v u="$1" -v c="$2" '$1 == u { print $c; exit }' "$seen"
 }
 
 pass() {
+  # the forge first, so the mr column of this pass is the one mr-watch just wrote; a watcher that cannot reach
+  # the forge is not a failed pass, the task columns are still news
+  [ -n "$nomr" ] || sh "$bin/mr-watch.sh" "$id" --once --state "$state" >/dev/null || :
   now=$(mktemp)
   for f in "$state"/repos/"$key"/tasks/*.md; do
     [ -f "$f" ] || continue
@@ -86,21 +106,21 @@ pass() {
     case "$u" in "$id"|"$id"-[0-9][0-9]) ;; *) continue ;; esac
     s=$(field "$f" status); [ -n "$s" ] || s=none
     p=$(field "$f" phase); [ -n "$p" ] && [ "$p" != null ] || p=none
-    printf '%s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" >> "$now"
+    printf '%s %s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" "$(mr_state "$u")" >> "$now"
   done
   for step in triage grill plan-check decompose; do
     u="$id-$step"
     a=$(agent_state "$u")
     # a step session nobody dispatched is not news; one that was live and is gone is
     [ "$a" != gone ] || [ -n "$(prior "$u" 4)" ] || continue
-    printf '%s none none %s\n' "$u" "$a" >> "$now"
+    printf '%s none none %s none\n' "$u" "$a" >> "$now"
   done
   sort -o "$now" "$now"
 
-  while read -r u s p a; do
-    for col in 2:status 3:phase 4:agent; do
+  while read -r u s p a m; do
+    for col in 2:status 3:phase 4:agent 5:mr; do
       n=${col%%:*}; what=${col#*:}
-      case "$n" in 2) new=$s ;; 3) new=$p ;; 4) new=$a ;; esac
+      case "$n" in 2) new=$s ;; 3) new=$p ;; 4) new=$a ;; 5) new=${m:-none} ;; esac
       old=$(prior "$u" "$n")
       [ "$new" != "$old" ] || continue
       [ "$what" = agent ] || [ "$new" != none ] || continue

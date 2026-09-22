@@ -20,8 +20,8 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | `curate` | the proposal queues one proposal at a time, applied through `curate-apply.sh`, every decision a commit | `references/curate.md` |
 | `consolidate` | duplicates, contradictions and staleness in one or more memory scopes, as proposals | `references/consolidate.md` |
 | `solve` | one problem end to end: triage, grill, decompose, blocks in their own worktrees, the MR | `references/solve.md`, quick lane `references/solve-quick.md` |
-| `herd` | one problem end to end like `solve`, but every work step runs as an interactive session in a herdr tab and this session only dispatches, watches and gates | `references/herd.md` |
-| `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh` starts ready tasks, or a wave of blocks, as their own sessions, and without a parent also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
+| `herd` | one task the user named, end to end like `solve`, but every work step runs as an interactive session in a herdr tab and this session becomes its monitor: it dispatches, watches until `done` or `closed`, and gates | `references/herd.md` |
+| `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh --task <T-NNN>` starts one named task, or the current wave of its blocks, as their own sessions and claims each one; with no argument it only lists the ready tasks to choose from, and `--all` (the batch a user has to ask for by name) also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |
 
