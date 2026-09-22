@@ -1,12 +1,14 @@
 #!/bin/sh
-# The one write path for task state, in two postures (ADR-0047, ADR-0050). With DASHBOARD_URL set:
-# `PATCH $DASHBOARD_URL/api/tasks/<id>` with the `status` of the local task file, its `mr_url` once the task has
-# one, the whole local progress file and any line for `## Attempts` / `## Tool failures`; the session's state
-# clone is read-only towards the state repo, the dashboard is the only pusher, and there is no git fallback —
-# a report that does not arrive is reported as such (exit 2) and the caller decides. With DASHBOARD_URL empty or
-# unset (a standalone session, no dashboard) the same report is validated here — including the transition, which
-# is measured from the *committed* status of the task file, not from the working copy the agent just wrote —
-# committed into the state clone and pushed to the state root; the local commit stays when the push fails.
+# The one write path for task state, in two postures (ADR-0047, ADR-0050). The default posture is standalone:
+# DASHBOARD_URL empty or unset means there is no dashboard, the session's own state clone is the writer, and the
+# report is validated right here (including the transition, which is measured from the *committed* status of the
+# task file, not from the working copy the agent just wrote), committed into the state clone and pushed to the
+# state root; the local commit stays when the push fails.
+# With DASHBOARD_URL set the report goes out instead as `PATCH $DASHBOARD_URL/api/tasks/<id>` carrying the
+# `status` of the local task file, its `mr_url` once the task has one, the whole local progress file and any line
+# for `## Attempts` / `## Tool failures`; in that posture the state clone is read-only towards the state repo, the
+# dashboard is the pusher, and there is no git fallback, so a report that does not arrive is reported as such
+# (exit 2) and the caller decides.
 #
 #   state-report.sh [--task <id>] [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]
 #                   [--owner <owner>] [--set-status <status>] [--set-phase <tests|implement>] [--no-status]
@@ -110,6 +112,10 @@ if [ "$send_status" = 1 ]; then status=$(sed -n 's/^status:[[:space:]]*//p' "$ta
 # the MR link the agent wrote at the end of the task (ADR-0014); `null` is "no MR yet", not a value to send
 mr_url=$(sed -n 's/^mr_url:[[:space:]]*//p' "$task" | head -n1)
 [ "$mr_url" != null ] || mr_url=''
+# T-186: the archetype decides which terminal status a task can reach. triage, ops and research never open an MR
+# (task-new.sh: no branch, no base_branch for triage/ops; block-research is read-only towards the product repo),
+# so they end in `closed`, and only a task with an MR ends in `done`.
+archetype=$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1 | sed 's/[[:space:]]*#.*//')
 [ -z "$set_mr_url" ] || mr_url=$set_mr_url
 set -- "$state"/repos/*/progress/"$id".md
 progress_file=''
@@ -151,16 +157,25 @@ if [ -z "${DASHBOARD_URL:-}" ]; then
               T-[0-9][0-9][0-9]-[0-9][0-9]) ;;
               *) die1 "agent may not set done on $id — only a block reaches done by itself, once its MR is merged" ;;
             esac ;;
+      # why (T-186): a triage, ops or research task never opens an MR, so `done` is out of reach for it and
+      # why: `closed` is its terminal status; the session that finished the work is the one that gets there.
+      closed) case "$archetype" in
+                triage|ops|research) ;;
+                *) die1 "agent may not set closed - a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged (closed is the terminal status of a triage, ops or research task; a task with an MR ends in done via task-done.sh)" ;;
+              esac ;;
       *) die1 "agent may not set $status — a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged" ;;
     esac
     # TaskTransitions.Agent (ClaudeOs.Dashboard/State/TaskTransitions.cs), plus the one standalone divergence of
     # ADR-0050: `ready → in_progress`, the claim a session makes for itself where there is no orchestrator to
-    # claim for it. Everything else — done, review, closed and back — is a human's or the watchdog's.
+    # claim for it, and the T-186 divergence below: a triage, ops or research task reaches `closed` from
+    # `review`, `in_progress` or `blocked` because no MR and no watcher will ever close it for the session.
+    # Everything else, done and ready and back, is a human's or the watchdog's.
     if [ -n "$committed" ] && [ "$committed" != "$status" ]; then
       case "$committed:$status" in
         claimed:in_progress|ready:in_progress|tests_ready:in_progress) ;;
         in_progress:review|in_progress:blocked|in_progress:failed|in_progress:tests_ready) ;;
         review:changes_requested|changes_requested:review|changes_requested:in_progress|review:done) ;;
+        review:closed|in_progress:closed|blocked:closed) ;;
         *) die1 "agent may not set $status from $committed — $committed is what the state root has for $id, and $committed → $status is not an agent transition (TaskTransitions.Agent). Report a status you may reach from there, or leave it to the human who owns this one." ;;
       esac
     fi
@@ -212,6 +227,11 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   # status asked for, so the file never carries a status the state root would refuse
   if [ -n "$set_status" ]; then
     setf "$task" status "$set_status" || die2 "status could not be rewritten in $task"
+    # T-186: a terminal task has no owner. Leaving `owner:` set is what made the Stop hook's owner-based lookup
+    # pick the finished task up again and re-report it, round after round, until the budget ran out.
+    case "$set_status" in
+      done|closed) setf "$task" owner null || die2 "owner could not be released in $task" ;;
+    esac
   fi
 
   # the implement test lock of the solve coordinator: policy-guard.sh denies a test-file edit only when the task

@@ -1,5 +1,5 @@
 #!/bin/sh
-# The local twin of the dashboard's approve action (ADR-0050, the posture without a dashboard): `<from> → ready`
+# The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
 # as two commits, so plan_hash pins exactly the body a human approved — the first commit flips the status (and
 # bumps `attempt` from failed, sets `phase: implement` from tests_ready, as StateRepository does), the second
 # writes the SHA of that commit into plan_hash. Nothing is pushed.

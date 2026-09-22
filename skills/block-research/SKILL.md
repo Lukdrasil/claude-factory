@@ -30,8 +30,8 @@ and `CONTEXT.md` applies only then.
    answered sub-question and before any long search (ADR-0009).
 2. Cut `# Goal` into sub-questions under `## Remaining`, then answer them one at a time. The source of truth
    is the **code**, documentation only a supplement. Every claim carries a `path/file.ext:line` or a SHA.
-3. Write the report to `../state/repos/<key>/research/<id>-<slug>.md`. A human reads it in the dashboard
-   (ADR-0025), so it has to make sense a year from now: a one-sentence answer in bold, then `## Question`,
+3. Write the report to `../state/repos/<key>/research/<id>-<slug>.md`. A human reads it later (ADR-0025), so
+   it has to make sense a year from now: a one-sentence answer in bold, then `## Question`,
    `## Findings`, `## Conclusion and recommendation`, `## Left open`. **Under 800 words**, a finding one
    claim plus its reference, the conclusion under 100 words. Leave out the search that found it and what you
    rejected. Describing data flow, logic or architecture, put a ```mermaid fence inline in `## Findings`

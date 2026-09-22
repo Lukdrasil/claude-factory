@@ -18,5 +18,10 @@ that used to sit in that key lives here instead.
   MR-body marker or a Conventional Commits first line. A source file mentioning a banned phrase still passes.
 - `Stop` has exactly one hook. Both Stop scripts write into the same state clone, so `bin/session-stats.sh`
   is chained from the end of `self-report-check.sh` rather than running beside it over one git index.
+- `session-start.sh` warns when the running plugin root looks older than this repo: `bin/attribution-gate.sh`
+  missing from it, a `.claude-plugin/plugin.json` version other than the installed one, or, for a dev checkout,
+  a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR
+  that does not bump it never reaches a session (incident C, 2026-09-22: three PRs shipped nothing while the
+  cache sat at 0.12.0). Bump the version in `.claude-plugin/plugin.json` with any change to the hooks.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
   name. `tests/hooks-wiring.test.sh` enforces both.

@@ -13,6 +13,6 @@ The worker procedure in `SKILL.md` applies with these deltas:
   `gh issue view <url> --json number,title,body,labels,state,milestone,comments`, or
   `glab issue view <url> -F json` and `glab issue view <url> --comments`, and look at attachments through the links
   in the issue. The rest of step 2 stands: read every comment and attachment, and write what they show into the draft.
-- **Creating the draft.** Step 6 needs `DASHBOARD_URL` and `DASHBOARD_API_TOKEN` in your environment. Without
-  them use the fallback at the end of `draft-api.md`, writing the file with the **Write** tool and committing
-  it, knowing the id can collide with a parallel triage.
+- **Creating the draft.** With no `DASHBOARD_URL` in your environment, which is the ordinary case, step 6 is
+  `${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>` and `draft-api.md` does not apply.
+  Read `draft-api.md` only when `DASHBOARD_URL` and `DASHBOARD_API_TOKEN` are both set.

@@ -43,8 +43,10 @@ first. The rest is the worker procedure.
    draft, never something you carry out. A source you cannot decide an archetype for is `blocked`, with the
    question in the progress file as `## Question`.
 5. Check no task in `repos/*/tasks/*.md` already references this issue; one that does **is** the result.
-6. Write the draft from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, through the Task API per
-   `references/draft-api.md`.
+6. Write the draft body from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, then create the task. The
+   writer depends on one switch, `DASHBOARD_URL`: empty or unset (the standalone posture, and the ordinary
+   case) means `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>`; set means the Task
+   API per `references/draft-api.md`, which is the only reason to open that file.
 7. Append the draft's `## Issue update` to the issue description per `references/issue.md`; a failed write
    is not fatal.
 8. Commit the progress file and self-report `review` per `references/self-report.md`; `mr_url` stays `null`.
