@@ -15,6 +15,8 @@ Extracted from `src/harness-plugin` of the `claude-os` repo.
 
 Skills are then invoked as `/claude-factory:<skill>`, e.g. `/claude-factory:grill`.
 
+A Windows clone gets LF line endings by design: `.gitattributes` pins them, so the `sh` scripts run under Git Bash.
+
 ## Layout
 
 | path | what |
