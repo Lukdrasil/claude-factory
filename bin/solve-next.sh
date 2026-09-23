@@ -3,8 +3,9 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>]
+#   solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
+#                            --ui also records the step in that session's session.md through ui-session.sh
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
@@ -36,15 +37,16 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state=''
+id='' state='' ui=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    --ui) [ $# -ge 2 ] || die "--ui needs a value"; ui=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]"
 case "$id" in
   T-[0-9][0-9][0-9]) ;;
   *) die "'$id' is not a parent task id of the shape T-NNN" ;;
@@ -110,6 +112,7 @@ emit() { # <heading> <completion line>
   printf '## %s\n' "$1"
   printf 'Completion: %s\n' "$2"
   printf 'Commands:\n'
+  [ -z "$ui" ] || sh "$bin/ui-session.sh" --session "$ui" --step "$1"
 }
 cmd() { printf '  %s\n' "$1"; }
 
