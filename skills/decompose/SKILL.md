@@ -19,7 +19,7 @@ human's job.
 | frontmatter `task:` | the source task, its `- forge issue:` line copied onto every block, and the task to recommend closing at the end |
 | `## Proposed tasks` | one block per proposal; `tier`, `archetype`, `complexity`, `docs` and `acceptance` 1:1 |
 | `## Program design` | the members a proposal's `design:` names, verbatim into `## Context` under `Design (approved in the grill):` |
-| `## Decisions` and `## Out of scope` | into every block's `## Context` and `## Out of scope` |
+| `## Terms`, `## Decisions` and `## Out of scope` | into every block's `## Context` and `## Out of scope` |
 | `## Gap ledger` | an open row stops the script, and you |
 
 ## Preconditions

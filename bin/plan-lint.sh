@@ -12,6 +12,9 @@
 #   a `tier`, `archetype` or `complexity` outside the allowed values, or missing
 #   a `red` proposal with no `## Quality scenarios` row
 #
+# invariant: the gap ledger's `state` column is found by its header cell, so a ledger with the `deps` column and
+# invariant: one without it read the same; a header with no `state` cell falls back to the fourth column.
+#
 # invariant: under a `### `path`` heading of `## Program design`, a line that ends with a full stop is one of
 # invariant: the at most two sentences describing the member above it, and every other non-blank line is a
 # invariant: member signature. That is the shape the grill's design round writes and plan-ready.md shows.
@@ -118,10 +121,14 @@ out=$(awk '
   sec == "Gap ledger" && /^\|/ {
     if ($0 ~ /^\|[ \t|:-]*\|[ \t|:-]*$/) next
     gaprow++
-    if (gaprow == 1) next
     n = split($0, cell, "|")
+    if (gaprow == 1) {
+      statecol = 5
+      for (i = 2; i < n; i++) if (trim(cell[i]) == "state") statecol = i
+      next
+    }
     row = trim(cell[2])
-    state = (n >= 5) ? trim(cell[5]) : ""
+    state = (n > statecol) ? trim(cell[statecol]) : ""
     if (state != "closed") bad("gap ledger row " row " has state `" state "`, not `closed`")
     next
   }

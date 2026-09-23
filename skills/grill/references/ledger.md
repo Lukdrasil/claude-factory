@@ -8,7 +8,23 @@ The only evidence the grill happened. Every gap is a row with a type, never a no
 | `research` | a fact about the existing system | you, reading code and ADRs read-only, the answer into the row |
 | `prototype` | a question code answers faster than a discussion would | throwaway code, only the finding survives |
 
+Every row carries `deps`: the rows it depends on, `-` for a root, so the design tree stays readable in the
+plan. A deferred question is closed, not left open: its answer is `deferred:` and what would reopen it, and it
+goes to `## Out of scope`. A reopened row is open again until the human answers it.
+
 The ledger is clean when every row is `closed` and carries an answer. Only then comes the design round.
+
+## Locked or routine
+
+A closed `decision` is **locked** when it passes all three gates: hard to reverse, surprising without its
+context, and a real trade-off. It goes into `## Decisions` tagged `[locked]`, with every rejected option and
+why it lost, so nobody re-decides it in a block session and plan-check can hold it against the ADRs. Every
+other decision is routine: one line, no tag.
+
+## Terms
+
+Keep `## Terms` as the vocabulary settles: the term, a one-sentence definition, and the words to avoid for it.
+Use the terms in every later question, the proposals and the program design.
 
 ## What the loop must ask
 

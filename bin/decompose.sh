@@ -165,6 +165,7 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
   /^## / { sec = trim(substr($0, 4)); design_file = ""; next }
 
   sec == "Decisions" && /^[-*][ \t]/ { dec[++nd] = $0; next }
+  sec == "Terms" && /^[-*][ \t]/ { term[++nt] = $0; next }
 
   sec == "Program design" && /^### / {
     hline[++nh] = $0
@@ -268,6 +269,11 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
       print "## Context" > f
       print "From the plan `" rel "`" > f
       if (pctx[p] != "") print pctx[p] > f
+      if (nt > 0) {
+        print "" > f
+        print "Terms (from the grill):" > f
+        for (i = 1; i <= nt; i++) print term[i] > f
+      }
       if (nd > 0) {
         print "" > f
         print "Decisions (from the grill):" > f

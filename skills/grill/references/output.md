@@ -8,7 +8,8 @@ sentence: `tier`, `archetype` and `complexity` per `<plugin-root>/skills/_shared
 only proposals from this plan and no cycles; `docs`, `none` or the docs this task updates in the same branch;
 `design`, the members of `## Program design` this task implements, by file and name, `none` only for a
 `research` proposal. A proposal that changes public behaviour or architecture and still says `none` for docs
-needs the one sentence why. Decompose does not remake these decisions; `decompose.sh` copies them 1:1.
+needs the one sentence why. A term of `## Terms` that the product repo's `CONTEXT.md` does not define puts
+`CONTEXT.md` into the `docs` of the proposal that introduces it. Decompose does not remake these decisions; `decompose.sh` copies them 1:1.
 
 ## The plan file
 
@@ -19,7 +20,8 @@ sh <plugin-root>/bin/task-template.sh plan-ready
 ```
 
 Write it to `<state>/repos/<repo-key>/plans/<slug>-plan-ready.md`, where `<slug>` is two to four words from
-the spec, lowercase and hyphenated, and commit it from `<state>`. The plan is an artifact: it outlives the
+the spec, lowercase and hyphenated, and commit it from `<state>`. It is the grill file finished: move
+`<slug>-grill.md` onto it, so no working file outlives the plan. The plan is an artifact: it outlives the
 session and shows up in the diff.
 
 `task:` is the id of the draft task this grill hung off, the only link back: the blocks become its
