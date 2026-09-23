@@ -39,3 +39,21 @@ calls AskUserQuestion:
 4. **Close** the ask once that turn has settled every question in it:
    `sh <plugin-root>/bin/ui-ask.sh --session <session_id> --close <ask>`. `Qn more` or a partial round leaves
    it open: answer, and write the ask again under the same id when its questions changed.
+
+## The relay
+
+`bin/ui-relay.sh`, one per machine in its own herdr tab, is how a browser answer becomes that next user turn.
+It reads each answer file after the seq in `sessions/<sid>/delivered` and types it verbatim, no prefix, into
+the pane of `session.md` with `herdr agent prompt --wait`, one answer per call, in seq order. It types only
+once the pane has held `idle` or `done` for the settle time (2 s, `--settle`) since its last state change, and
+only while `herdr agent get` still reports the session id; then it records the seq in `delivered`, so a
+restarted relay resumes where it stopped. A herdr stall after the submit counts as typed, never as a retry.
+
+A held answer stays queued and `sessions/<sid>/relay` holds one line `<seq> <reason>`, removed once the queue
+is empty:
+
+- `blocked`: the pane sits at a dialog. The relay never answers it; the human does, in the pane.
+- `gone`: the pane is missing, or reports another session id or none.
+- `prompt-failed`: herdr refused the prompt before sending it.
+
+`--once` makes one pass over every session, up to the first hold or working pane, and exits.
