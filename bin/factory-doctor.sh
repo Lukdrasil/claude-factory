@@ -154,6 +154,23 @@ case "$spawn" in
   *) missing "spawn: $spawn in factory.yml" 'it takes herdr or manual' ;;
 esac
 
+# --- the Factory UI ------------------------------------------------------------------------------------------
+ui=off
+[ ! -f "$state/factory.yml" ] || ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" | head -n1 \
+  | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+if [ "$ui" = docker ]; then
+  if docker info >/dev/null 2>&1; then ok "ui: docker, the Docker daemon answers"
+  else missing "ui: docker, but the Docker daemon does not answer" 'install and start Docker, or set ui: off in factory.yml'; fi
+  if command -v herdr >/dev/null 2>&1; then ok "ui: docker, herdr on PATH"
+  else missing "ui: docker, but herdr is not on PATH" 'install herdr from https://herdr.dev, or set ui: off in factory.yml'; fi
+  if grep -Eq '"promptSuggestionEnabled"[[:space:]]*:[[:space:]]*false' "${HOME:-/nonexistent}/.claude/settings.json" 2>/dev/null; then
+    ok "ui: docker, promptSuggestionEnabled: false in ~/.claude/settings.json"
+  else
+    missing "ui: docker, but promptSuggestionEnabled is not false in ~/.claude/settings.json" \
+      "run factory-init.sh --root $root --ui docker"
+  fi
+fi
+
 # --- the tools the toolset binds ---------------------------------------------------------------------------------
 tool() { # <binary> <install command>
   if command -v "$1" >/dev/null 2>&1; then ok "$1 on PATH"; else missing "$1 on PATH" "$2"; fi
