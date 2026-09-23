@@ -2,7 +2,8 @@
 # decompose.sh over a throwaway state clone: three proposals become three block files, the frontmatter is the
 # proposal's own values, each design section carries exactly the members the proposal names, the manifest
 # repeats the plan's ordinals, the source task's forge issue is copied over, and a plan with an open gap
-# ledger row is refused without writing anything.
+# ledger row is refused without writing anything. The terms and the locked tag are carried into the context, and
+# the ledger's `deps` column does not move the `state` plan-lint reads.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -37,8 +38,11 @@ created: 2026-09-20
 # Spec
 The rows should leave the box as a file.
 
+## Terms
+- **stream**: one ordered sequence of rows from one source. Avoid: feed, channel
+
 ## Decisions
-- csv, not xlsx: the consumer is a shell pipeline, the human chose it
+- [locked] csv, not xlsx: the consumer is a shell pipeline, the human chose it; rejected: xlsx, no shell reader
 - one writer per stream: no buffering across streams
 
 ## Program design
@@ -96,9 +100,10 @@ def run_export(args)
 No xlsx, and no streaming over the network.
 
 ## Gap ledger
-| # | type | question | state | answer |
-|---|---|---|---|---|
-| 1 | decision | csv or xlsx | closed | csv |
+| # | type | question | deps | state | answer |
+|---|---|---|---|---|---|
+| 1 | decision | csv or xlsx | - | closed | csv |
+| 2 | decision | one writer per stream | 1 | closed | yes |
 EOF
 
 fail=0
@@ -138,7 +143,8 @@ has 'depends_on is left empty'       "$f3" 'depends_on: []'
 has 'plan_hash is null'              "$f2" 'plan_hash: null'
 has 'the goal is the proposal goal'  "$f2" 'feat(export): write the rows of a stream into an open handle'
 has 'the plan is named in context'   "$f2" 'From the plan `repos/demo/plans/x-plan-ready.md`'
-has 'the decisions are carried over' "$f2" '- csv, not xlsx: the consumer is a shell pipeline, the human chose it'
+has 'the decisions are carried over' "$f2" '- [locked] csv, not xlsx: the consumer is a shell pipeline, the human chose it'
+has 'the terms are carried over'     "$f2" '- **stream**: one ordered sequence of rows from one source. Avoid: feed, channel'
 has 'the acceptance keeps backticks' "$f2" '`pytest tests/test_exporter.py`'
 has 'the docs value is carried over' "$f2" 'docs/export.md'
 has 'the plan-level out of scope'    "$f2" 'No xlsx, and no streaming over the network.'
@@ -171,7 +177,7 @@ printf '%s\n' "$manifest" | grep -qx "3 $f3 2"; check 'the manifest is in ascend
 [ "$(printf '%s\n' "$manifest" | grep -c .)" = 3 ]; check 'the manifest is the only output' $?
 
 bad="$state/repos/demo/plans/open-plan-ready.md"
-sed 's/^| 1 | decision | csv or xlsx | closed | csv |/| 1 | decision | csv or xlsx | open | |/' "$plan" > "$bad"
+sed 's/^| 2 | decision | one writer per stream | 1 | closed | yes |/| 2 | decision | one writer per stream | 1 | open | |/' "$plan" > "$bad"
 badout="$tmp/badout"
 if sh "$bin/decompose.sh" "$bad" --out "$badout" --state "$state" >/dev/null 2>"$tmp/err2"; then
   printf 'FAIL an open gap ledger row is refused\n'; fail=1

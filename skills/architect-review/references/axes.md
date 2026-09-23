@@ -59,5 +59,8 @@ Findings: the plan reverses an accepted decision without proposing a superseding
 question an ADR already closed; it depends on an ADR that is `superseded` or `rejected`. A deliberate
 reversal is fine, it just has to arrive as a proposed ADR rather than a silent change.
 
+A `[locked]` decision in the plan's `## Decisions` that no accepted ADR covers is an ADR candidate: a finding
+that proposes the ADR, with the rejected options the plan lists as its alternatives.
+
 **Done when** every accepted ADR governing the touched area is read and either cited as satisfied or raised
 as a finding.

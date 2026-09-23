@@ -141,7 +141,11 @@ created: <YYYY-MM-DD>
 # Spec
 One sentence: what should happen and why.
 
+## Terms
+- **<term>**: <one-sentence definition>. Avoid: <words not to use for it>
+
 ## Decisions
+- [locked] <what was decided>: <why, whose choice>; rejected: <each option that lost, and why>
 - <what was decided>: <why, whose choice>
 
 ## Quality scenarios
@@ -176,9 +180,9 @@ One sentence: what should happen and why.
 What the whole spec deliberately does not do (and why).
 
 ## Gap ledger
-| # | type | question | state | answer |
-|---|---|---|---|---|
-| 1 | decision | <question> | closed | <answer> |
+| # | type | question | deps | state | answer |
+|---|---|---|---|---|---|
+| 1 | decision | <question> | - | closed | <answer> |
 TEMPLATE
     ;;
   progress)
