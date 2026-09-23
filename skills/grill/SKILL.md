@@ -34,7 +34,9 @@ Two to four options; a question with no sensible options has none and the recomm
 has none. The human answers in shorthand, several in one message: `Q3 A`, `Q3 ok` (the recommendation),
 free text, `Q4 defer`, `Q2 reopen`. `explore Q3` asks you for a table, one row per option, two to four pros
 and cons each, specific to this repo and as honest about the recommended option's cons; if writing it changes
-your mind, say so and give the new recommendation.
+your mind, say so and give the new recommendation. `Q3 more` asks for more detail before the human decides:
+what changes in the code under each option, what the recommendation assumes, and what would change it. It is
+not an answer; the question stays open.
 
 Every answer reshapes the tree, pushing the frontier outward. Recompute it and ask the next round. A question whose answer depends on another question
 still open in this round belongs to a _later_ round. When an answer changes the recommendation of a question
