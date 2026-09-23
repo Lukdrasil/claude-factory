@@ -52,6 +52,13 @@ settled() { # <sid> <state_change_seq>: the pane has shown this state for the se
   [ "$since" != typed ] && [ $((t - since)) -ge "$settle_ms" ]
 }
 
+typed_into() { # <pane> <text>: herdr took the text; a stall comes after the input was sent, so it counts as typed
+  out=$(herdr agent prompt "$1" "$2" --wait --until working --until idle --until done --until blocked 2>/dev/null) \
+    && return 0
+  case "$out" in *'"agent_prompt_stalled"'*) return 0 ;; esac
+  return 1
+}
+
 step() { # <session dir>: types at most one answer; 0 while the queue may still move in this pass
   dir=$1 sid=${1##*/}
   [ -f "$dir/session.md" ] || return 1
@@ -74,7 +81,7 @@ step() { # <session dir>: types at most one answer; 0 while the queue may still 
   settled "$sid" "$cseq" || return 0
 
   text=$(cat "$file"; printf x)
-  if herdr agent prompt "$pane" "${text%x}" --wait >/dev/null 2>&1; then
+  if typed_into "$pane" "${text%x}"; then
     printf '%s typed\n' "$cseq" > "$state/$sid"
     put "$dir/delivered" "$seq"
     moved=1
