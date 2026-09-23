@@ -4,8 +4,8 @@ One small change in one worktree, edited by you. No blocks, no subagents, no gri
 
 ## Entry
 
-`factory solve <T-NNN> --quick`, or a task whose `tier` is green and whose `complexity` is low. One
-AskUserQuestion covers both the consent to the quick lane and the approval of the task body; a no sends the
+`factory solve <T-NNN> --quick`, or a task whose `tier` is green and whose `complexity` is low. One ask
+(`_shared/ask.md`) covers both the consent to the quick lane and the approval of the task body; a no sends the
 task to the full flow in `references/solve.md`.
 
 ## Exit back to the full flow

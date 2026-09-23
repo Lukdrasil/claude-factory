@@ -6,7 +6,10 @@ line of code comes from a subagent in its own worktree, and a subagent's report 
 ## The loop
 
 Run `<plugin-root>/bin/solve-next.sh <T-NNN>`, do what it prints, verify its `Completion:` line yourself,
-repeat until step 16. It reads the state, so its step is the one the state asks for.
+repeat until step 16. It reads the state, so its step is the one the state asks for. With `ui: docker` in
+`<state>/factory.yml` and `HERDR_ENV=1`, run `<plugin-root>/bin/solve-next.sh <T-NNN> --ui <session_id>`
+with the session_id of your identity line, so the step also lands in the session's `session.md`, and ask
+every question through `_shared/ask.md`.
 
 ## The worktree rule
 

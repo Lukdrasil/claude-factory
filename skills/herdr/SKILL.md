@@ -39,9 +39,9 @@ sh <plugin-root>/bin/session-monitor.sh                # lists them: <id> <repo>
 sh <plugin-root>/bin/factory-list.sh --root <work-dir> --status ready
 ```
 
-2. Ask **which one** with AskUserQuestion, one option per ready task with its goal line, nothing
-   pre-selected. Ask even when only one task is ready. Never spawn before the answer. Skip the question only
-   when the user's own message already named exactly one task id.
+2. Ask **which one** through `<plugin-root>/skills/_shared/ask.md`, one option per ready task with its goal
+   line, nothing pre-selected. Ask even when only one task is ready. Never spawn before the answer. Skip the
+   question only when the user's own message already named exactly one task id.
 
 3. Start it, and only it:
 
