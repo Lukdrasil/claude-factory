@@ -94,6 +94,10 @@ stale_plugin_warning() {
     host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
     [ -n "$host" ] || host=localhost
     printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
+    ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+    if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
+      sh "$(dirname -- "$0")/ui-session.sh" --session "$sid" --pane "${HERDR_PANE_ID:-}" >/dev/null
+    fi
   fi
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
   # every text they had read named one and the single sentence that says otherwise lives in a skill a worker
