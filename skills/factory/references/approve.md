@@ -12,8 +12,8 @@ This is the human's confirmation of a body they read — never a click the coord
 
 - **Show.** Print the task body in full — `# Goal`, `## Context`, `## Acceptance`, the block list when this is
   a decomposed parent. Completion: the human has read the text they are about to approve, not a summary.
-- **Ask.** AskUserQuestion: approve as is, or stop here (a "no" leaves the task exactly as it was — edit it by
-  hand and ask again, this reference does not edit bodies). Completion: a yes or a no recorded.
+- **Ask.** One ask (`_shared/ask.md`): approve as is, or stop here (a "no" leaves the task exactly as it was:
+  edit it by hand and ask again, this reference does not edit bodies). Completion: a yes or a no recorded.
 - **Approve.** On a yes, run `<plugin-root>/bin/task-approve.sh <id> --state <root>/state`.
   Exit 1 prints the reason (the wrong starting status): show it and stop. Completion: exit 0, two new
   commits in the state repo's log (the status flip, then `plan_hash`).

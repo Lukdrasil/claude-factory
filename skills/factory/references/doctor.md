@@ -21,9 +21,9 @@ missing. It gates nothing; the value is in the fixes you offer.
   - `docs/architecture` → the architecture-docs bootstrap (the `architecture-docs` skill); recommend it —
     the architect review points run once the repo has a model.
   Completion: every line is sorted into one of these.
-- **Offer the fixes.** One AskUserQuestion per missing tool, naming its install command; run the command
-  after the human answered yes to that tool, then rerun doctor. For `docs/architecture`, ask whether to start
-  the architecture-docs bootstrap now or later. Completion: every `missing:` line has a recorded answer, and
-  the ones answered yes now print `ok:`.
+- **Offer the fixes.** One ask (`_shared/ask.md`) per missing tool, naming its install command; run the
+  command after the human answered yes to that tool, then rerun doctor. For `docs/architecture`, ask whether
+  to start the architecture-docs bootstrap now or later. Completion: every `missing:` line has a recorded
+  answer, and the ones answered yes now print `ok:`.
 - **Report.** Repeat the remaining `missing:` lines to the user with what each costs a session: a toolset
   command noted and skipped, no architect review without a model. Completion: the user has the list.

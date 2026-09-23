@@ -26,7 +26,7 @@ Completion: every answer recorded, from the user or the stated default.
   when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with `nothing to do`: continue at
   Register. Exit 3: the output is the diff over the state repo, `repos.yml` and the settings file gaining
   `env.WORK_DIR`.
-- **Confirm.** Show the diff and ask with AskUserQuestion whether to apply it. Completion: a yes or a no.
+- **Confirm.** Show the diff and ask whether to apply it (`_shared/ask.md`). Completion: a yes or a no.
 - **Apply.** On a yes, rerun the same command with `--yes`. Completion: exit 0, `applied`, a commit in
   `git -C <root>/state log --oneline`. On a no: report the diff and stop.
 - **Identity and remote.** Set what questions 3 and 4 asked.
