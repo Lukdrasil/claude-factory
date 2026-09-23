@@ -7,7 +7,7 @@ the gates, and you never write a line of the change yourself.
 ## You are the monitor
 
 One herd is **one task and its subtasks**, the task the user named. If no task was named, list the ready ones
-(`session-monitor.sh` with no argument) and ask with AskUserQuestion which one; never start a herd on a task
+(`session-monitor.sh` with no argument) and ask which one (`_shared/ask.md`); never start a herd on a task
 nobody chose, and never start a second one alongside it.
 
 The moment `session-monitor.sh --task <T-NNN>` has printed its dispatch lines, arm the watcher through the
@@ -63,8 +63,8 @@ The rule behind the split: anything that writes the change is a session, anythin
    you dispatch and go back to 3.
 5. `<id> agent <state> -> blocked` means that session is at an approval or question dialog. Read it with
    `herdr agent read <id-lowercased> --source recent-unwrapped --lines 120`, ask the human with
-   AskUserQuestion, and answer with `herdr agent prompt <id-lowercased> "<the answer>"`. Never answer for
-   the human.
+   an ask (`_shared/ask.md`), and answer with `herdr agent prompt <id-lowercased> "<the answer>"`. Never
+   answer for the human.
 6. `<id> agent <state> -> gone` with the status unchanged is a session that died without reporting. Rerun
    `solve-next.sh` and dispatch it again; two deaths in a row is `_shared/blocked-question.md`.
 

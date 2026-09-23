@@ -32,9 +32,10 @@ and follow it. Without a subcommand: `init` when `WORK_DIR` is unset or has no `
 
 Every write to the user's settings or to the state repo happens after the human confirmed the printed diff:
 the script prints what it would change and stops (`factory-init.sh` and `factory-add-repo.sh` exit 3), you
-show that output, ask with AskUserQuestion, and rerun with `--yes` on a yes. A no ends the subcommand with
-the printed diff as the report and the user's files as they were. Tool installs have the same shape: doctor
-prints the install command, you offer it one tool per question, and run the ones the human said yes to.
+show that output, ask through `${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`, and rerun with `--yes` on a yes.
+A no ends the subcommand with the printed diff as the report and the user's files as they were. Tool installs
+have the same shape: doctor prints the install command, you offer it one tool per question, and run the ones
+the human said yes to.
 
 The hooks enforce the rest. A refused command carries its own fix in the deny message.
 
