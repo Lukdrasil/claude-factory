@@ -38,7 +38,9 @@ your mind, say so and give the new recommendation. `Q3 more` asks for more detai
 what changes in the code under each option, what the recommendation assumes, and what would change it. It is
 not an answer; the question stays open.
 
-Every answer reshapes the tree, pushing the frontier outward. Recompute it and ask the next round. A question whose answer depends on another question
+After every answered round, first write the grill file, `<state>/repos/<repo-key>/plans/<slug>-grill.md`
+(see `## The grill file`); the round is not finished until it is on disk. Every answer reshapes the tree,
+pushing the frontier outward. Recompute it and ask the next round. A question whose answer depends on another question
 still open in this round belongs to a _later_ round. When an answer changes the recommendation of a question
 already asked and still open, ask it again in the next round marked `(updated)`.
 
@@ -65,6 +67,8 @@ Checked before the first interview question, so an unfindable root costs no inte
 The interview survives a dead session. After every round the human answers, write the plan as it stands to
 `<state>/repos/<repo-key>/plans/<slug>-grill.md`: the `plan-ready` skeleton with every ledger row, open ones
 included with their `deps`, the terms and the decisions settled so far. It is a working file, not committed.
+`<slug>` is the one `references/output.md` gives the plan: two to four words from the spec, lowercase and
+hyphenated.
 
 Before the first question, look in that folder for a `*-grill.md` whose `task:` is this grill's task; with
 `task: none`, list the ones there and ask which, if any. Found, it is a resume: say in one line which rows
@@ -74,7 +78,8 @@ row again.
 ## Steps
 
 1. Run the interview loop, keeping the gap ledger of `references/ledger.md`, which also holds the musts the
-   loop has to ask about, and close every row, dry run included.
+   loop has to ask about, and close every row, dry run included. Every answered round completes with the
+   grill file `<slug>-grill.md` written.
 2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
 3. Write the proposals and the plan, lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
    `references/output.md`.
