@@ -58,7 +58,9 @@ fi
 
 # invariant: task_of reads the shell variable $state, it takes no state argument
 task=$(task_of "$id" || :)
-[ -n "$task" ] || die "$id resolves to no task file under $state/repos/*/tasks"
+[ -n "$task" ] || die "$id resolves to no task file in $state"
+# task_of also finds an archived task (state-archive.sh), and a finished parent has no wave left to spawn
+case "$task" in */archive/*) die "$id is archived, a finished task has nothing to spawn" ;; esac
 
 key=${task#"$state/repos/"}
 key=${key%%/*}

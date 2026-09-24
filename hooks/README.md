@@ -17,8 +17,14 @@ that used to sit in that key lives here instead.
   `$(cat path)`, a `< path` redirect - and scans those, and it matches a git verb through `-C dir` and
   `-c k=v` options; on a write it watches a path that looks like a message or a body and any text carrying an
   MR-body marker or a Conventional Commits first line. A source file mentioning a banned phrase still passes.
-- `Stop` has exactly one hook. Both Stop scripts write into the same state clone, so `bin/session-stats.sh`
-  is chained from the end of `self-report-check.sh` rather than running beside it over one git index.
+- The Stop hooks that write the state clone are chained from `self-report-check.sh`: both write into the same
+  state clone, so `bin/session-stats.sh` runs from the end of `self-report-check.sh` rather than beside it over
+  one git index. `rearm-check.sh` is the second Stop hook and writes nothing there: in a parent worktree whose
+  units run in herdr, and in the state clone for every parent of a request that is in flight, it exits 2 with
+  one herd-list line per herd that no `monitor` entry of the hook's `background_tasks` watches with
+  `herd-watch.sh <T-id>`, so a CEO or lead whose Monitor expired, or that was restarted, arms it again. Never
+  when `stop_hook_active` is true, at most twice per session (its counter `.harness-rearm-<sid>` sits in the
+  stamp directory, outside the state clone).
 - `session-start.sh` warns when the running plugin root looks older than this repo: `bin/attribution-gate.sh`
   missing from it, a `.claude-plugin/plugin.json` version other than the installed one, or, for a dev checkout,
   a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR
@@ -33,7 +39,8 @@ that used to sit in that key lives here instead.
 - `playbook-inject.sh --hook` on `SubagentStart` hands the subagent the playbook of its role for the repo key of
   its cwd, `repos/<key>/agents/<role>/playbook.md` in the state clone, as `additionalContext`, or nothing.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
-  name. `tests/hooks-wiring.test.sh` enforces both, and that the capacity and playbook hooks sit on their events.
+  name. `tests/hooks-wiring.test.sh` enforces both, that the capacity and playbook hooks sit on their events,
+  and the Stop order with `rearm-check.sh` calling no state writer.
 
 ## policy-guard rules
 
