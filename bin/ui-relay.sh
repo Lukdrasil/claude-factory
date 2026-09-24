@@ -2,7 +2,9 @@
 # The one relay of the Factory UI: types each answer file after <UI home>/sessions/<sid>/delivered into the herdr
 # pane of that session.md, in seq order, once the pane has held idle or done for the settle time and still reports
 # the session id, then records the seq in delivered. A held answer stays queued and sessions/<sid>/relay says why:
-# `<seq> blocked|gone|prompt-failed`. --once makes one pass over every session and exits.
+# `<seq> blocked|gone|prompt-failed`. Every pass writes sessions/<sid>/agent for every session, its only writer: the
+# pane's agent_status, or `gone` when herdr does not know the pane or it reports another session id. --once makes
+# one pass over every session and exits.
 #
 #   ui-relay.sh [--home <dir>] [--settle <s>] [--once]
 set -eu
@@ -62,17 +64,21 @@ typed_into() { # <pane> <text>: herdr took the text; a stall comes after the inp
 step() { # <session dir>: types at most one answer; 0 while the queue may still move in this pass
   dir=$1 sid=${1##*/}
   [ -f "$dir/session.md" ] || return 1
+  pane=$(pane_of "$dir/session.md") json=''
+  [ -z "$pane" ] || json=$(herdr agent get "$pane" 2>/dev/null) || json=''
+  got=$(printf '%s' "$json" | sed -n 's/.*"agent_session":{[^}]*"value":"\([^"]*\)".*/\1/p')
+  agent=$(printf '%s' "$json" | sed -n 's/.*"agent_status":"\([^"]*\)".*/\1/p')
+  if [ -z "$pane" ] || [ "$got" != "$sid" ]; then agent=gone; fi
+  put "$dir/agent" "$agent"
+
   d=$(cat "$dir/delivered" 2>/dev/null) || d=0
   case "$d" in ''|*[!0-9]*) d=0 ;; esac
   next=$(queued "$dir" "$d")
   if [ -z "$next" ]; then rm -f "$dir/relay"; return 1; fi
   seq=${next%% *} file=$dir/answers/${next#* }
 
-  pane=$(pane_of "$dir/session.md") json=''
-  [ -z "$pane" ] || json=$(herdr agent get "$pane" 2>/dev/null) || json=''
-  got=$(printf '%s' "$json" | sed -n 's/.*"agent_session":{[^}]*"value":"\([^"]*\)".*/\1/p')
-  if [ -z "$pane" ] || [ "$got" != "$sid" ]; then put "$dir/relay" "$seq gone"; return 1; fi
-  case "$(printf '%s' "$json" | sed -n 's/.*"agent_status":"\([^"]*\)".*/\1/p')" in
+  case "$agent" in
+    gone) put "$dir/relay" "$seq gone"; return 1 ;;
     idle|done) ;;
     blocked) put "$dir/relay" "$seq blocked"; return 1 ;;
     *) return 1 ;;

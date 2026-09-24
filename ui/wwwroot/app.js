@@ -72,6 +72,7 @@ function group(id) {
     task: S.board.find((t) => t.id === id),
     blocks: S.board.filter((t) => t.id !== id && groupOf(t.id) === id),
     sessions: S.sessions.filter((s) => groupOf(s.task) === id),
+    allSessions: S.sessions,
     asks: allAsks()
       .filter((a) => groupOf(a.task) === id && (a.status === 'open' || S.shown.has(keyOf(a))))
       .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified)),

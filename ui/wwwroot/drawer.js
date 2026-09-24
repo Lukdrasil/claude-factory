@@ -2,6 +2,7 @@ import { esc, renderAsk } from './ask-card.js';
 import { renderTaskPanels } from './task-panels.js';
 import { renderBlockedQuestion } from './blocked.js';
 import { renderVisual } from './visual.js';
+import { renderWave } from './wave.js';
 
 const EMPTY = { items: {}, editing: {}, drafts: {} };
 
@@ -19,7 +20,7 @@ function context(group) {
   return h;
 }
 
-/** The drawer of one task or of setup: its open asks first, then a task's blocked question and solve panels, then its context. */
+/** The drawer of one task or of setup: its open asks first, then a task's blocked question, wave and solve panels, then its context. */
 export function renderDrawer(group) {
   const setup = group.id === 'setup';
   const el = document.createElement('aside');
@@ -33,7 +34,7 @@ export function renderDrawer(group) {
     const task = { ...group.detail, sessions: group.sessions, asks: group.asks, staged: group.staged };
     const panels = renderTaskPanels(task);
     panels.querySelectorAll('[data-ask]').forEach((a) => inPanels.add(a.dataset.ask));
-    asks.after(...[renderBlockedQuestion(task, group.sessions), panels].filter(Boolean));
+    asks.after(...[renderBlockedQuestion(task, group.sessions), renderWave(task, group.allSessions), panels].filter(Boolean));
   }
   el.querySelector('.context').before(...group.sessions.filter((s) => s.visual).map((s) => renderVisual({
     ...s.visual,

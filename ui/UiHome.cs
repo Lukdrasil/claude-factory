@@ -4,7 +4,7 @@ public sealed record AskInfo(string Ask, string Task, string Flow, string Step, 
 
 public sealed record VisualInfo(string Row, string Version, string Status);
 
-public sealed record SessionInfo(string Sid, string Pane, string Flow, string Task, string Step, List<AskInfo> Asks, VisualInfo? Visual);
+public sealed record SessionInfo(string Sid, string Pane, string Flow, string Task, string Step, string Agent, List<AskInfo> Asks, VisualInfo? Visual);
 
 public enum AnswerStatus
 {
@@ -59,7 +59,7 @@ public sealed partial class UiHome(string root)
     }
 
     /// <summary>
-    /// Every session under <c>sessions/</c> with its asks. An ask is sent once an answer file names it, and held with the
+    /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file names it, and held with the
     /// reason of <c>relay</c> while the relay holds one of its answers. An unreadable session is skipped.
     /// </summary>
     public List<SessionInfo> Sessions()
@@ -97,6 +97,7 @@ public sealed partial class UiHome(string root)
         var answers = AnswerFiles(Path.Combine(dir, "answers"));
         var relay = Path.Combine(dir, "relay");
         var held = File.Exists(relay) ? File.ReadAllText(relay).Trim().Split(' ', 2) : [];
+        var agent = Path.Combine(dir, "agent");
         var asks = Path.Combine(dir, "asks");
         return new SessionInfo(
             Path.GetFileName(dir),
@@ -104,6 +105,7 @@ public sealed partial class UiHome(string root)
             fields.GetValueOrDefault("flow", ""),
             fields.GetValueOrDefault("task", ""),
             fields.GetValueOrDefault("step", ""),
+            File.Exists(agent) ? File.ReadAllText(agent).Trim() : "",
             Directory.Exists(asks)
                 ? Directory.EnumerateFiles(asks, "*.md")
                     .Where(f => !Path.GetFileName(f).StartsWith('.'))
