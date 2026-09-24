@@ -105,6 +105,27 @@ put s3 o1 T-003 solve '2026-09-24 09:30' <<'EOF'
 
 ➡️ **A**: it is answered where it was asked.
 EOF
+put s3 m1 T-003 solve '2026-09-24 09:31' <<'EOF'
+The preamble sentence of m1, before its first question.
+
+❓ **Q1** - **Which runner?**: how the page is started.
+
+The paragraph under Q1 of m1.
+
+| runner | start | stop |
+|---|---|---|
+| script | ui-up.sh | ui-down.sh |
+| compose | docker compose up | docker compose down |
+
+### The section of m1
+
+The sentence under the section of m1.
+
+  **A** the script alone
+  **B** run `ui-up.sh` then `ui-down.sh`
+
+➡️ **B**: one pair of commands.
+EOF
 put s4 d1 none doctor '2026-09-24 10:00' <<'EOF'
 # Doctor
 
@@ -118,7 +139,10 @@ printf '1 blocked\n' > "$ui/sessions/s1/relay"
 
 has 'CONTEXT.md defines the drawer'                           '^- \*\*drawer\*\*:' "$(cat "$repo/CONTEXT.md")"
 
-# --- the server, then the browser --------------------------------------------------------------------------------
+# --- the image from this tree, so the page under test is the one in ui/wwwroot, then the server and the browser ---
+ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/.claude-plugin/plugin.json" | head -n1)
+timeout 15m docker build -q -t "claude-factory-ui:$ver" "$repo/ui" > "$tmp/build.out" 2>&1 \
+  || { bad "building claude-factory-ui:$ver failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
 up --state "$state1"; rc=$?
 is 'ui-up.sh exits 0'                                         "$rc" 0
 [ "$rc" = 0 ] || { sed 's/^/  up: /' "$tmp/up.err" | tail -n 30; exit 1; }
