@@ -59,7 +59,8 @@ aside { position: fixed; top: 48px; right: 0; bottom: 0; width: 560px; overflow-
 @media (max-width: 720px) { aside { left: 0; width: auto; border-left: 0; } }
 .drawer-h { position: sticky; top: 0; display: flex; gap: 8px; align-items: flex-start; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .drawer-h h2 { flex: 1; font-size: 15px; }
-.asks, .context { padding: 8px 16px; }
+.asks, .context, .visual { padding: 8px 16px; }
+.visual iframe { display: block; width: 100%; height: 420px; margin-top: 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
 
 .ask { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--panel); }
 .ask.answered { opacity: .7; }

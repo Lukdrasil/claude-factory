@@ -1,6 +1,7 @@
 import { esc, renderAsk } from './ask-card.js';
 import { renderTaskPanels } from './task-panels.js';
 import { renderBlockedQuestion } from './blocked.js';
+import { renderVisual } from './visual.js';
 
 const EMPTY = { items: {}, editing: {}, drafts: {} };
 
@@ -34,6 +35,12 @@ export function renderDrawer(group) {
     panels.querySelectorAll('[data-ask]').forEach((a) => inPanels.add(a.dataset.ask));
     asks.after(...[renderBlockedQuestion(task, group.sessions), panels].filter(Boolean));
   }
+  el.querySelector('.context').before(...group.sessions.filter((s) => s.visual).map((s) => renderVisual({
+    ...s.visual,
+    sid: s.sid,
+    token: group.token,
+    ask: s.asks.filter((a) => a.status === 'open').sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))[0]?.ask,
+  })));
   const top = group.asks.filter((a) => !inPanels.has(`${a.sid}/${a.ask}`));
   asks.append(...top.map((a) => renderAsk(a, group.staged[`${a.sid}/${a.ask}`] || EMPTY)));
   if (!top.length) asks.innerHTML = '<p class="muted">Nothing waits on you here.</p>';

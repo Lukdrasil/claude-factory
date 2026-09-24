@@ -22,6 +22,7 @@ app.MapGet("/api/tasks/{id}", (string id, StateReader state) => Api.TaskDetail(i
 app.MapGet("/api/sessions", (UiHome home) => Results.Ok(home.Sessions()));
 app.MapGet("/api/setup", (StateReader state, UiHome home) => Api.Setup(state, home));
 app.MapPost("/api/answers/{sid}", (string sid, AnswerRequest req, UiHome home) => Api.PostAnswer(sid, req, home));
+app.MapGet("/visual", (HttpContext ctx, UiHome home) => Api.Visual(ctx, home));
 app.Run();
 
 /// <summary>The page's composed shorthand for one ask, exactly as the relay will type it.</summary>
@@ -83,22 +84,44 @@ static class Api
             _ => Results.BadRequest(),
         };
 
+    /// <summary>
+    /// The visual of one session, with the token as the query parameter <c>token</c>: 401 before anything else,
+    /// 400 for a sid outside <c>[A-Za-z0-9-]+</c>, 404 without <c>visual.html</c>.
+    /// </summary>
+    public static IResult Visual(HttpContext ctx, UiHome home)
+    {
+        ctx.Response.Headers.ContentSecurityPolicy =
+            "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:";
+        ctx.Response.Headers.CacheControl = "no-store";
+        if (!Authorized(home, ctx.Request.Query["token"].ToString()))
+        {
+            return Results.Unauthorized();
+        }
+        var sid = ctx.Request.Query["sid"].ToString();
+        if (!UiHome.IsId(sid))
+        {
+            return Results.BadRequest();
+        }
+        return home.VisualFile(sid) is { } file ? Results.File(file, "text/html; charset=utf-8") : Results.NotFound();
+    }
+
     public static Task RequireToken(HttpContext ctx, RequestDelegate next)
     {
         if (!ctx.Request.Path.StartsWithSegments("/api"))
         {
             return next(ctx);
         }
-        var token = ctx.RequestServices.GetRequiredService<UiHome>().Token();
-        var given = ctx.Request.Headers["X-Factory-Token"].ToString();
-        if (string.IsNullOrEmpty(token)
-            || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(token)))
+        if (!Authorized(ctx.RequestServices.GetRequiredService<UiHome>(), ctx.Request.Headers["X-Factory-Token"].ToString()))
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
         }
         return next(ctx);
     }
+
+    static bool Authorized(UiHome home, string given) =>
+        home.Token() is { Length: > 0 } token
+        && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(given), Encoding.UTF8.GetBytes(token));
 }
 
 [JsonSerializable(typeof(AnswerRequest))]
