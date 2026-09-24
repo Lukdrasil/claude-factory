@@ -157,7 +157,7 @@ check 'three-digit blocks do not move the parent counter' T-1002 "$(new_id --fil
 # --- architect-gate reads the verdict of the whole id -----------------------------
 gs="$tmp/gate/state"
 mkdir -p "$gs/repos/demo/tasks" "$gs/repos/demo/verdicts" "$tmp/gate/demo/docs/architecture"
-printf 'demo: {url: x, default_branch: main}\n' > "$gs/repos.yml"
+printf 'demo: {url: x, default_branch: main, path: "%s"}\n' "$tmp/gate/demo" > "$gs/repos.yml"
 quick() { printf -- '---\nscope: quick\nverdict: aligned\n---\n' > "$gs/repos/demo/verdicts/$1.md"; }
 gate() { # <task file name> -> the gate's exit code
   printf '{"tool_name":"Write","cwd":"%s","tool_input":{"file_path":"%s","content":"from repos/demo/plans/unreviewed-plan-ready.md"}}' \
