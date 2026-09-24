@@ -3,7 +3,8 @@
 # attribution rule in prompts/worker-system-prompt.md. Nothing this harness publishes says who or what wrote
 # it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji. The one sanctioned
 # marker is the ai-drafted label: the forge label every issue created through bin/issue-create.sh carries, so a
-# reader can tell a drafted issue from a human one. It is a label, not text, and the scan below never sees it.
+# reader can tell a drafted issue from a human one. The command text carrying `--label ai-drafted` is scanned
+# like any other, and the label matches no phrase: a hyphen after ai is no word end for the name patterns.
 #
 # Why it scans more than the command string (incident 2026-09-22, MR !414): the footer reached the forge
 # through a file. The agent wrote a corrected body into a scratch file and ran `glab mr update 414
@@ -24,8 +25,8 @@ deny() { printf 'attribution-gate deny: %s\n' "$1" >&2; exit 2; }
 # in a build note passes, and the bare word claude-code is not a phrase: a docs commit may name the product.
 # claude and ai are whole words, so "created by" with "email" or "maintainers" later on the line passes.
 phrases='co-authored-by:|claude-session:|noreply@anthropic\.com|claude\.ai/(code|chat|share)'
-phrases="$phrases"'|claude\.com/claude-code|(^|[^a-z])generated (with|by)|made (with|by) ([a-z ]* )?(claude|ai)([^a-z]|$)'
-phrases="$phrases"'|(written|created|authored|assisted) (with|by) ([a-z ]* )?(claude|ai)([^a-z]|$)|assisted[- ]by:?'
+phrases="$phrases"'|claude\.com/claude-code|(^|[^a-z])generated (with|by)|made (with|by) ([a-z ]* )?(claude|ai)([^a-z-]|$)'
+phrases="$phrases"'|(written|created|authored|assisted) (with|by) ([a-z ]* )?(claude|ai)([^a-z-]|$)|assisted[- ]by:?'
 phrases="$phrases"'|signed-off-by:.*claude|reviewed-by:.*claude|session_[0-9a-z]{20,}|🤖'
 
 # a git command whatever options stand between `git` and the verb; push is in because a push option can carry
