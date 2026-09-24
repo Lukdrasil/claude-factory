@@ -23,8 +23,10 @@ memory. Prepend its output to the brief you write.
 Model and effort live in the agent definitions, not here.
 
 - A subagent's "it works" is a claim, not evidence: rerun the proving command yourself before recording it.
-- Duplication: what `<plugin-root>/bin/dup-check.sh` printed goes verbatim under `## Duplication` and into
-  the `factory-reviewer` brief, which judges every candidate; no spawn per candidate.
+- Duplication: `git diff origin/<base>...<branch> > <harness>/review.diff`, then
+  `<plugin-root>/bin/dup-check.sh <harness>/review.diff <worktree>`, never a task id. What it printed goes
+  verbatim under `## Duplication` and into the `factory-reviewer` brief, which judges every candidate; no spawn
+  per candidate.
 - Writing the MR stays here; only the issue lookup behind its `Issues` line goes to `mr-issue-linker`.
 - The **task-wide** test lock: the coordinator arms it with `state-report.sh --set-phase implement`, and from
   then on the guard refuses every write to a test file of that task, for the session and its subagents alike.
