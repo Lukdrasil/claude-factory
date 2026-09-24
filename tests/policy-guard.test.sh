@@ -149,5 +149,7 @@ try 0 'cd rel, then sed -i with a quoted script on an absolute file' "$BLK" blk 
 try 0 'cd rel, then sed -i with an unquoted script on an absolute file' "$BLK" blk 'cd rel && sed -i s/a/b/ /tmp/x.md'
 try 2 'cd rel, then sed -i on a relative file' "$BLK" blk "cd rel && sed -i ${q}s/a/b/${q} x.md"
 try 0 'cd rel, then sed -i on $S/x.txt' "$BLK" blk "cd rel && sed -i ${q}s/a/b/${q} \$S/x.txt"
+try 2 'a cd entered through |, then && a relative redirect into the registered clone' "$C/cf" coord 'echo | cd /tmp && echo x > README.md'
+try 2 'a cd entered through |, then ; a relative redirect into the registered clone' "$C/cf" coord 'true | cd /tmp; echo x > README.md'
 
 exit $fail
