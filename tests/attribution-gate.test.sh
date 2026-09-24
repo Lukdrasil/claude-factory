@@ -107,6 +107,15 @@ printf '%s' 'This issue was created with the ai-drafted label by bin/issue-creat
 ' > "$tmp/labelled.md"
 try 0 'an issue body naming the ai-drafted label after created with' \
   "$(bash_payload "gh issue create -R github.com/acme/widgets --title \"fix: export fails\" --body-file $tmp/labelled.md --label ai-drafted")"
+# only the exact label name is exempt: every other hyphenated claude or ai name after a phrase verb is denied
+body_try() { # <label> <body line>
+  printf '%s\n' "$2" > "$tmp/named.md"
+  try 2 "$1" "$(bash_payload "gh issue create -R github.com/acme/widgets --title \"fix: export fails\" --body-file $tmp/named.md --label ai-drafted")"
+}
+body_try 'an issue body with created with then claude-code' 'This issue was created with claude-code today.'
+body_try 'an issue body with written by then ai-assistance' 'This issue was written by ai-assistance today.'
+body_try 'an issue body line ending in the bare name' 'This issue was created by claude'
+body_try 'an issue body with the bare name and a full stop' 'This issue was created by claude.'
 
 try 0 'a clean description file'        "$(bash_payload "glab mr create --source-branch x --target-branch main --title \"fix(gate): y\" --description-file $tmp/clean.md --yes")"
 try 0 'a plain commit'                  "$(bash_payload 'git commit -m "feat(api): add the feed endpoint"')"
