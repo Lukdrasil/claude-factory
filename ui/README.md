@@ -21,7 +21,7 @@ static files are served without it.
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh` |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets and the last doctor notice |
-| `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` line per changed file |
+| `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
 
 `POST /api/answers/{sid}` answers 201 when written, 400 for a `sid` or `ask` outside `[A-Za-z0-9-]+`, 404 for
@@ -29,8 +29,8 @@ an unknown session or ask, and 409 for an ask whose status is not `open`. The se
 file is written through a rename. The server is the only writer of answer files. `bin/ui-relay.sh` types them
 into the session.
 
-The stream comes from `MountScanner`, which compares the name, length and mtime of every file under `/state`
-every 250 ms. It skips a folder it cannot read and hidden entries such as `.git`.
+The stream comes from two `MountScanner`s, one per mount. Each compares the name, length and mtime of every
+file under its mount every 250 ms. It skips a folder it cannot read and hidden entries such as `.git`.
 
 ## Tests
 
