@@ -186,12 +186,25 @@ block T-005-03 draft null
 block T-005-02 draft null
 out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
 check 'a block of the same wave is worked past an open MR' 'Step 11 of 16: worktree and claim for T-005-03' "$out"
+mkdir -p "$root/demo/T-005-03"
+: > "$root/demo/T-005-03/.git"
+block T-005-03 in_progress null
+sed -i 's/^complexity: low$/complexity: low\nphase: implement/' "$state/repos/demo/tasks/T-005-03.md"
+out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
+check 'a finished block is verified, reviewed and put up' '^## Step 11 of 16: verify, review and open the MR for T-005-03$' "$out"
+check 'block-verify.sh runs first' '^  .*block-verify\.sh T-005-03' "$out"
+check 'the reviewer and the auditor leave their reports' "Completion:.*\.harness/T-005-03/review\.md.*\.harness/T-005-03/arch\.md" "$out"
+check 'block-mr.sh opens the block MR' '^  .*block-mr\.sh T-005-03' "$out"
+check 'the block is review before its merge' "^  .*state-report\.sh --task T-005-03 --set-status review" "$out"
+no 'no merge proof into a stack' 'block-merge\.sh' "$out"
 block T-005-03 review https://forge.test/mr/53
 out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
 check 'a finished wave is merged before the next' '^## Step 11 of 16: merge the block MRs of T-005$' "$out"
 check 'the first block MR is merged by the script' '^  .*block-mr-merge\.sh T-005-01$' "$out"
 check 'the second block MR is merged by the script' '^  .*block-mr-merge\.sh T-005-03$' "$out"
 check 'a high-risk block waits for the human' 'Completion:.*high.*--confirmed' "$out"
+check 'exit 3 is the high-risk hold' 'Completion:.*exit 3' "$out"
+check 'class C merges on its own and is rerun' 'Completion:.*auto-merge' "$out"
 no 'the next wave is not cut yet' 'worktree and claim for T-005-02' "$out"
 no 'the developer is not asked to merge a block' 'waits for the developer' "$out"
 
