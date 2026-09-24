@@ -48,12 +48,19 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
   command, keeps the hook cwd among the bases, and denies a relative write target: a redirect target, an
   in-place editor's operand containing a `/`, or the file operand of `sed -i`/`perl -i`. A command word is
   never one. An absolute target is judged as any absolute target.
+- **Redirect targets.** The word after a `>`, `>>`, `2>` or `&>` outside quotes is a write target. A `>`
+  inside a quoted span is data, a `\"` or `\'` outside quotes is an escaped character that opens no span, and
+  a `\"` inside `"…"` does not close it. An ANSI-C span `$'…'` closes only at an unescaped `'`, so `\'` inside
+  it is data, and it opens only after an odd run of `$`: in `$$'…'` the `$$` is the PID and the quote is plain. `>&N`, `>&-`, `>(`, `=>`, `<>` and `->` name no file, while `>&word` writes the file `word`. A
+  target quoted as a whole (`> "README.md"` or `> $'README.md'`) is judged without its quotes. A bare `~` or `~/x` is expanded through `$HOME` and
+  denied when `HOME` is unset, while a quoted `"~/x"` is relative to the cwd, as the shell writes it.
 - **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
   guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
   with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
   script, quoted or not, and is skipped. The last operand is judged as a file even when it does not exist yet.
+  A `~` or `~/x` token is expanded through `$HOME` and denied when `HOME` is unset.
 - **Reads into blocks.** The session that owns a parent task (its `owner:`) may run `git -C <block worktree>
   log|diff|status|show`, `cat` and `ls` in the worktrees of that parent's blocks. A block session may `cat`
   its own brief, `.harness/<parent>/brief-<block>.md`. A segment holding `$(`, a backtick, `<(` or `>(` runs a

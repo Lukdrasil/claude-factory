@@ -15,8 +15,11 @@ sha=0123456789abcdef0123456789abcdef01234567
 
 mkdir -p "$W/state/repos/cf/tasks" "$W/cf/T-900" "$W/cf/T-900-01" "$W/cf/T-900-02" "$W/cf/.harness/T-900" \
   "$C/cf" "$C/userorg"
-printf 'cf: {url: "https://forge.test/cf.git", default_branch: main, path: "%s"}\nuserorg: {url: "https://forge.test/u.git", default_branch: main, path: "%s"}\n' \
-  "$C/cf" "$C/userorg" > "$W/state/repos.yml"
+printf 'cf: {url: "https://forge.test/cf.git", default_branch: main, path: "%s"}\nuserorg: {url: "https://forge.test/u.git", default_branch: main, path: "%s"}\ndemo: {url: "https://forge.test/demo.git", default_branch: main, path: "%s"}\n' \
+  "$C/cf" "$C/userorg" "$W/src/ui-demo" > "$W/state/repos.yml"
+git init -q "$W/src/ui-demo"
+git -C "$W/src/ui-demo" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$W/src/ui-demo" worktree add -q "$W/src/ui-demo-wt" 2>/dev/null
 task() { # <id> <branch> <owner sid> <phase>
   printf -- '---\nid: %s\nrepo: cf\nbranch: %s\nstatus: in_progress\narchetype: bugfix\nphase: %s\nowner: factory@host:%s\n---\n\n# Goal\nx\n' \
     "$1" "$2" "$4" "$3" > "$W/state/repos/cf/tasks/$1.md"
@@ -29,10 +32,11 @@ task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
 dash=''
+home=$H
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER ${dash:+DASHBOARD_URL=$dash} HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER -u HOME ${dash:+DASHBOARD_URL=$dash} ${home:+HOME=$home} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -201,6 +205,72 @@ try 2 'git commit -m x -- <a directory without a slash> in the state clone' "$W/
 try 0 'cd /tmp && cd /tmp/scratch, then a relative write, from the registered clone' "$C/cf" coord 'cd /tmp && cd /tmp/scratch && echo x > y'
 try 0 'cd /tmp/scratch && a pipe into a relative redirect, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && make | sort > out.txt'
 try 0 'cd /tmp/scratch && a quoted ; and ( in a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && echo "a; b (c)" > y'
+
+# T-264-01: a registered clone under the work root takes the standalone posture, not the catch-all's own dir
+try 0 'the coordinator runs git -C <parent> rev-parse from a registered clone under the work root' "$W/src/ui-demo" coord \
+  "git -C $PAR rev-parse HEAD"
+try 0 'the coordinator cats <parent>/README.md from a registered clone under the work root' "$W/src/ui-demo" coord \
+  "cat $PAR/README.md"
+try 2 'a worktree of a registered clone under the work root keeps the catch-all' "$W/src/ui-demo-wt" coord \
+  "cat $PAR/README.md"
+try 2 'a block writes into a sibling block, T-264 regression' "$BLK" blk "echo x > $W/cf/T-900-02/x"
+try 2 'a write from the state clone to outside it and outside /tmp, T-264 regression' "$W/state" coord \
+  'echo x > /opt/outside.txt'
+
+# T-264-02: a redirect target is read off the segment with the quote tracking of split_segs, escapes included, and
+# `~` and `~/x` expand to $HOME in both target loops. A quoted `~` stays relative to the cwd, as the shell writes it.
+try 0 'printf into ~/.claude-factory/… && mv it, from the registered clone' "$C/cf" coord \
+  'printf x > ~/.claude-factory/ui/sessions/x/visual.md.tmp && mv ~/.claude-factory/ui/sessions/x/visual.md.tmp ~/.claude-factory/ui/sessions/x/visual.md'
+try 0 "a grep pattern quoting '>', from the registered clone" "$C/cf" coord "grep -n \"'>'\\|redirect\\|tilde\" bin/policy-guard.sh"
+try 0 "a grep pattern quoting '>' and a later quote, from the registered clone" "$C/cf" coord \
+  "grep -n \"'>'\\|redirect\\|tilde\\|'~'\" bin/policy-guard.sh"
+try 0 'tee ~/x, from the registered clone' "$C/cf" coord 'tee ~/x < /dev/null'
+try 0 'an escaped quote inside a quoted span, then a redirect to /tmp, from the registered clone' "$C/cf" coord \
+  "printf '%s\\n' \"a\\\"b > c\" > /tmp/y"
+try 2 'an escaped quote, then a relative redirect into the registered clone' "$C/cf" coord 'echo \" > README.md \"'
+try 2 'a redirect to ~/<registered clone>/README.md' "$C/cf" coord 'echo x > ~/clones/cf/README.md'
+try 2 'tee ~/<registered clone>/README.md' "$C/cf" coord 'tee ~/clones/cf/README.md < /dev/null'
+try 2 'a quoted relative redirect into the registered clone' "$C/cf" coord 'echo x > "README.md"'
+try 2 'a quoted ~/ target, relative to the registered clone' "$C/cf" coord 'echo x > "~/y"'
+try 0 'a quoted ~/ target, relative to the own worktree' "$BLK" blk 'echo x > "~/y"'
+try 2 'a 2> redirect into the registered clone' "$C/cf" coord 'echo x 2> README.md'
+try 2 'a &> redirect into the registered clone' "$C/cf" coord 'echo x &> README.md'
+try 2 'a >> redirect into the registered clone' "$C/cf" coord 'echo x >> README.md'
+try 2 'a redirect with no space into the registered clone' "$C/cf" coord 'echo x >README.md'
+try 2 'a quoted >, then a relative redirect into the registered clone' "$C/cf" coord 'echo "a > b" > README.md'
+try 2 'a second redirect into the registered clone' "$C/cf" coord 'echo x > /tmp/y 2> README.md'
+try 0 "a quoted >, then a redirect to /tmp, from the registered clone" "$C/cf" coord "echo ${q}a > b${q} > /tmp/y"
+try 0 'a quoted $S redirect target, from the registered clone' "$C/cf" coord 'echo x > "$S/x"'
+try 0 '>&2 and 2>&1 name no file, from the registered clone' "$C/cf" coord 'echo x >&2 2>&1'
+try 0 'an arrow after = or - is not a redirect, from the registered clone' "$C/cf" coord 'echo x=>y a->b'
+home=''
+try 2 'with HOME unset, a redirect to ~/y' "$BLK" blk 'echo x > ~/y'
+try 2 'with HOME unset, tee ~/y' "$BLK" blk 'tee ~/y < /dev/null'
+home=$H
+
+# T-264-07: a `'` after an unquoted `$` opens an ANSI-C span, where `\'` is an escaped quote and the span closes only
+# at an unescaped `'`. A plain `'…'` and a `'` after an escaped `\$` keep no escapes. `>&word` writes the file word,
+# only `>&N` and `>&-` name no file.
+try 2 "echo \$'\\'' into the registered clone" "$C/cf" coord "echo \$${q}\\${q}${q} > README.md"
+try 2 "printf \$'it\\'s' into the registered clone" "$C/cf" coord "printf \$${q}it\\${q}s${q} > README.md"
+try 0 'a > inside an ANSI-C span with an escaped quote, then a redirect to /tmp, from the registered clone' "$C/cf" coord \
+  "echo \$${q}a\\${q}> README.md${q} > /tmp/y"
+try 2 "an ANSI-C span ending in an escaped backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo \$${q}a\\\\${q} > README.md"
+try 2 "a plain single-quoted backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo ${q}\\${q} > README.md"
+try 2 "an escaped \$ before a single-quoted backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo \\\$${q}\\${q} > README.md"
+try 2 "a redirect to \$'README.md' in the registered clone" "$C/cf" coord "echo x > \$${q}README.md${q}"
+try 2 '>&README.md into the registered clone' "$C/cf" coord 'echo x >&README.md'
+try 2 '>& README.md into the registered clone' "$C/cf" coord 'echo x >& README.md'
+try 0 '>&2 names no file, from the registered clone' "$C/cf" coord 'echo x >&2'
+try 0 '2>&- names no file, from the registered clone' "$C/cf" coord 'echo x 2>&-'
+try 0 '>& 2 names no file, from the registered clone' "$C/cf" coord 'echo x >& 2'
+try 0 '>&- names no file, from the registered clone' "$C/cf" coord 'echo x >&-'
+try 2 "\$\$ before a single-quoted backslash is the PID and a plain quote, then a redirect into the registered clone" "$C/cf" coord \
+  "echo \$\$${q}\\${q} > README.md"
+try 2 '>&/abs outside the work dir, from a block' "$BLK" blk 'echo x >&/opt/outside.txt'
 
 # T-254-02: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, and the
 # deny names bin/issue-create.sh, which adds it
