@@ -97,6 +97,8 @@ function next() {
 async function send(key, staged) {
   const [sid, ask] = key.split('/');
   const text = compose(parseAsk(allAsks().find((a) => keyOf(a) === key).body), staged.items);
+  staged.sending = true;
+  render();
   try {
     await api(`/api/answers/${sid}`, {
       method: 'POST',
@@ -106,6 +108,7 @@ async function send(key, staged) {
     delete S.staged[key];
   } catch (err) {
     staged.error = `Not sent: ${err.message}`;
+    staged.sending = false;
   }
   render();
 }
