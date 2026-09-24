@@ -9,3 +9,9 @@ Runs before the tier decision of every `feature`, `bugfix` and `refactor` task, 
 3. File its report, the five sections `<plugin-root>/bin/task-template.sh investigation` prints, under 400
    words, at `repos/<key>/research/<id>-investigation.md`, and paste its `## Investigation` into the draft's
    `## Context`. A code-changing draft without that section is incomplete, whatever its tier says.
+4. Search the repo's open issues before anyone plans: spawn `issue-finder` with the problem text (the draft's
+   `# Goal` and `## Context`, and the request as the human gave it when the draft has a `request:`) instead of a
+   diff. Write its lines under `## Related issues` in the draft, after `## Context`, or `none`. The CEO reads
+   that section: it offers to link one issue (`issue: <url>` on the parent) or, with `none` and no `issue:`
+   yet, to create one with `<plugin-root>/bin/issue-create.sh`, which labels it `ai-drafted`; either is one
+   confirm ask through `_shared/ask.md`, never done without the yes.
