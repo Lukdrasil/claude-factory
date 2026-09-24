@@ -36,8 +36,8 @@ invoked by name: `quality-kit` and its sub-skills `analyze-structure`, `setup-gu
 The factory runs as an org of interactive Claude Code sessions in herdr, never as a headless run (`claude -p`,
 the Agent SDK, a routine or a cron that starts `claude`), and never under `bypassPermissions`.
 
-- **CEO** (`/claude-factory:factory ceo`, `skills/factory/references/ceo.md`): one session in
-  `$WORK_DIR/state`. It starts the UI, takes a request with a priority, opens a request map
+- **CEO** (`skills/factory/references/ceo.md`): one session in `$WORK_DIR/state`, started there inside herdr
+  with `claude '/claude-factory:factory ceo'`. It starts the UI, takes a request with a priority, opens a request map
   (`requests/<R-id>/`), makes one parent per repository under that request id, and runs the automatic chain as
   step sessions (triage, the map chart with `claude-factory:wayfinder`, grill, plan-check, decompose). The
   human answers the grilling rounds and approves the plan once per request; approved parents queue by priority
@@ -91,7 +91,7 @@ In order, once `claude plugin update` shows 0.15.0:
    budget.
 3. **M2** (the CEO session): the daily pass per scope over the older lessons, then the weekly rounds with you.
 4. **M3** (you, in the Setup tab or the terminal): `capacity:` in `factory.yml`, the priority defaults, doctor
-   green, then start the CEO.
+   green, then start the CEO: `claude '/claude-factory:factory ceo'` in `$WORK_DIR/state`, in a herdr pane.
 5. **M4** (you and the CEO): one live request across two repositories from intake to both task MRs merged; what
    it teaches becomes the first lessons of the repo-lead playbooks.
 

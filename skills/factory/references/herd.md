@@ -67,14 +67,16 @@ The rule behind the split: anything that writes the change is a session, anythin
    once you armed `phase: implement` on its `tests_ready` blocks; a block whose session still runs is printed
    `skipped`.
 3. Arm the watcher through the Monitor tool (step one of this file, and it stays armed for the whole herd):
-   `sh <plugin-root>/bin/herd-watch.sh <T-NNN> --interval 60`. It prints one line per unit that changed,
-   `<unit> <status> <phase> <agent> <mr>`, and `<unit> waits <what>` for a step session waiting at an ask
-   (it has already run `notify.sh` for it once). A quiet pass prints nothing. The agent is `working`,
-   `blocked`, `ready` (herdr's idle or done), `gone` for a session no longer live, `closed` for a tab the
-   scripts closed, or `unknown`. On `gone`, `closed` or `done` herd-watch releases the unit's leases.
+   `sh <plugin-root>/bin/herd-watch.sh <T-NNN> --interval 60`. It prints one line per change:
+   `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
+   `<id> mr <old> -> <new>`, and `<unit> waits <ask>` for a step unit that reads `ready` with an open ask
+   (`notify.sh` shows the human that ask once, and again after 15 minutes while the pane stays unseen). A quiet
+   pass prints nothing. The agent values are `working`, `blocked`, `ready` (herdr's idle or done), `unknown`,
+   plus `closed` for a tab the scripts closed and `gone` for a session no longer live. On `gone`, `closed` or
+   `done` herd-watch releases the unit's capacity leases.
 4. On any line, rerun `solve-next.sh` and do what it prints. A monitor step you do yourself; a session step
    you dispatch and go back to 3.
-5. Agent `blocked` means that session is at an approval or question dialog. Read it with
+5. `<id> agent <state> -> blocked` means that session is at an approval or question dialog. Read it with
    `herdr agent read <name> --source recent-unwrapped --lines 120`, ask the human with
    an ask (`_shared/ask.md`), and answer with `herdr agent send-keys <name> <keys>` (a digit, arrows,
    `enter`, `esc`): a blocked agent refuses `herdr agent prompt`, which is only for an idle session. The name
@@ -83,9 +85,9 @@ The rule behind the split: anything that writes the change is a session, anythin
    task's drawer shows the same, and the human answers in that pane. The monitor writes no ask for the dialog
    and sends no keys. A worker's own asks reach the page and the relay types their answers into the worker's
    pane.
-6. Agent `gone` with the status unchanged is a session that died without reporting. Rerun
+6. `<id> agent <state> -> gone` with the status unchanged is a session that died without reporting. Rerun
    `solve-next.sh` and dispatch it again; two deaths in a row is `_shared/blocked-question.md`.
-   Agent `closed` is no dead session: the scripts closed a tab whose work was over.
+   `<id> agent <state> -> closed` is no dead session: the scripts closed a tab whose work was over.
 7. The scripts close the tabs, you report them. `herd-watch.sh` closes the recorded tab of every unit at
    `done` or `closed`, and the step tabs once the parent is; `session-monitor.sh` closes a unit's own tab and
    the step tabs of its parent before it starts that unit again. A tab that is focused, is your own, or holds
@@ -103,15 +105,15 @@ waits for the human. The one MR the human reviews is the task MR into the base b
 before this flow keeps its block MRs into each other (`references/solve.md`, `restack.sh`).
 
 After the last unit reaches `review`, keep the same loop running. `herd-watch.sh` runs
-`mr-watch.sh <T-NNN> --once` on every pass and turns its state file into the `<mr>` field of the lines, so
-you see the forge without reading an MR:
+`mr-watch.sh <T-NNN> --once` on every pass and turns its state file into the `mr` lines, so you see the
+forge without reading an MR:
 
-| `<mr>` | what it is | what you do |
+| line | what it is | what you do |
 |---|---|---|
-| `merged` | the MR is in | mr-watch has set the block `done` (and retargeted a legacy stack); rerun `solve-next.sh` |
-| `ci-failed` | the pipeline is red | dispatch the fix as a session, never fix it here |
-| `changes-requested` | a reviewer wants work | `mr-watch.sh <T-NNN> --comments <block-id>`, then dispatch |
-| `approved` | it waits on a human merge | say so, and keep watching |
+| `<id> mr <any> -> merged` | the MR is in | mr-watch has set the block `done` (and retargeted a legacy stack); rerun `solve-next.sh` |
+| `<id> mr <any> -> ci-failed` | the pipeline is red | dispatch the fix as a session, never fix it here |
+| `<id> mr <any> -> changes-requested` | a reviewer wants work | `mr-watch.sh <T-NNN> --comments <block-id>`, then dispatch |
+| `<id> mr <any> -> approved` | it waits on a human merge | say so, and keep watching |
 
 An MR that sits at `open` after the pipeline went green is the `need_rebase` case: look with
 `glab mr view <url>` or `gh pr view <url>`, and dispatch the rebase to the block's own session. Only when the
