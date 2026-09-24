@@ -9,9 +9,9 @@
 #   curate-apply.sh edit <proposal> --body <file> [--reason <text>] [--state <dir>]   cwd = the state clone unless --state
 #
 # Exit 1 with the reason when the proposal is not in the queue or the target is refused (it exists, is not .md,
-# carries a backslash — a Windows separator git would keep as one filename segment — has an empty/./.. segment,
+# carries a backslash, a Windows separator git would keep as one filename segment, has an empty/./.. segment,
 # stays under proposals/, or lies outside memory/global, repos/<key>/memory, repos/<key>/adr,
-# repos/<key>/architecture, agents/<agent>/memory); nothing written. --reason appends " — <text>" to the fixed
+# repos/<key>/architecture, agents/<agent>/memory); nothing written. --reason appends ", <text>" to the fixed
 # commit message.
 set -eu
 
@@ -37,7 +37,7 @@ done
 # clone, the standalone layout's $WORK_DIR/state, otherwise the cwd
 . "$(dirname -- "$0")/lib-tasks.sh"
 [ -n "$state" ] || state=$(resolve_state_dir "$(pwd)")
-[ -d "$state/.git" ] || die "$state is not a state clone — run from one or pass --state <dir>"
+[ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
 # The queued proposals: the top level of the five queues, sorted bytewise.
 list() {
@@ -122,7 +122,7 @@ check_target() { # <relative> → the reason on stdout, nothing when the target 
 
 commit() { # <message> <path>…
   msg=$1; shift
-  [ -z "$commit_reason" ] || msg="$msg — $commit_reason"
+  [ -z "$commit_reason" ] || msg="$msg, $commit_reason"
   if [ -n "$(git -C "$state" config user.email || :)" ]; then
     git -C "$state" commit -q -m "$msg" -- "$@"
   else
@@ -154,7 +154,7 @@ case "$cmd" in
     [ ! -e "$state/$dst" ] || die "$dst already exists"
     mkdir -p "$state/$(dirname "$dst")"
     # an agent may leave its proposal untracked; git mv refuses a path git does not know, and a pathspec git
-    # knows nothing about aborts the whole commit — so stage it first and name only the paths that survive
+    # knows nothing about aborts the whole commit, so stage it first and name only the paths that survive
     git -C "$state" add -- "$proposal"
     git -C "$state" mv "$proposal" "$dst"
     if git -C "$state" cat-file -e "HEAD:$proposal" 2>/dev/null; then
@@ -172,7 +172,7 @@ case "$cmd" in
       # never committed: there is nothing in the history to record, only the file to take away
       git -C "$state" rm -q -f --ignore-unmatch -- "$proposal"
       rm -f -- "$state/$proposal"
-      echo "curate-apply: $proposal was never committed — removed, no commit to make" >&2
+      echo "curate-apply: $proposal was never committed, removed, no commit to make" >&2
     fi ;;
   edit)
     [ -n "$proposal" ] && [ -z "$target" ] && [ -n "$body" ] || die "usage: curate-apply.sh edit <proposal> --body <file> [--state <dir>]"
@@ -181,5 +181,5 @@ case "$cmd" in
     cat -- "$body" > "$state/$proposal"
     git -C "$state" add -- "$proposal"
     commit "chore(proposal): edit $proposal" "$proposal" ;;
-  *) die "unknown subcommand '$cmd' — one of list, approve, reject, edit" ;;
+  *) die "unknown subcommand '$cmd', one of list, approve, reject, edit" ;;
 esac

@@ -2,7 +2,7 @@
 # arch-delta.sh: the deterministic half of the semantic-drift check of the architecture model
 # (skills/_shared/session-contract.md, Architecture model). Read-only, no LLM: it exports the LikeC4 model of the working tree and of <base-ref> and prints
 # the elements and relations that appeared, vanished or changed kind/technology between them. Whether a change
-# needed a doc edit, which document owns it, or whether the model is *true* stays a human answer — the script
+# needed a doc edit, which document owns it, or whether the model is *true* stays a human answer, the script
 # says what moved, it never decides and never fixes. A repo with no docs/architecture/*.c4, or a machine with no
 # likec4 on PATH, is skipped, the same rule as doc-facts.sh.
 set -eu
@@ -19,11 +19,11 @@ base=$2
 cd "$repo"
 
 if ! ls docs/architecture/*.c4 >/dev/null 2>&1; then
-  echo "arch-delta.sh: '$repo' has no docs/architecture/*.c4 — no model to diff, skipped."
+  echo "arch-delta.sh: '$repo' has no docs/architecture/*.c4, no model to diff, skipped."
   exit 0
 fi
 if ! command -v likec4 >/dev/null 2>&1; then
-  echo "arch-delta.sh: no likec4 on PATH — nothing to export, skipped."
+  echo "arch-delta.sh: no likec4 on PATH, nothing to export, skipped."
   exit 0
 fi
 

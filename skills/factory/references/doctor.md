@@ -13,12 +13,12 @@ missing. It gates nothing; the value is in the fixes you offer.
 
 - **Run.** `<plugin-root>/bin/factory-doctor.sh --root <root> --repo <clone-dir>` (`<root>` is
   `WORK_DIR`; `--repo` defaults to the cwd). Completion: exit 0 and one line per check.
-- **Read the output.** `ok: …` needs nothing. `missing: <what> — <fix>` carries its fix after the dash:
+- **Read the output.** `ok: …` needs nothing. `missing: <what>, <fix>` carries its fix after the dash:
   - registration or `repos/<key>/toolset.md` → `references/add-repo.md`;
   - a tool on PATH → the fix is its install command;
   - `stack` or `test-globs` → edit the toolset's frontmatter (shape in `toolsets/<stack>.md` of this
     plugin) and commit in the state repo;
-  - `docs/architecture` → the architecture-docs bootstrap (the `architecture-docs` skill); recommend it —
+  - `docs/architecture` → the architecture-docs bootstrap (the `architecture-docs` skill); recommend it,
     the architect review points run once the repo has a model.
   Completion: every line is sorted into one of these.
 - **Offer the fixes.** One round (`_shared/ask.md`) with a question per tool that is missing, each naming its

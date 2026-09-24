@@ -11,7 +11,7 @@ set -eu
 stdin=$(cat)
 
 # Issue #313: this file used to open with `stop_hook_active=true → exit 0`, which made every guarantee below
-# first-Stop-only — a session that simply stopped a second time passed unconditionally, status check, #290 audit,
+# first-Stop-only, a session that simply stopped a second time passed unconditionally, status check, #290 audit,
 # #308 sweep, commit and push included. That early exit was not gratuitous: a hook that always blocks loops
 # forever, which is worse than the hole (it breaks every session instead of letting a rare one through). So the
 # loop is bounded instead of the guard removed: every round this hook blocks is counted, and after
@@ -35,7 +35,7 @@ sid=$(printf '%s' "$stdin" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\
 # task_of, the owner-based lookup and the layout resolver are shared with session-stats.sh and pre-compact.sh
 . "$(dirname -- "$0")/lib-tasks.sh"
 
-# ponytail: a triage session sits in the state clone itself (ADR-0018), the others next to it in the product one —
+# ponytail: a triage session sits in the state clone itself (ADR-0018), the others next to it in the product one,
 # resolve_state_dir (lib-tasks.sh) is that one rule, shared with session-stats.sh and state-report.sh
 state=$(resolve_state_dir "$PWD")
 
@@ -66,20 +66,20 @@ if resolve_session_layout "$PWD" "$id" && [ "$LO_POSTURE" = standalone ]; then
 fi
 rounds="$stamp/.harness-stop-rounds"
 
-# Issue #313 point 2: the budget must never end in a silent pass — that silence is the failure mode being fixed.
+# Issue #313 point 2: the budget must never end in a silent pass, that silence is the failure mode being fixed.
 # The unresolved violation is written where a human already looks: a line in the task's `## Attempts`, in the
 # shape session-stats.sh already writes there, sent through state-report.sh, the one write path (ADR-0050).
 # Idempotent (a repeated Stop must not append a
-# second line) and never fatal — a failure to record must not take the session down on top of everything else.
+# second line) and never fatal, a failure to record must not take the session down on top of everything else.
 record_unresolved() { # <a short label of what stayed unresolved>
   # the dedupe marker is a file in the work dir, next to the round counter. The `<!-- sid:… -->`
-  # marker of session-stats.sh stays deliberately unshared — it greps for exactly that string to skip its own
+  # marker of session-stats.sh stays deliberately unshared, it greps for exactly that string to skip its own
   # duplicate, so sharing it would silently suppress the stats line for this session.
   marker="$stamp/.harness-stop-unresolved"
   if [ -f "$marker" ] && grep -qFx "${sid:-?}" "$marker" 2>/dev/null; then return 0; fi
 
   attempt=$(sed -n 's/^attempt:[[:space:]]*//p' "$task" | head -n1)
-  line="attempt ${attempt:-?} — UNRESOLVED Stop contract, the session ended without satisfying it after $ROUND_BUDGET blocked rounds (issue #313): $1"
+  line="attempt ${attempt:-?}, UNRESOLVED Stop contract, the session ended without satisfying it after $ROUND_BUDGET blocked rounds (issue #313): $1"
 
   # `--no-status`: the record is *about* a status the server may well refuse, and it must not go down with it.
   sh "$(dirname -- "$0")/state-report.sh" --task "$id" --no-status --attempts "$line" \
@@ -98,7 +98,7 @@ block() {
   fi
   if [ "$n" -ge "$ROUND_BUDGET" ]; then record_unresolved "$2"; exit 0; fi
   # a counter that cannot be persisted cannot bound anything, and an unbounded block is the worse failure mode of
-  # the two — so treat an unwritable work dir as an exhausted budget rather than starting a loop nobody can end.
+  # the two, so treat an unwritable work dir as an exhausted budget rather than starting a loop nobody can end.
   printf '%s %s\n' "$sid" "$((n + 1))" > "$rounds" 2>/dev/null \
     || { record_unresolved "$2"; exit 0; }
   echo "$1" >&2
@@ -119,15 +119,15 @@ for i in $ids; do
   # T-186: a task already at a terminal status is finished, and a finished task has no self-report left to make.
   case "$s" in done|closed) continue ;; esac
 
-  # Evidence gate: a terminal "it worked" status is a claim, and the claim must be checkable — the proving
+  # Evidence gate: a terminal "it worked" status is a claim, and the claim must be checkable, the proving
   # command, its exit code and the key output line under `## Evidence` in the progress snapshot
   # (skills/_shared/progress-and-push.md). blocked/failed report the opposite and need none.
   case "$s" in
     review|tests_ready)
       set -- "$state"/repos/*/progress/"$i".md
       grep -q '^## Evidence' "$1" 2>/dev/null \
-        || add "Stop blocked: task $i reports '$s' but $1 has no '## Evidence' section. A status is a claim; evidence makes it checkable — run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, then commit + push from the state clone." \
-           "status '$s' with no '## Evidence' in the progress file — the claim is not checkable" ;;
+        || add "Stop blocked: task $i reports '$s' but $1 has no '## Evidence' section. A status is a claim; evidence makes it checkable, run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, then commit + push from the state clone." \
+           "status '$s' with no '## Evidence' in the progress file, the claim is not checkable" ;;
   esac
 
   # T-164: a session may end while the block MRs wait on the forge, so a block in `review` with an `mr_url`
@@ -136,13 +136,13 @@ for i in $ids; do
   case "$s" in
     review|tests_ready|blocked|failed|changes_requested|done) ;;
     *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md and commit + push from the state clone." \
-         "no self-report — task $i still has status '$s', not review|tests_ready|blocked|failed (ADR-0009)" ;;
+         "no self-report, task $i still has status '$s', not review|tests_ready|blocked|failed (ADR-0009)" ;;
   esac
 done
 [ -z "$msgs" ] || block "$msgs" "$labels"
 
 # Issue #308 point 2: the backstop that closes every route into the tests, including the ones no PreToolUse rule
-# can see — `sed -i`, a heredoc, `git checkout <sha> -- <test>`, a two-line python script. It inspects the diff
+# can see, `sed -i`, a heredoc, `git checkout <sha> -- <test>`, a two-line python script. It inspects the diff
 # the session produced instead of the command that produced it. policy-guard.sh stamps <work>/.harness-test-base
 # on the first tool call of an implement session: line 1 is the tests-phase HEAD, the rest is the inventory of
 # test files that existed then. No stamp (single-phase run, the tests phase, a non-implementation archetype) =
@@ -162,7 +162,7 @@ if [ -s "$base" ]; then
   fi
   d=$(mktemp)
   git -c core.quotePath=false diff --name-only "$base_sha" > "$d" 2>/dev/null || : > "$d"
-  # ponytail: word splitting on the candidate list — a test path with a space in it is not evaluated here
+  # ponytail: word splitting on the candidate list, a test path with a space in it is not evaluated here
   set -f
   for f in $(tail -n +2 "$base" | grep -Fxf "$d" - 2>/dev/null || true); do
     if [ -f "$f" ]; then cur=$(git hash-object -- "$f" 2>/dev/null || true); else cur=''; fi
@@ -180,13 +180,13 @@ fi
 # feature/bugfix edit lands in the same file once its `## Test deviations` entry opened the lock (T-028). Issue #308 adds the sweep above to the same file, so
 # feature/bugfix land here too when they got at a test file through bash. If this session touched a test file,
 # the progress file has to declare it under `## Test deviations`, which is what the reviewer diffs against.
-# No edits, no marker file, no block — a session that left the tests alone is never stopped here.
+# No edits, no marker file, no block, a session that left the tests alone is never stopped here.
 edits="$stamp/.harness-test-edits"
 if [ -s "$edits" ]; then
   set -- "$state"/repos/*/progress/"$id".md
   progress=$1
   grep -q '^## Test deviations' "$progress" 2>/dev/null \
-    || block "Stop blocked: this session changed test files ($(sort -u "$edits" | tr '\n' ' ')) but $progress has no '## Test deviations' section. The red tests from the tests phase are the contract (issue #290/#308) — turn them green, do not bend them; a refactor may only follow a rename mechanically through (block-refactor step 4). Revert the change, or add a '## Test deviations' section to $progress listing each test file you touched and why and self-report 'blocked' so a human decides; then commit + push from the state clone." \
+    || block "Stop blocked: this session changed test files ($(sort -u "$edits" | tr '\n' ' ')) but $progress has no '## Test deviations' section. The red tests from the tests phase are the contract (issue #290/#308), turn them green, do not bend them; a refactor may only follow a rename mechanically through (block-refactor step 4). Revert the change, or add a '## Test deviations' section to $progress listing each test file you touched and why and self-report 'blocked' so a human decides; then commit + push from the state clone." \
     "test files changed with no '## Test deviations' in the progress file (issues #290/#308): $(sort -u "$edits" | tr '\n' ' ')"
 fi
 
@@ -207,7 +207,7 @@ for i in $ids; do
     0) ;;
     1) add "Stop blocked: state-report.sh refused the self-report of task $i. $report Fix what it names in $t or in $state/repos/*/progress/$i.md and stop again: the report is sent for you, you do not commit or push it." \
          "state-report.sh refused the self-report of $i: $report" ;;
-    *) add "Stop blocked: the self-report of task $i could not be pushed to the state root. $report There is no dashboard to send it to instead (ADR-0050) — check \`<root>/state\` is reachable and carries receive.denyCurrentBranch=updateInstead (ADR-0040), note what happened in the progress file and stop again." \
+    *) add "Stop blocked: the self-report of task $i could not be pushed to the state root. $report There is no dashboard to send it to instead (ADR-0050), check \`<root>/state\` is reachable and carries receive.denyCurrentBranch=updateInstead (ADR-0040), note what happened in the progress file and stop again." \
          "the self-report of $i could not be pushed to the state root: $report" ;;
   esac
 done

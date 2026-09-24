@@ -10,7 +10,7 @@ stdin=$(cat)
 sid=$(hook_field "$stdin" session_id)
 
 report() { # <id> <work dir>
-  if [ ! -d "$2" ]; then printf 'pre-compact: %s skipped — no work dir %s\n' "$1" "$2" >&2; return 0; fi
+  if [ ! -d "$2" ]; then printf 'pre-compact: %s skipped, no work dir %s\n' "$1" "$2" >&2; return 0; fi
   if err=$(cd "$2" && sh "$bin/state-report.sh" --task "$1" --no-status --message "precompact: $1" 2>&1 >/dev/null); then
     printf 'pre-compact: %s reported\n' "$1" >&2
   else

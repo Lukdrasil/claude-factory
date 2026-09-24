@@ -31,7 +31,7 @@ url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origi
 key=${url%/}; key=${key##*[/:]}; key=${key%.git}
 
 ok() { echo "ok: $1"; }
-missing() { echo "missing: $1 — $2"; }
+missing() { echo "missing: $1, $2"; }
 add_repo="run factory-add-repo.sh --root $root --repo $top"
 
 # --- state remote + credentials ----------------------------------------------------------------------------------
@@ -78,7 +78,7 @@ else
 fi
 
 # --- one key per clone -------------------------------------------------------------------------------------------
-# 2026-09-07: two keys registered for the same directory made repo_key_of_cwd pick one and the tasks the other —
+# 2026-09-07: two keys registered for the same directory made repo_key_of_cwd pick one and the tasks the other,
 # the toolset, memory and tripwire state of a session split across two keys. The same awk as lib-tasks.sh's
 # repo_clone_paths, paths compared with forward slashes and no trailing slash.
 if [ -f "$state/repos.yml" ]; then
@@ -176,7 +176,7 @@ tool() { # <binary> <install command>
   if command -v "$1" >/dev/null 2>&1; then ok "$1 on PATH"; else missing "$1 on PATH" "$2"; fi
 }
 # only the tools this toolset actually binds: a repo that deleted the row it cannot run must not be told to
-# install the tool behind it (ADR-0039 — a command the toolset lacks does not exist for the repo)
+# install the tool behind it (ADR-0039, a command the toolset lacks does not exist for the repo)
 binds() { # <command name> → true when the toolset has a table row for it
   [ -f "$toolset" ] && grep -q "^|[[:space:]]*\`$1" "$toolset"
 }
@@ -197,7 +197,7 @@ if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in r
 # --- what the dotnet coverage and crap rows need beyond the binaries ------------------------------------------------
 if [ "$stack" = dotnet ]; then
   # 2026-09-07: `coverage` ran green and produced no cobertura file, so `crap` had nothing to score and the gate
-  # could never be met — no test project referenced a collector. A test project is a *.csproj under a path one of
+  # could never be met, no test project referenced a collector. A test project is a *.csproj under a path one of
   # the test-globs matches (`**/` → any directories, `*` → one segment) or one that declares itself a test project.
   if binds coverage || binds crap; then
     glob_re=''
@@ -228,7 +228,7 @@ if [ "$stack" = dotnet ]; then
     fi
   fi
   # 2026-09-07: Crap4DotNet targets net8.0 and refuses to start on a machine with only a newer runtime unless told
-  # to roll forward — the toolset's crap row carries DOTNET_ROLL_FORWARD=Major, this names the other way out
+  # to roll forward, the toolset's crap row carries DOTNET_ROLL_FORWARD=Major, this names the other way out
   if command -v dotnet-crap >/dev/null 2>&1 && command -v dotnet >/dev/null 2>&1; then
     if dotnet --list-runtimes 2>/dev/null | grep -q '^Microsoft\.NETCore\.App 8\.'; then
       ok "a .NET 8 runtime for dotnet-crap"
@@ -253,7 +253,7 @@ esac
 # --- context_window (T-056) -------------------------------------------------------------------------------------
 # the compact tripwire's window: absent stays the 200000 default (no line, not a miss), present has to be a
 # positive integer, same ok:/missing: shape as curation. A leading zero (007) is refused outright rather than
-# read as 7 with the zero stripped — a hand-edited typo should not turn into a legitimate-looking tiny window,
+# read as 7 with the zero stripped, a hand-edited typo should not turn into a legitimate-looking tiny window,
 # and this is the same value compact-tripwire.sh's cfg_window guard refuses (T-056-04).
 context_window=
 [ ! -f "$state/factory.yml" ] || context_window=$(sed -n 's/^context_window:[[:space:]]*//p' "$state/factory.yml" | head -n 1 | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//')

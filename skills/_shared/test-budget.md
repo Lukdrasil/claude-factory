@@ -6,7 +6,7 @@ of which test hung).
 
 When the cap fires (exit 124):
 
-1. Write what the run did print into the progress file — partial output is the diagnostic, not noise.
+1. Write what the run did print into the progress file, partial output is the diagnostic, not noise.
 2. Retry **once** with hang diagnostics so the hanging test gets a name: on VSTest
    `timeout 15m dotnet test --blame-hang-timeout 10m --blame-hang-dump-type none`; on MTP add
    `--hang-dump --hang-dump-timeout 10m` if the repo carries the HangDump extension, otherwise skip the retry.

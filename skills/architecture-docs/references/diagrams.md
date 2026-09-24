@@ -21,26 +21,26 @@ written_against:
     not that the repo did something wrong.
 ---
 
-# Diagrams — which type, and how it is authored
+# Diagrams, which type, and how it is authored
 
 A diagram is a **view of a model**, not decoration. Each type answers one question for one
 audience; write the question down before drawing, and if you cannot, the diagram is maintenance
 debt. An unmaintained diagram misleads worse than no diagram, because readers trust it. Two rules
-carry the rest: **diagrams-as-code in version control** — text that diffs in the same MR as the
-change is the only mechanism that has ever kept a diagram current — and **one diagram, one
+carry the rest: **diagrams-as-code in version control**, text that diffs in the same MR as the
+change is the only mechanism that has ever kept a diagram current, and **one diagram, one
 question**, because a picture answering three is read for none.
 
 Where the outputs land: the mermaid fences `templates.md` mandates in `01-context.md` and
 `03-containers.md`; sequences in `05-runtime.md`; the LikeC4 model in `docs/architecture/*.c4` per
 `<plugin-root>/skills/_shared/session-contract.md`; an occasional sketch inside an ADR. `templates.md` owns the
-inline mandate — this file does not reopen it. Preview rendering mechanics and ready-made snippets
+inline mandate, this file does not reopen it. Preview rendering mechanics and ready-made snippets
 live in `block-research/references/diagrams.md`.
 
 ## What practice actually kept
 
 Petre's ICSE 2013 interviews with 50 professional engineers found 35 using no UML at all and none
 using it wholeheartedly; among the 15 selective users, class diagrams appeared 7 times, sequence 6,
-activity 6, state 2, use case 1 — and most were thrown away after the discussion they served. The
+activity 6, state 2, use case 1, and most were thrown away after the discussion they served. The
 full UML catalogue lost. Three things survived into daily use: **sequence diagrams**, for one
 interaction over time; **boxes and lines for structure**, formalised as C4 rather than as UML
 component and package diagrams; and **deployment views**, now usually written as infrastructure
@@ -59,11 +59,11 @@ recognise it and say why it is not drawn; offer it only against a recorded quest
 | Which states can this one entity be in, and what moves it? | state machine |
 | What are the entities, their attributes and their cardinalities? | ER |
 | Which environments exist and where does each artifact run? | a mapping table, plus a deployment view only if the topology is non-obvious |
-| What does the domain's vocabulary look like as types? | class — generated from code, not hand-drawn |
+| What does the domain's vocabulary look like as types? | class, generated from code, not hand-drawn |
 
 ## Structural types
 
-### Class diagram — `classDiagram`
+### Class diagram, `classDiagram`
 
 - **Shows** classes with attributes and operations; associations, generalisation, composition,
   multiplicities.
@@ -71,11 +71,11 @@ recognise it and say why it is not drawn; offer it only against a recorded quest
 - **Use when** the domain model itself is the hard part and a small hand-picked subset (five to
   nine types) explains a concept the prose cannot. Aggregate boundaries in a DDD discussion are the
   usual honest case; see `ddd.md`.
-- **Misuse** transcribing a namespace. Code generates this view better and always correctly — an
+- **Misuse** transcribing a namespace. Code generates this view better and always correctly, an
   IDE or doc generator draws every class, so a hand-maintained one is stale on the next merge.
 - **Authoring** mermaid `classDiagram`. Not in LikeC4: the model stops at C4 level 3 on purpose.
 
-### Component diagram — UML sense
+### Component diagram, UML sense
 
 - **Shows** components, their provided and required interfaces, and the wiring between them.
 - **Answers** which parts a deployable is built from and what each exposes.
@@ -87,7 +87,7 @@ recognise it and say why it is not drawn; offer it only against a recorded quest
 ### Package diagram
 
 - **Shows** packages/namespaces/modules and their dependencies.
-- **Answers** which way dependencies point across module boundaries — the modular monolith's
+- **Answers** which way dependencies point across module boundaries, the modular monolith's
   central question (`approaches.md`).
 - **Use when** the boundaries are enforced and the allowed direction must be shown. Prefer the
   enforcement: an architecture test failing on a wrong-direction reference is worth more than the
@@ -108,7 +108,7 @@ mermaid support. Do not propose them.
 - **Use when** the mapping is genuinely not evident from the repo: several environments, an
   appliance at a customer site, a network segmentation a reader must respect.
 - **What replaced it** `06-deployment.md`'s environment and mapping tables plus the IaC that
-  provisions them — a Compose file, Helm chart or Terraform module is the executable version of
+  provisions them, a Compose file, Helm chart or Terraform module is the executable version of
   this diagram and cannot drift. See `deployment.md` and `containers.md`.
 - **Authoring** mermaid `C4Deployment` (experimental) or `architecture-beta` for a cloud-service
   topology; LikeC4's deployment model and its views are the better fit once the topology is worth
@@ -116,11 +116,11 @@ mermaid support. Do not propose them.
 
 ## Behavioural types
 
-### Sequence diagram — the survivor
+### Sequence diagram, the survivor
 
 - **Shows** participants as lifelines and the ordered messages between them, with returns, loops
   and alternatives.
-- **Answers** who calls whom, in what order, and what comes back — for exactly one scenario.
+- **Answers** who calls whom, in what order, and what comes back, for exactly one scenario.
 - **Use when** a flow crosses at least two containers and the order or the failure handling is not
   obvious from `03-containers.md`. One scenario per diagram, named for the scenario.
 - **Misuse** one diagram covering every branch of every flow; participants that are classes rather
@@ -135,7 +135,7 @@ mermaid support. Do not propose them.
 - **Answers** what happens in what order and what is decided where, when the steps matter more than
   the actors.
 - **Use when** a business process or approval flow branches enough that prose becomes unreadable.
-- **Misuse** flowcharting code — a function's control flow is read from the function.
+- **Misuse** flowcharting code, a function's control flow is read from the function.
 - **Authoring** mermaid `flowchart` is the modern spelling; no UML activity notation is needed.
 
 ### State machine diagram
@@ -158,16 +158,16 @@ them.
 
 ## Non-UML types the architect actually uses
 
-### C4 — context, container, component
+### C4, context, container, component
 
 - **Shows** three zoom levels over one structure: the system and its neighbours; the deployable
-  units inside it; the parts inside one unit. Level 4 (code) is deliberately excluded — a
+  units inside it; the parts inside one unit. Level 4 (code) is deliberately excluded, a
   hand-maintained code level dies of churn and takes the rest of the model with it.
 - **Answers** the structure question UML component and package diagrams answered badly, in a
   notation a newcomer reads without a legend.
 - **Use when** always, for `01-context.md` and `03-containers.md`; component level only where a
   container's internals are themselves a question.
-- **Authoring** mermaid `C4Context`, `C4Container`, `C4Component` — still experimental upstream and
+- **Authoring** mermaid `C4Context`, `C4Container`, `C4Component`, still experimental upstream and
   not rendered by GitHub's markdown, so when a repo's diagrams must be readable on GitHub, a
   `flowchart` with subgraphs carries the same content in a notation everything renders. LikeC4
   models all three levels natively as views over one model.
@@ -183,7 +183,7 @@ them.
 ### Flowcharts, gantt, timeline
 
 `flowchart` is the general-purpose fallback and the spelling for activity flows. `gantt` and
-`timeline` are project artifacts — schedules and history — and never belong in
+`timeline` are project artifacts, schedules and history, and never belong in
 `docs/architecture/`.
 
 ## Authoring: mermaid or LikeC4
@@ -206,15 +206,15 @@ and unevenly rendered (see the stamp).
 nested to form the hierarchy; relationships are declared between them; each view says which parts
 of the model to include, so context, container and component views cannot contradict each other.
 A separate deployment model carries its own views, and dynamic views carry scenarios. The cost is
-npm, a build, and rendering that lives outside the markdown — a cost this repo already pays:
+npm, a build, and rendering that lives outside the markdown, a cost this repo already pays:
 `factory doctor` checks for `likec4` wherever the toolset binds `arch-build` (which uses the bundled
 WASM Graphviz via `--no-use-dot`, so the contract has no native dependency), `arch-build`
 validates the model, and the `solution-c4-map`
 skill renders the interactive map from the same DSL.
 
-**The decision rule.** mermaid for every view a document carries inline — the C4 fences
+**The decision rule.** mermaid for every view a document carries inline, the C4 fences
 `templates.md` mandates, one-off sequences in `05-runtime.md` or an ADR. LikeC4 once restating
-elements across diagrams starts to drift; the threshold signal is concrete — more than about eight
+elements across diagrams starts to drift; the threshold signal is concrete, more than about eight
 containers, the same element in three or more diagrams, or a component level per container, at
 which point a rename stops being reliably applied by hand. Not exclusive, and past the threshold not optional either:
 `likec4 gen mermaid` emits fences from the model, so a repo with a `.c4` model keeps its inline C4
@@ -222,8 +222,8 @@ fences generated from it rather than hand-written. A hand-written C4 fence in su
 second source of truth that drifts silently from the first; `architect-review` records it as a
 `suggestion`.
 
-**The neighbours.** PlantUML covers the whole UML catalogue but needs a render step — GitHub does
-not render it at all, GitLab only when an administrator wires up a PlantUML server — so the diagram
+**The neighbours.** PlantUML covers the whole UML catalogue but needs a render step, GitHub does
+not render it at all, GitLab only when an administrator wires up a PlantUML server, so the diagram
 stops being readable where the code is reviewed. Structurizr is C4's own tooling with the same
 model-and-views idea and a mature DSL, but its rendering runs as a service the team operates. This
 repo standardises on the two above because one renders with zero setup everywhere we read markdown
@@ -234,13 +234,13 @@ and the other is already installed and bound to a toolset command.
 For a typical repo this is the whole justified inventory:
 
 - **C4 context and C4 container**, inline, per `templates.md`. Always.
-- **Two or three sequences** in `05-runtime.md`, once there is more than one container — the flows
+- **Two or three sequences** in `05-runtime.md`, once there is more than one container, the flows
   that cross containers and whose failure handling is not obvious.
 - **An ER diagram** only when the data shape is the hard part of the design.
 - **A state machine** only for an entity with genuinely restricted transitions.
 - **A deployment view** only when `06-deployment.md`'s tables leave the topology unclear.
 
-Everything beyond that list needs a recorded question it answers — a quality scenario, a
+Everything beyond that list needs a recorded question it answers, a quality scenario, a
 constraint, a reader who asked. Put the question in the document next to the diagram. A diagram
 with no such question is a `suggestion`-class finding under `architect-review/references/checks.md`
 when the reviewer meets it: name it, name what maintaining it costs, and propose deleting it or

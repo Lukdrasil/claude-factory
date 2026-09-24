@@ -1,6 +1,6 @@
 #!/bin/sh
 # Deterministic inventory for the triage investigation (T-013): every migration, API contract, typed HTTP
-# client registration and configured URL a code-changing task's chain might touch — one line per match,
+# client registration and configured URL a code-changing task's chain might touch, one line per match,
 # `LC_ALL=C sort`, paths relative to the repo. An empty repo prints nothing and exits 0.
 #
 #   investigate-inventory.sh <repo-dir> [--toolset <toolset.md>]

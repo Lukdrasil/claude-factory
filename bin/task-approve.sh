@@ -1,6 +1,6 @@
 #!/bin/sh
 # The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
-# as two commits, so plan_hash pins exactly the body a human approved — the first commit flips the status (and
+# as two commits, so plan_hash pins exactly the body a human approved, the first commit flips the status (and
 # bumps `attempt` from failed, sets `phase: implement` from tests_ready), the second
 # writes the SHA of that commit into plan_hash. Both commits are then pushed with state_push (lib-tasks.sh), the
 # retry task-done.sh uses; a clone with no origin stays local (T-228 D2).
@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$id" ] || die "usage: task-approve.sh <id> [--state <dir>]"
 [ -n "$state" ] || state=$(pwd)
-[ -d "$state/.git" ] || die "$state is not a state clone — run from one or pass --state <dir>"
+[ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
 # setf (Frontmatter.SetField) and state_commit are shared with task-new.sh and state-report.sh
 . "$(dirname -- "$0")/lib-tasks.sh"

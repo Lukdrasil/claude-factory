@@ -31,9 +31,9 @@ One sentence: what you got done most recently.
 
 ## Evidence
 
-Before self-reporting `review` or `tests_ready`, run the proving command **fresh in this session** — for
+Before self-reporting `review` or `tests_ready`, run the proving command **fresh in this session**, for
 `review` the acceptance command (after the rebase, where the archetype has one), for `tests_ready` the red
-tests failing for the right reason — and
+tests failing for the right reason, and
 record the command, its exit code and the key output line. The Stop hook bounces a `review`/`tests_ready` without it.
 
 ## Report
@@ -56,7 +56,7 @@ The first report of a session is its claim, and it carries two more flags, `--se
 before a long operation (ADR-0009). Exit 1 = refused, the reason is on stderr; fix it and run again. Exit 2 = the push did not land; the local commit stays, note it and carry
 on. A state clone with no origin is the state root itself: the report stays local and exits 0. The Stop hook reports for you at the end.
 
-A **new file** of your own — a research report, an ADR or memory proposal, a plan — still goes through git:
+A **new file** of your own, a research report, an ADR or memory proposal, a plan, still goes through git:
 
 ```sh
 git -C "$WORK_DIR/state" add repos/<key>/research/<id>-<slug>.md

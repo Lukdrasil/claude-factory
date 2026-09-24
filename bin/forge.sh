@@ -1,7 +1,7 @@
 #!/bin/sh
-# forge.sh — one entry point for READING issues and MRs from GitHub, GitLab and Gitea: it picks the tool
+# forge.sh, one entry point for READING issues and MRs from GitHub, GitLab and Gitea: it picks the tool
 # (gh/glab/tea) from the URL shape, so the agent does not have to try them all. Write actions deliberately do not
-# belong here — they differ enough between forges to turn the wrapper into a translator, and the skills describe them directly.
+# belong here, they differ enough between forges to turn the wrapper into a translator, and the skills describe them directly.
 # ponytail: routing is by URL shape:
 # github.com → gh, a path with /-/ (GitLab's marker) → glab, /<owner>/<repo>/(issues|pulls)/<n> → tea (Gitea),
 # anything else → glab. GitHub Enterprise would fall under glab; when it comes up, the host gets added here.
@@ -14,13 +14,13 @@ usage() {
   exit 2
 }
 
-# "Logged in to <host> …" is the only reliable signal — the exit code fails on any broken instance
+# "Logged in to <host> …" is the only reliable signal, the exit code fails on any broken instance
 logged_in() { "$1" auth status 2>&1 | sed -n 's/.*Logged in to \([^ ]*\).*/\1/p' | sort -u | tr '\n' ' '; }
 
 hosts() {
   echo "glab: $(logged_in glab)"
   echo "gh: $(logged_in gh)"
-  # tea has no `auth status`; `tea login list` prints a table with the instance URLs — reduce them to hostnames
+  # tea has no `auth status`; `tea login list` prints a table with the instance URLs, reduce them to hostnames
   echo "tea: $(tea login list 2>/dev/null | grep -oE 'https?://[^ |"'"'"']+' | sed 's#https\?://##;s#/.*##' | sort -u | tr '\n' ' ')"
 }
 
@@ -28,7 +28,7 @@ tea_login() { tea login list -o tsv 2>/dev/null | awk -F '\t' -v h="$1" 'NR > 1 
 
 try() {
   if ! "$@"; then
-    { echo "forge.sh: '$*' failed — signed-in instances:"; hosts; } >&2
+    { echo "forge.sh: '$*' failed, signed-in instances:"; hosts; } >&2
     exit 3
   fi
 }
@@ -39,7 +39,7 @@ fetch_github_asset() {
   name=${u##*/}; name=${name%%\?*}
   if ! ct=$(curl -fsSL -o "$dir/$name" -w '%{content_type}' "$u" 2>/dev/null); then
     rm -f "$dir/$name"
-    echo "asset skipped: $u (download failed — the API does not hand out private GitHub attachments)" >&2
+    echo "asset skipped: $u (download failed, the API does not hand out private GitHub attachments)" >&2
     return 0
   fi
   case "$name" in
@@ -79,13 +79,13 @@ download_assets() {
         *) p=$proj ;;
       esac
       # prefix from the secret: pasted screenshots on GitLab are all called image.png
-      # (dest, not out — the caller holds out as a temp file with the issue output and a trap deletes it)
+      # (dest, not out, the caller holds out as a temp file with the issue output and a trap deletes it)
       dest="$dir/$(printf '%.8s' "$secret")-$file"
       if glab api --hostname "$host" "projects/$p/uploads/$secret/$file" > "$dest" 2>/dev/null; then
         echo "$dest"
       else
         rm -f "$dest"
-        echo "asset skipped: $a (glab api failed — GitLab < 17.2, or missing permissions)" >&2
+        echo "asset skipped: $a (glab api failed, GitLab < 17.2, or missing permissions)" >&2
       fi
     done
   fi
@@ -114,7 +114,7 @@ case "$cmd" in
     # Side effect: /-/work_items/<iid> works too, which is how GitLab 17 links issues.
     path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\(.*\)/-/[a-z_]*/[0-9].*#\1#p')
     iid=$(printf '%s' "$2" | sed -n 's#.*/-/[a-z_]*/\([0-9][0-9]*\).*#\1#p')
-    # Gitea shape: exactly /<owner>/<repo>/(issues|pulls)/<n> — an issue URL says issues, an MR URL says pulls
+    # Gitea shape: exactly /<owner>/<repo>/(issues|pulls)/<n>, an issue URL says issues, an MR URL says pulls
     case "$cmd" in issue) seg=issues ;; *) seg=pulls ;; esac
     gpath=$(printf '%s' "$2" | sed -n "s#^[a-zA-Z+]*://[^/]*/\([^/][^/]*/[^/][^/]*\)/$seg/[0-9].*#\1#p")
     gnum=$(printf '%s' "$2" | sed -n "s#^[a-zA-Z+]*://[^/]*/[^/][^/]*/[^/][^/]*/$seg/\([0-9][0-9]*\).*#\1#p")
@@ -132,7 +132,7 @@ case "$cmd" in
       gitea=1
       login=$(tea_login "$host")
       [ -n "$login" ] || { { echo "forge.sh: no tea login for $host, signed-in instances:"; hosts; } >&2; exit 3; }
-      # the detail and the comments are two API calls; the comments always live under issues/<n>/comments — for pulls too
+      # the detail and the comments are two API calls; the comments always live under issues/<n>/comments, for pulls too
       case "$cmd" in
         issue) { try tea api -l "$login" "repos/$gpath/issues/$gnum"; echo; echo "--- comments ---"; try tea api -l "$login" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;
         mr) { try tea api -l "$login" "repos/$gpath/pulls/$gnum"; echo; echo "--- comments ---"; try tea api -l "$login" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;

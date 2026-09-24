@@ -41,7 +41,7 @@ archetype=$1 tier=$2 phase=$3 attempt=$4 complexity=$5
 
 case "$tier" in
   red|yellow|green) ;;
-  *) die "unrecognized tier '$tier' — must be red|yellow|green" ;;
+  *) die "unrecognized tier '$tier', must be red|yellow|green" ;;
 esac
 
 case "$attempt" in

@@ -10,14 +10,14 @@
 #                   [--branch <branch>] [--mr-url <url>]
 #
 # `--task` names the task and is required.
-# `--no-status` leaves `status` out of the report — and with it the status and evidence checks: a caller that is
+# `--no-status` leaves `status` out of the report, and with it the status and evidence checks: a caller that is
 # recording *why* the status is wrong (self-report-check.sh on an exhausted budget) or is not reporting a status
 # at all (pre-compact.sh, a reclaim) must not be refused for a status it is not claiming.
-# `--owner <owner>` rewrites the task's `owner:` frontmatter field — the reclaim rule of the factory solve
+# `--owner <owner>` rewrites the task's `owner:` frontmatter field, the reclaim rule of the factory solve
 # coordinator (skills/factory/references/solve.md), a session taking over a task a dead session still owns.
 # It is a report about ownership, not about status, so it runs on a `claimed`/`ready`/`review` task too; combine
 # it with `--no-status`.
-# `--set-status <status>` rewrites the task's `status:` field and then reports it — the claim step of the solve
+# `--set-status <status>` rewrites the task's `status:` field and then reports it, the claim step of the solve
 # coordinator (solve.md step 9 and per block), so the agent never edits frontmatter by hand: on 2026-09-07 the
 # standalone guard denied the hand-written `in_progress` and the coordinator could not claim. The transition is
 # checked before the write, against the committed status like every report, so a refused claim leaves the file
@@ -34,7 +34,7 @@
 #
 # Exit 0 = the report is in, 1 = it was refused (the reason is on stderr, fix it and run again),
 # 2 = it never got there (no task, a push the root refuses,
-# another session holding the state clone's lock for longer than STATE_LOCK_WAIT seconds — default 30).
+# another session holding the state clone's lock for longer than STATE_LOCK_WAIT seconds, default 30).
 set -eu
 
 attempts=''
@@ -77,7 +77,7 @@ case "$set_phase" in
      exit 1 ;;
 esac
 if [ -n "$set_status" ] && [ "$send_status" = 0 ]; then
-  printf 'state-report: the report was refused: --set-status sets a status to report, --no-status reports none — drop one of them\n' >&2
+  printf 'state-report: the report was refused: --set-status sets a status to report, --no-status reports none, drop one of them\n' >&2
   exit 1
 fi
 
@@ -87,7 +87,7 @@ fi
 . "$(dirname -- "$0")/lib-tasks.sh"
 
 # ../state next to the product clone, $WORK_DIR/state in the standalone layout, the cwd itself for a triage
-# session — resolve_state_dir (lib-tasks.sh) is the one rule, shared with the two Stop hooks
+# session, resolve_state_dir (lib-tasks.sh) is the one rule, shared with the two Stop hooks
 state=$(resolve_state_dir "$PWD")
 
 # the file is chosen by the `id:` line, not by an `<id>-*.md` glob: with hierarchical ids a child `T-005-01-…`
@@ -116,14 +116,14 @@ if [ -f "$1" ]; then progress_file=$1; progress=$(cat "$1"); fi
 # ---------------------------------------------------------------------------
 # The session's own clone is the writer (ADR-0050).
 die1() { printf 'state-report: the report of %s was refused: %s\n' "$id" "$1" >&2; exit 1; }
-# E3: one report at a time per state clone, from the read of the committed status to the push — two sessions
+# E3: one report at a time per state clone, from the read of the committed status to the push, two sessions
 # that both read `claimed` and both wrote `in_progress` is the race the lock closes (state_lock, lib-tasks.sh).
 # The trap releases it on every exit, a refusal included.
 state_lock "$state" && lrc=0 || lrc=$?
 case "$lrc" in
   0) trap state_unlock EXIT ;;
-  1) die2 "another session holds the state lock of $state — waited ${STATE_LOCK_WAIT:-30} s; the report of $id was not written, run it again" ;;
-  *) die2 "the state lock could not be taken in $state — is it a git clone?" ;;
+  1) die2 "another session holds the state lock of $state, waited ${STATE_LOCK_WAIT:-30} s; the report of $id was not written, run it again" ;;
+  *) die2 "the state lock could not be taken in $state, is it a git clone?" ;;
 esac
 current=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
 [ -z "$set_status" ] || current=$set_status
@@ -134,22 +134,22 @@ rel_task=${task#"$state/"}
 # there is no transition to judge.
 committed=$(git -C "$state" show "HEAD:$rel_task" 2>/dev/null | sed -n 's/^status:[[:space:]]*//p' | head -n1)
 # T-007 review: both checks belong to the status, so both hang off `--no-status`. A report that claims no
-# status — pre-compact's snapshot, self-report-check's "why the status is wrong" line, the coordinator's
-# `--owner` reclaim of a claimed/ready/review task — is not refused for a claim it never made.
+# status, pre-compact's snapshot, self-report-check's "why the status is wrong" line, the coordinator's
+# `--owner` reclaim of a claimed/ready/review task, is not refused for a claim it never made.
 if [ "$send_status" = 1 ]; then
   case "$status" in
     review|blocked|failed|tests_ready|in_progress|changes_requested) ;;
     # why: a block MR merged on the forge is a fact the watcher records, so `done` is reachable for a block
     # why: and for a block only; the parent's done stays the human gate of task-done.sh
     done) is_block_id "$id" \
-            || die1 "agent may not set done on $id — only a block reaches done by itself, once its MR is merged" ;;
+            || die1 "agent may not set done on $id, only a block reaches done by itself, once its MR is merged" ;;
     # why (T-186): a triage, ops or research task never opens an MR, so `done` is out of reach for it and
     # why: `closed` is its terminal status; the session that finished the work is the one that gets there.
     closed) case "$archetype" in
               triage|ops|research) ;;
               *) die1 "agent may not set closed - a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged (closed is the terminal status of a triage, ops or research task; a task with an MR ends in done via task-done.sh)" ;;
             esac ;;
-    *) die1 "agent may not set $status — a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged" ;;
+    *) die1 "agent may not set $status, a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged" ;;
   esac
   # The agent transitions, with `ready → in_progress` for the claim a session makes for itself (ADR-0050), and
   # the T-186 case below: a triage, ops or research task reaches `closed` from
@@ -167,12 +167,12 @@ if [ "$send_status" = 1 ]; then
   case "$current" in
     review|tests_ready)
       printf '%s\n' "$progress" | grep -q '^## Evidence' \
-        || die1 "task $id reports '$current' but the progress file has no '## Evidence' section. A status is a claim; evidence makes it checkable — run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, then report again." ;;
+        || die1 "task $id reports '$current' but the progress file has no '## Evidence' section. A status is a claim; evidence makes it checkable, run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, then report again." ;;
   esac
 elif [ -n "$committed" ] && [ "$committed" != "$current" ]; then
   # the commit below carries the whole task file, so a `--no-status` call whose task file *has* moved the status
-  # would push a transition nothing checked — the one hole a "no status is claimed" exemption must not open.
-  die1 "--no-status reports no status, but the task file moved $id from $committed to $current. Drop --no-status and report the transition, or put the status back to $committed — the commit carries the whole task file either way."
+  # would push a transition nothing checked, the one hole a "no status is claimed" exemption must not open.
+  die1 "--no-status reports no status, but the task file moved $id from $committed to $current. Drop --no-status and report the transition, or put the status back to $committed, the commit carries the whole task file either way."
 fi
 if [ -n "$mr_url" ]; then
   case "$mr_url" in http://*|https://*) ;; *) die1 "mr_url must be an http(s) URL" ;; esac
@@ -226,7 +226,7 @@ if [ -n "$set_phase" ]; then
   setf "$task" phase "$set_phase" || die2 "phase could not be rewritten in $task"
 fi
 
-# the commit is scoped to the two files this report is about — whatever else the session left in the state
+# the commit is scoped to the two files this report is about, whatever else the session left in the state
 # clone is not part of a progress report and must not ride along (state_commit, lib-tasks.sh)
 [ -n "$message" ] || message="progress: $id ${status:-$current}"
 set -- "$rel_task"

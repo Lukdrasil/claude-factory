@@ -42,7 +42,7 @@ done
 [ -n "$file" ] || die "--file <markdown> is required"
 [ -f "$file" ] || die "no such file: $file"
 [ -n "$state" ] || state=$(pwd)
-[ -d "$state/.git" ] || die "$state is not a state clone — run from one or pass --state <dir>"
+[ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
 # state_commit is shared with task-approve.sh and state-report.sh
 . "$(dirname -- "$0")/lib-tasks.sh"
@@ -72,7 +72,7 @@ git -C "$state" remote get-url origin >/dev/null 2>&1 && has_origin=1
 sync_state() { [ "$has_origin" = 1 ] && git -C "$state" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 || :; }
 
 assign_and_commit() {
-# every id already taken, across every repo — the next T-NNN or T-NNN-NN is one more than the highest. One `id:`
+# every id already taken, across every repo, the next T-NNN or T-NNN-NN is one more than the highest. One `id:`
 # per file, the first one: a task body may quote an `id:` line of its own (a frontmatter example, a diff), and
 # over the concatenated files that quote would count as a taken id and skip a number.
 ids=$(for f in "$state"/repos/*/tasks/*.md; do

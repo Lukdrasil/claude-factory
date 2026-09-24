@@ -1,10 +1,10 @@
 # Diagram catalogue (mermaid)
 
-A diagram belongs inline in `## Findings`, right next to the passage it illustrates — not in a separate section
+A diagram belongs inline in `## Findings`, right next to the passage it illustrates, not in a separate section
 at the end. Pick by the question the diagram answers; when in doubt, take a flowchart.
-Write a mermaid fence (```mermaid) directly in the markdown — no images, no external tools.
+Write a mermaid fence (```mermaid) directly in the markdown, no images, no external tools.
 
-## Flowchart / data flow — `flowchart`
+## Flowchart / data flow, `flowchart`
 
 When: data flow, decision logic, a pipeline; "what flows where and what is decided at which point".
 
@@ -16,7 +16,7 @@ flowchart LR
     C --> E[(store)]
 ```
 
-## Sequence — `sequenceDiagram`
+## Sequence, `sequenceDiagram`
 
 When: component interaction over time, protocols, API calls; "who sends what to whom and in what order".
 
@@ -30,7 +30,7 @@ sequenceDiagram
     P-->>A: ok
 ```
 
-## C4 context — `C4Context`
+## C4 context, `C4Context`
 
 When: architecture, system boundaries, external dependencies; "what the system is made of and what it talks to".
 
@@ -43,7 +43,7 @@ C4Context
     Rel(sys, pay, "charges, refunds")
 ```
 
-## State machine — `stateDiagram-v2`
+## State machine, `stateDiagram-v2`
 
 When: a lifecycle and its transitions (e.g. order statuses); "which states a thing lives in and what flips it".
 
@@ -56,7 +56,7 @@ stateDiagram-v2
     Shipped --> [*]
 ```
 
-## ER — `erDiagram`
+## ER, `erDiagram`
 
 When: a data model, relationships between entities; "what is an entity, what is an attribute and what the cardinality is".
 
@@ -70,7 +70,7 @@ erDiagram
     }
 ```
 
-## Class — `classDiagram`
+## Class, `classDiagram`
 
 When: the structure of types and dependencies; "who depends on whom and what they carry".
 
@@ -86,7 +86,7 @@ classDiagram
     OrderService ..> Order
 ```
 
-## Gantt and timeline — `gantt`, `timeline`
+## Gantt and timeline, `gantt`, `timeline`
 
 When: phases, a plan, history over time; gantt for durations and overlaps, timeline for a sequence of events.
 
@@ -104,7 +104,7 @@ timeline
     2026-08-20 : Orders.Worker split out
 ```
 
-## Quantitative — `pie`, `xychart-beta`
+## Quantitative, `pie`, `xychart-beta`
 
 When: ratios and simple metrics; anything beyond a few numbers belongs in a table, not a chart.
 

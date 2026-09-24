@@ -7,7 +7,7 @@
 #
 # The key is the basename of the origin URL without .git.
 #
-# Exit 0 = applied, or nothing to do. Exit 3 = changes pending, printed, not written (no --yes) — the same gate
+# Exit 0 = applied, or nothing to do. Exit 3 = changes pending, printed, not written (no --yes), the same gate
 # factory-init.sh has, so the skill previews and reruns identically on both scripts.
 set -eu
 

@@ -27,7 +27,7 @@ Why those scores:
 
 **How to repeat the self-check:** take the four assignments from the first column, run **only step 1 of the
 Procedure** on each (score it and print the block, do not spawn a subagent) and compare the result with the table. If the
-tiers match, the rubric is calibrated. If they diverge, fix the rubric or the table — never just the
+tiers match, the rubric is calibrated. If they diverge, fix the rubric or the table, never just the
 reasoning.
 
 ## Why four agents

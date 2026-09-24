@@ -84,7 +84,7 @@ architect_verdict() { # <key> <plan slug> <task id or empty>
   return 1
 }
 
-# the tasks whose `owner:` ends in this session's id — `factory@<host>:<session_id>`, the whole id after the
+# the tasks whose `owner:` ends in this session's id, `factory@<host>:<session_id>`, the whole id after the
 # last colon (ADR-0050); one id per line, sorted
 owned_task_ids() { # <session id>
   esc=$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')
@@ -102,7 +102,7 @@ single_phase() { # <tier> <complexity>
 # one frontmatter field of a task file, rewritten in place: the line is replaced when the key is already there
 # (a trailing ` # comment` kept) and inserted just above the closing `---` when it is not. T-007 review: a
 # `sed -i 's/^owner:.*/…/'` is a silent no-op on a task whose frontmatter carries no `owner:` line at all, so
-# both writers of a task field — task-done.sh and state-report.sh — go through this one helper.
+# both writers of a task field, task-done.sh and state-report.sh, go through this one helper.
 setf() { # <file> <key> <value>
   node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -114,7 +114,7 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   L.splice(end,0,`${k}: ${v}`);process.stdout.write(L.join("\n"))})' "$2" "$3" < "$1" > "$1.tmp" && mv -f "$1.tmp" "$1"
 }
 
-# one commit in a state clone, scoped to the paths it is given — the three local writers (task-new.sh,
+# one commit in a state clone, scoped to the paths it is given, the three local writers (task-new.sh,
 # task-approve.sh, state-report.sh) commit exactly the files they wrote and never whatever else the clone had
 # lying around. The identity fallback is for a worker image with no git identity configured; nothing to commit
 # is success, not a failure. Returns non-zero when git refuses, and the caller maps that to its own exit code.
@@ -132,7 +132,7 @@ state_commit() { # <state> <message> [paths…]
 }
 
 # E3 (2026-09-07): two solve sessions in one standalone state clone reported at the same time, and git's index
-# lock is not a transaction — one report's `add` rode in the other's commit. The whole critical section of
+# lock is not a transaction, one report's `add` rode in the other's commit. The whole critical section of
 # state-report.sh (read the committed status, write, commit, push) runs under one lock per state clone: flock on
 # <git-dir>/factory-state.lock where flock exists, otherwise a mkdir spin on <git-dir>/factory-state.lockdir with
 # the holder's pid and start time inside, taken over once it is 120 s old (a session that died mid-report).
@@ -192,7 +192,7 @@ hook_field() { # <json> <field>
 }
 
 # a path the way both sides of a comparison see it: forward slashes, no trailing slash, a lower-case drive letter
-# and `x/..` collapsed. T-003: a Windows path is what makes it necessary — `D:\src\repo`, `D:/src/repo` and
+# and `x/..` collapsed. T-003: a Windows path is what makes it necessary, `D:\src\repo`, `D:/src/repo` and
 # `d:/src/repo/` are one directory, and a comparison that spells them differently lets through the write it meant
 # to deny. Every step runs only when there is something to do, so an ordinary POSIX path spawns no process.
 norm_path() {
@@ -210,7 +210,7 @@ norm_path() {
   printf '%s' "$n"
 }
 
-# norm_path into a variable, skipping the subshell for a path already in that spelling — a command substitution
+# norm_path into a variable, skipping the subshell for a path already in that spelling, a command substitution
 # would fork exactly the process the cases inside norm_path avoid.
 norm_into() { # <variable name> <path>
   case "$2" in
@@ -267,7 +267,7 @@ resolve_layout() { # <path> <work root>
 }
 
 # the same rule for a hook, which is handed no target path: the work root is $WORK_DIR when the cwd is under it,
-# and otherwise the cwd's own two trailing segments — a standalone session's environment need not carry WORK_DIR.
+# and otherwise the cwd's own two trailing segments, a standalone session's environment need not carry WORK_DIR.
 resolve_cwd_layout() { # <cwd>
   resolve_layout "$1" "${WORK_DIR:-}" && return 0
   lo_d=${1%/*}
@@ -276,7 +276,7 @@ resolve_cwd_layout() { # <cwd>
 
 # the state clone of a session, the one rule state-report.sh, self-report-check.sh and session-stats.sh share:
 # the sibling `../state` of the product clone when that is a clone itself, the standalone layout's $WORK_DIR/state
-# when the cwd is a work dir of it (ADR-0049) — and otherwise the cwd, which is where a triage session sits
+# when the cwd is a work dir of it (ADR-0049), and otherwise the cwd, which is where a triage session sits
 # (ADR-0018). `../state` first: a sibling state clone (ADR-0018) wins over the standalone rule.
 resolve_state_dir() { # <cwd>
   if [ -d "$1/../state/.git" ]; then printf '%s' ../state; return 0; fi
@@ -324,7 +324,7 @@ repo_clone_paths() {
     }' "$WORK_DIR/state/repos.yml"
 }
 
-# the key in $WORK_DIR/state/repos.yml whose `path:` is the clone this cwd is in — its toplevel, or the main
+# the key in $WORK_DIR/state/repos.yml whose `path:` is the clone this cwd is in, its toplevel, or the main
 # clone when the cwd is a worktree made from it (ADR-0049). Prints nothing when there is no registry or no match.
 repo_key_of_cwd() { # <cwd>
   [ -f "${WORK_DIR:-}/state/repos.yml" ] || return 0

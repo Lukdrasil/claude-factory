@@ -3,12 +3,12 @@ written_against: ".NET 10, ASP.NET Core 10, Aspire 13.5, Blazor Web App, EF Core
 ---
 
 `written_against` names the stack this rubric was checked against: in `audit`, a finding that
-contradicts it means the profile predates the solution, not that the solution drifted — say which.
+contradicts it means the profile predates the solution, not that the solution drifted, say which.
 
 # .NET stack profile
 
 `approaches.md` decides the shape (how many deployable units, how the code inside one is organised,
-how they talk). This file decides what those units *are* in .NET — which project types to propose,
+how they talk). This file decides what those units *are* in .NET, which project types to propose,
 and what each choice costs. Put every option to the human the same way: options, consequences,
 recommendation. An invented Orders API solution (AppHost, ServiceDefaults, an `Orders.Api`
 minimal API, an `Orders.Worker` background worker, PostgreSQL) is used below only as a worked example.
@@ -26,11 +26,11 @@ The default for a new HTTP surface in .NET 10. Endpoints are mapped onto route g
 auth, filters and metadata for everything under them.
 
 - **Use when** the surface is yours to shape, policy is uniform per group, and handlers are small.
-- **Pros** handlers written as named static methods are ordinary functions — unit-testable without a
+- **Pros** handlers written as named static methods are ordinary functions, unit-testable without a
   host; groups make the policy visible in one place; lowest per-request overhead; native-AOT capable.
   .NET 10's `AddValidation` (source-generated, DataAnnotations on parameters and records, errors via
   `IProblemDetailsService`) removes the historical reason to reach for controllers.
-- **Cons** nothing enforces structure — the framework is happy with a thousand-line `Program.cs`;
+- **Cons** nothing enforces structure, the framework is happy with a thousand-line `Program.cs`;
   cross-cutting concerns you would have got from MVC conventions (custom binders, an application
   model) are yours to build.
 - **Typical mistakes** inline lambdas, which are reachable only through `WebApplicationFactory`, so
@@ -58,7 +58,7 @@ One `Map<Capability>Api(this IEndpointRouteBuilder)` extension per capability, o
 = one file = one task = one branch, with no shared file to conflict on. `Orders.Api`'s
 `Program.cs` is 25 lines of registrations plus `app.MapOrders()`.
 
-For integration tests, `WebApplicationFactory` needs the entry point visible — `public partial class
+For integration tests, `WebApplicationFactory` needs the entry point visible, `public partial class
 Program;` at the foot of `Program.cs`. Decide once whether the test seam is the host or the handler;
 both is fine, silently having only the host is not.
 
@@ -68,7 +68,7 @@ both is fine, silently having only the host is not.
   polyglot contract matters. Costs: no browser client without gRPC-Web (which drops client and
   bidirectional streaming) or JSON transcoding; HTTP/2 end to end, so every proxy hop is now a
   constraint; the `.proto` becomes a build-time dependency of every consumer.
-- **SignalR** when the server pushes to clients that did not ask — broadcast, live status, progress.
+- **SignalR** when the server pushes to clients that did not ask, broadcast, live status, progress.
   Costs: connection state per client, sticky sessions or a backplane once there is more than one
   instance. It is not a request/response transport; if the caller waits for one answer, use HTTP.
 
@@ -77,9 +77,9 @@ both is fine, silently having only the host is not.
 `Microsoft.AspNetCore.OpenApi` generates the document (3.1 by default in .NET 10, JSON Schema
 2020-12); no UI ships with it, so Scalar or Swagger UI is a separate, explicit choice.
 
-The decision to record is what the document *is*: a published contract — generated at build time via
+The decision to record is what the document *is*: a published contract, generated at build time via
 `Microsoft.Extensions.ApiDescription.Server`, committed, diffed in CI, breaking changes visible in
-review — or a development convenience served at runtime in `Development` only. Choose versioning
+review, or a development convenience served at runtime in `Development` only. Choose versioning
 before the first consumer outside the repo; retrofitting it means touching every route.
 
 Note for existing apps: from .NET 10 API endpoints under cookie auth return 401/403 instead of
@@ -91,15 +91,15 @@ redirecting to a login page. Clients that relied on the redirect break.
 
 The mode decides where component code runs, and therefore what it may touch and what it costs.
 
-- **Static SSR** — HTML per request, no interactivity, no per-user server state.
+- **Static SSR**, HTML per request, no interactivity, no per-user server state.
   - *Use when* the page is content, a form post, or read-heavy; and for anything that must read or
-    write cookies or `HttpContext` (sign-in, sign-out, culture) — those only work in a request cycle.
+    write cookies or `HttpContext` (sign-in, sign-out, culture), those only work in a request cycle.
   - *Pros* cheapest to run and to scale; enhanced navigation and streaming rendering give much of the
     feel of interactivity for free.
   - *Cons* every interaction is a navigation or a form post.
   - *Mistakes* writing `@onclick` handlers on a statically rendered page and wondering why nothing
     happens.
-- **Interactive Server** — components run on the server, DOM diffs travel over a SignalR circuit.
+- **Interactive Server**, components run on the server, DOM diffs travel over a SignalR circuit.
   - *Use when* the UI is internal or latency-tolerant, the data is server-side, and you would rather
     not build an API just to feed your own UI.
   - *Pros* full server access from component code, no API layer, tiny download, works on thin clients,
@@ -108,24 +108,24 @@ The mode decides where component code runs, and therefore what it may touch and 
     memory per browser *tab*, not per user; no offline; a dropped connection is a visible reconnect.
   - *Mistakes* treating the circuit as free and putting large object graphs in component state;
     ignoring that scale-out now requires session affinity.
-- **Interactive WebAssembly** — components run in the browser.
+- **Interactive WebAssembly**, components run in the browser.
   - *Use when* the client must work offline or on flaky networks, client CPU should do the work, or
     the UI should be servable as static files behind a CDN.
   - *Pros* no per-user server state; interaction latency is local; the server becomes a plain API.
   - *Cons* first load downloads the runtime and app bundle; you now own an API contract for every
     piece of data the UI needs; nothing in client code is secret.
   - *Mistakes* assuming a `DbContext` or a connection string can be injected client-side.
-- **Interactive Auto** — server first, WebAssembly once the bundle has been fetched.
+- **Interactive Auto**, server first, WebAssembly once the bundle has been fetched.
   - *Use when* first interaction must be fast *and* later sessions should run client-side.
   - *Pros* both profiles without asking the user to wait.
   - *Cons* the same component must run correctly in both places, so every service it depends on needs
     a server and a client implementation; the `.Client` project boundary becomes structural, and
     components addressed by Auto or WebAssembly must live there.
-  - *Mistakes* picking Auto for convenience and then writing server-only code in it — this fails on
+  - *Mistakes* picking Auto for convenience and then writing server-only code in it, this fails on
     the second visit, not the first, which is the worst time to find out.
 
 **Prerendering traps** (interactive modes prerender by default): initialisation runs twice, and state
-does not survive the switch unless persisted — `[PersistentState]` in .NET 10. Persisted state is
+does not survive the switch unless persisted, `[PersistentState]` in .NET 10. Persisted state is
 transferred to the browser, so under WebAssembly or Auto it is public; a large payload can exceed the
 circuit's message limit and the circuit then fails to start. `HttpContext` exists only during static
 SSR and prerender: cookie-based sign-in pages stay statically rendered inside an otherwise
@@ -148,17 +148,17 @@ needed with server-rendered UI.
 
 The render mode chosen above lands here as a deployment constraint.
 
-- **Kestrel as edge** — simplest topology; Kestrel terminates TLS. You own host filtering, rate
+- **Kestrel as edge**, simplest topology; Kestrel terminates TLS. You own host filtering, rate
   limiting and connection limits, and you must *not* enable forwarded-headers processing, or any
   client can spoof its scheme and IP.
-- **Behind IIS / nginx / YARP / a cloud front end** — the proxy terminates TLS and centralises
+- **Behind IIS / nginx / YARP / a cloud front end**, the proxy terminates TLS and centralises
   routing; the app needs forwarded headers with a trusted-proxy list, or every redirect and every
   logged IP is wrong. For interactive Server or SignalR the proxy must pass websocket upgrades and
   hold idle connections open far longer than a default HTTP timeout.
-- **Scale-out** — circuits and SignalR connections are pinned to one process. More than one replica
+- **Scale-out**, circuits and SignalR connections are pinned to one process. More than one replica
   means session affinity (or a SignalR backplane / Azure SignalR), and a shared Data Protection key
   ring, which is a piece of infrastructure someone must provision.
-- **Protocols** — gRPC needs HTTP/2 on every hop; IIS out-of-process hosting proxies to Kestrel over
+- **Protocols**, gRPC needs HTTP/2 on every hop; IIS out-of-process hosting proxies to Kestrel over
   HTTP/1.1, so gRPC does not survive it. HTTP/3 is supported by Kestrel and by IIS on Windows Server
   2022+ with the feature enabled; treat it as an optimisation that falls back, never as a dependency.
 
@@ -166,15 +166,15 @@ The render mode chosen above lands here as a deployment constraint.
 
 ### Aspire (AppHost + ServiceDefaults)
 
-- **Use when** the solution starts more than one process locally — API plus UI plus a database or
-  broker — and you want one command to run it and traces across it from the first day.
+- **Use when** the solution starts more than one process locally, API plus UI plus a database or
+  broker, and you want one command to run it and traces across it from the first day.
 - **Pros** the local topology is code rather than a compose file that drifts; connection strings,
   environment and service discovery are derived from the resource graph; the dashboard gives logs,
   traces and metrics with no vendor decision; `aspire publish` emits Compose files, Kubernetes/Helm
   charts or Bicep, and `aspire deploy` applies them (Compose, Kubernetes, AKS, Azure Container Apps,
   Azure App Service).
-- **Cons** every service references ServiceDefaults, so its choices — the OpenTelemetry pipeline, the
-  health and liveness endpoints, the HttpClient resilience handler — become house defaults inherited
+- **Cons** every service references ServiceDefaults, so its choices, the OpenTelemetry pipeline, the
+  health and liveness endpoints, the HttpClient resilience handler, become house defaults inherited
   everywhere; the AppHost runs at development and publish time only, so anything hand-tuned in the
   deployed environment silently diverges from the model unless the model stays the source; the
   AppHost is a real program (parameters, secrets, container arguments) that no test covers by
@@ -191,7 +191,7 @@ The render mode chosen above lands here as a deployment constraint.
 
 | Option | Use when | Costs |
 |---|---|---|
-| Hosted service inside a web app | work is short, in-process, tied to the app's lifetime, and losable on shutdown | it scales with web replicas — N replicas run N copies unless there is a lock or leader; it competes with requests for CPU; an unhandled failure in it can take the host down |
+| Hosted service inside a web app | work is short, in-process, tied to the app's lifetime, and losable on shutdown | it scales with web replicas, N replicas run N copies unless there is a lock or leader; it competes with requests for CPU; an unhandled failure in it can take the host down |
 | Separate worker project | the work has its own schedule, scaling or failure profile, or must not be duplicated by web scale-out | another deployable, another configuration and telemetry surface, and a way to hand it work |
 | Queue-driven | work must survive restarts, absorb bursts, or have retry and dead-letter semantics | a broker to operate, idempotent handlers, poison-message handling |
 
@@ -208,7 +208,7 @@ risk to record in `07-risks.md` with the trigger (a second worker replica) that 
 - **Dapper or raw SQL** when reads dominate, the SQL *is* the design, or the shape is a report.
   Consequences: mapping, schema-change safety and type drift are yours; there is no migrations story
   unless you adopt one separately.
-- **Mixed** — EF Core for writes, Dapper for reporting queries — is a normal answer, and one to write
+- **Mixed**, EF Core for writes, Dapper for reporting queries, is a normal answer, and one to write
   down rather than let happen per file.
 
 Whichever wins sets the testing boundary: query behaviour is only proven against a real database

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop hook: session statistics for the task — the archetype/tier from the frontmatter plus the model, duration
+# Stop hook: session statistics for the task, the archetype/tier from the frontmatter plus the model, duration
 # and tokens from the transcript (transcript_path from the hook stdin) are sent through state-report.sh as a line
 # for ## Attempts, failed tool calls as lines for ## Tool failures; the state clone
 # commits them (ADR-0050). A session that owns several tasks gets one line per task.
@@ -48,7 +48,7 @@ for(const line of lines){
   }
   const u=m.usage;if(!u)continue;
   // one usage per message.id: Claude Code writes a line per content block and repeats the response usage on
-  // each, streamed lines carry a partial output_tokens and a later variant can zero it out — the largest
+  // each, streamed lines carry a partial output_tokens and a later variant can zero it out, the largest
   // output_tokens is the final one, so max-wins covers both shapes. No id (a subagent line) counts on its own.
   const k=m.id||Symbol();const p=usage.get(k);
   if(!p||(u.output_tokens||0)>(p.output_tokens||0))usage.set(k,u);
@@ -90,13 +90,13 @@ for id in $ids; do
   tier=$(sed -n 's/^tier:[[:space:]]*//p' "$task" | head -n1)
 
   # ponytail: `set --` builds the argument list so the optional --tool-failures needs no second call site
-  set -- --task "$id" --attempts "attempt ${attempt:-?} — $status, ${archetype:-?}/${tier:-?}, $stats <!-- sid:$sid -->"
+  set -- --task "$id" --attempts "attempt ${attempt:-?}, $status, ${archetype:-?}/${tier:-?}, $stats <!-- sid:$sid -->"
   if [ -n "$fails" ]; then
-    set -- "$@" --tool-failures "$(printf '%s\n' "$fails" | sed "s/^/attempt ${attempt:-?} — /")"
+    set -- "$@" --tool-failures "$(printf '%s\n' "$fails" | sed "s/^/attempt ${attempt:-?}, /")"
   fi
 
   # a report of its own: self-report-check.sh chains this script only after the agent's self-report went through, so
-  # the stats are a commit on top of it, never part of it. A failure is simply dropped — worst case one stats line
+  # the stats are a commit on top of it, never part of it. A failure is simply dropped, worst case one stats line
   # is missing, which must not bring the task down.
   sh "$(dirname -- "$0")/state-report.sh" "$@" --message "stats: $id $status" >/dev/null 2>&1 || continue
 done

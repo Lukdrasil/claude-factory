@@ -14,7 +14,7 @@ deny() { printf 'comment-gate deny: %s\n' "$1" >&2; exit 2; }
 . "$(dirname -- "$0")/lib-tasks.sh"
 
 # one node run reads the hook stdin: the tool, the cwd, the target path, and the old/new text pairs of the
-# edit — for Write the new text is `content` and the old text is the file on disk (read below); for Edit the
+# edit, for Write the new text is `content` and the old text is the file on disk (read below); for Edit the
 # pair is old_string/new_string; for MultiEdit every edit contributes its pair. Newlines are escaped on the way
 # out so each field is one line, as policy-guard.sh does.
 fields=$(node -e '
@@ -71,8 +71,8 @@ un old "$f_old"; un new "$f_new"
 if [ "$f_tool" = Write ] && [ -f "$abs" ]; then old=$(cat "$abs"); fi
 
 # a full-line comment: the first non-blank characters are the marker. Trailing comments after code are not
-# scanned — a `//` inside a string or a URL would make the gate lie, and the reviewer reads the diff anyway.
-comment_lines() { # <text> — one trimmed comment line per output line
+# scanned, a `//` inside a string or a URL would make the gate lie, and the reviewer reads the diff anyway.
+comment_lines() { # <text>, one trimmed comment line per output line
   case "$marker" in
     slash) printf '%s\n' "$1" | sed -n 's/^[[:space:]]*\(\/\/.*\|\/\*.*\|\* .*\|\*\/.*\|\*\)$/\1/p' ;;
     hash)  printf '%s\n' "$1" | sed -n 's/^[[:space:]]*\(#.*\)$/\1/p' ;;
