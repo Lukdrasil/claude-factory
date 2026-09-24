@@ -34,16 +34,21 @@ together with every deny they keep.
 - **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
   break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
   dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
-- **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that the segments
-  joined to it by `&&` are judged against, and only until the next `;`, `||` or `&`. From there on the `cd`
-  may have failed, so a relative target is judged against every cwd from before a `cd` of that `&&` chain as
-  well. A `cd` followed by `;`, `||` or `|`, led by `||`, or inside an unclosed unquoted `(` or `$(` may not
-  run or may run in a subshell, so the same holds for it at once. A `cd` entered through `|` runs in a subshell
-  and never moves the cwd. After a `cd` the guard
-  cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`), a relative
-  write target is denied: a redirect target, an in-place editor's operand containing a `/`, or the file
-  operand of `sed -i`/`perl -i`. A command word is never one. An absolute target is judged as any absolute
-  target.
+- **cd tracking.** An allowlist. A `cd` replaces the cwd the later segments are judged against only when the
+  whole command has this shape: one or more leading segments `cd <path>`, where the path is absolute, `~`,
+  `~/x` or empty (through `$HOME`), with no option, then simple commands. Every separator is `&&`, and a `|`
+  appears only inside a later segment. Outside quotes there is no `(`, `)`, `$(`, backtick, `;`, `||`,
+  background `&` or line break. No word is `pushd`, `popd`, `builtin`, `command`, `eval`, `source` or `exec`,
+  no segment starts with `.`, and no assignment (`CDPATH=` included) is prefixed to a `cd`. In every other
+  shape the cwd stays the hook's, and the target of every `cd` or `pushd` seen, even behind `builtin`,
+  `command`, `eval`, `exec` or an assignment, joins a set of bases. A relative target is denied when it is a
+  protected target under any base. A `cd` the guard cannot resolve (a relative path, `-`, a variable, `..`, a
+  quoted path, a target containing `)`, a bare `pushd` or `popd`) turns the shape off for the rest of the
+  command, keeps the hook cwd among the bases, and denies a relative write target: a redirect target, an
+  in-place editor's operand containing a `/`, or the file operand of `sed -i`/`perl -i`. A command word is
+  never one. An absolute target is judged as any absolute target.
+- **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
+  guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
   with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
@@ -58,5 +63,6 @@ together with every deny they keep.
   --force-with-lease=<branch>:<sha> origin <branch>`, where `<branch>` is that task's `branch:`. A lease on
   the default branch or on any other branch is denied.
 - **State-clone commits.** In `$WORK_DIR/state`, reached by the cwd, a `cd` or `-C`, `git commit` must name
-  at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts. `git add` stays
-  allowed.
+  at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts, and so does one
+  spelled `~/…`. Every path is a file: `.`, `:/`, a path ending in `/` and an existing directory are denied.
+  `git add` stays allowed.
