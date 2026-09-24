@@ -22,6 +22,68 @@ yml_field() { # <key> <field>
     }' "$state/repos.yml"
 }
 
+# the plan slug of a task on stdin: decompose names `repos/<key>/plans/<slug>-plan-ready.md` in its `## Context`
+plan_slug() { grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' | head -n1 | sed 's|^plans/||; s|-plan-ready\.md$||'; }
+
+# a quick-lane task (skills/factory/references/solve-quick.md) has no grilled plan to hash, so its verdict says
+# `scope: quick` and is read by the task id instead of by a plan slug
+quick_verdict() { # <verdict file>
+  [ -f "$1" ] || return 1
+  [ "$(sed -n 's/^scope:[[:space:]]*//p' "$1" | head -n1)" = quick ] || return 1
+  case "$(sed -n 's/^verdict:[[:space:]]*//p' "$1" | head -n1)" in aligned|overridden-by-human) return 0 ;; esac
+  return 1
+}
+
+# T-249 F1: the architect rule for a task write in $state, shared by architect-gate.sh's Write branch and every
+# block write of task-new.sh. The product is the registered clone at the repos.yml `path:` of <key>; without
+# docs/architecture/ there it passes (plan, decision 6). A valid verdict is `aligned` or `overridden-by-human`
+# whose plan_hash is the current hash of its plan file, a mismatch counting as no verdict; only the verdict of the
+# plan the task names is read. Returns 0 to pass, 1 with the reason on stdout, and 2 with a warning on stdout when
+# the clone, the slug or a sha256 tool cannot be resolved: deny on positive evidence only, so a forgotten check is
+# blocked and an unrelated flow never is.
+architect_verdict() { # <key> <plan slug> <task id or empty>
+  av_clone=$(yml_field "$1" path)
+  if [ -z "$av_clone" ] || [ ! -d "$av_clone" ]; then
+    printf "the registered clone of '%s' (repos.yml path:) is not on disk, so there is nothing to check\n" "$1"
+    return 2
+  fi
+  [ -d "$av_clone/docs/architecture" ] || return 0
+  if command -v sha256sum >/dev/null 2>&1; then av_sum='sha256sum'
+  elif command -v shasum >/dev/null 2>&1; then av_sum='shasum -a 256'
+  else printf '%s\n' 'no sha256 tool, so the plan hash of the verdict cannot be recomputed'; return 2; fi
+  if [ -n "$3" ] && quick_verdict "$state/repos/$1/verdicts/$3.md"; then return 0; fi
+  if [ -z "$2" ]; then
+    printf "the task for '%s' names no plans/<slug>-plan-ready.md, so its verdict cannot be found\n" "$1"
+    return 2
+  fi
+  av_f="$state/repos/$1/verdicts/$2.md"
+  quick_verdict "$av_f" && return 0
+  av_why="repos/$1/verdicts/$2.md, the verdict of the plan this task names, is missing"
+  if [ -f "$av_f" ]; then
+    av_v=$(sed -n 's/^verdict:[[:space:]]*//p' "$av_f" | head -n1)
+    av_plan=$(sed -n 's/^plan:[[:space:]]*//p' "$av_f" | head -n1)
+    av_want=$(sed -n 's/^plan_hash:[[:space:]]*//p' "$av_f" | head -n1)
+    case "$av_plan" in /*) av_pf=$av_plan ;; *) av_pf="$state/$av_plan" ;; esac
+    case "$av_v" in
+      aligned|overridden-by-human)
+        if [ -z "$av_plan" ] || [ -z "$av_want" ]; then
+          av_why="$2.md has no plan/plan_hash"
+        elif [ ! -f "$av_pf" ]; then
+          av_why="the plan '$av_plan' of $2.md is missing"
+        elif [ "$($av_sum "$av_pf" | cut -d' ' -f1)" != "$av_want" ]; then
+          av_why="the plan_hash in $2.md does not match '$av_plan'"
+        else
+          return 0
+        fi
+        ;;
+      *) av_why="the verdict in $2.md is '${av_v:-unreadable}'" ;;
+    esac
+  fi
+  printf "the product repo '%s' has docs/architecture/, so a task for '%s' may only be written on an architect verdict: %s. Run the architect-review skill (plan-check on the plan, cut-check on the task drafts), let the human decide on the findings, and write the verdict per its verdict contract; a plan edited after the review has to be reviewed again.\n" \
+    "$av_clone" "$1" "$av_why"
+  return 1
+}
+
 # the tasks whose `owner:` ends in this session's id — `factory@<host>:<session_id>`, the whole id after the
 # last colon (ADR-0050); one id per line, sorted
 owned_task_ids() { # <session id>

@@ -72,6 +72,12 @@ check 'the second MR is listed with its base' '^  T-001-02 https://forge.test/mr
 check 'the human is asked to review and merge' 'Completion: the human has been asked to review and merge' "$out"
 check 'mr-watch is armed'                'mr-watch.sh T-001 --interval 300' "$out"
 check 'new-comments has its own answer'  'new-comments' "$out"
+check 'an extra block gets a cut-check' 'skills/architect-review/SKILL.md.*cut-check\|cut-check.*skills/architect-review/SKILL.md' "$out"
+check 'an extra block is written by task-new.sh --parent' 'task-new\.sh.*--parent' "$out"
+if printf '%s\n' "$out" | grep -q 'task-template\.sh block > .*&&'; then printf 'FAIL the template is chained into task-new.sh\n'; fail=1
+else printf 'PASS the template is not chained into task-new.sh\n'; fi
+if printf '%s\n' "$out" | grep -q 'verdicts/x\.md'; then printf 'FAIL a clone without docs/architecture/ has no verdict to remove\n'; fail=1
+else printf 'PASS a clone without docs/architecture/ has no verdict to remove\n'; fi
 
 parent() { # <id> <context line>
   cat > "$state/repos/demo/tasks/$1.md" <<EOF
@@ -104,6 +110,9 @@ parent T-003 'plans/x-plan-ready.md'
 block T-003-01 draft null
 out=$(sh "$bin/solve-next.sh" T-003 --state "$state" 2>&1)
 check 'a decomposed parent needs no verdict' 'Step 8 of 16: check the cut of T-003' "$out"
+
+out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
+check 'with docs/architecture/, step 11 removes the extra block verdict' 'verdicts/x\.md' "$out"
 
 parent T-004 'plans/x-plan-ready.md'
 out=$(sh "$bin/solve-next.sh" T-004 --state "$state" 2>&1)
