@@ -28,6 +28,23 @@ A Windows clone gets LF line endings by design: `.gitattributes` pins them, so t
 | `toolsets/` | per-stack command bindings |
 | `prompts/` | the worker session system prompt |
 | `tests/` | shell checks over the scripts above |
+| `ui/` | the Factory UI server, a .NET Native AOT container (`ui/README.md`) |
+
+## Browser UI
+
+An optional local page beside the CLI, for Claude Code sessions inside herdr with `ui: docker` in
+`factory.yml`. It needs Docker, and nothing else on the host.
+
+```sh
+sh bin/ui-up.sh [--state <dir>]   # build the image when missing, start or reuse the container, open the relay tab
+sh bin/ui-down.sh                  # remove the container and close the relay tab
+```
+
+`ui-up.sh` prints `http://127.0.0.1:<port>/#token=<token>`. Open that URL: the token in the fragment is what the
+page sends with every API call. The port is `ui_port` from `factory.yml` (7171 by default), or a random free
+port when that one is taken. The port in use is written to `port` in the UI home (`~/.claude-factory/ui`,
+or `$FACTORY_UI_HOME`). One container serves every session on the machine. It is recreated when the plugin
+version or the state dir changes. `ui-up.sh` exits 3 when Docker is not running and 4 outside herdr.
 
 ## Tests
 
