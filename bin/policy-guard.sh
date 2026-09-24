@@ -719,7 +719,7 @@ cd_depth=0
 cd_reset() { cwd=$cwd0; cwd_lost=''; cwd_alt=''; cd_chain=''; cd_chain_lost=''; cd_depth=0; }
 alt_add() { [ -z "$1" ] || cwd_alt=${cwd_alt:+$cwd_alt$NL}$1; }
 cd_track() { # <one command segment> <separator code after it> <separator code before it>
-  ct_sep=$2
+  ct_sep=$2 ct_lead=${3:-}
   case "$ct_sep" in
     o|r)
       alt_add "$cd_chain"
@@ -731,7 +731,7 @@ cd_track() { # <one command segment> <separator code after it> <separator code b
     *[\(\)]*)
       cd_depth=$(unquoted "$1" | awk -v d="$cd_depth" '{ d += gsub(/\(/, ""); d -= gsub(/\)/, "") } END { print (d > 0 ? d : 0) }') ;;
   esac
-  [ "${3:-}" != p ] || return 0
+  [ "$ct_lead" != p ] || return 0
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -749,7 +749,7 @@ cd_track() { # <one command segment> <separator code after it> <separator code b
   case "$cd_to" in
     *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cwd_lost=1 ;;
     /*|[A-Za-z]:/*)
-      if [ "$ct_sep" = a ] && [ "$ct_depth" = 0 ] && [ "${3:-}" != r ]; then
+      if [ "$ct_sep" = a ] && [ "$ct_depth" = 0 ] && [ "$ct_lead" != r ]; then
         cd_chain=${cd_chain:+$cd_chain$NL}$cwd${cwd_alt:+$NL$cwd_alt}
         [ -z "$cwd_lost" ] || cd_chain_lost=1
         cwd_lost=''; cwd_alt=''
