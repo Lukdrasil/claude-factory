@@ -240,7 +240,7 @@ async function tabs(page) {
   await check('the Memory tab lists every scope with its last daily and weekly pass, never included', async () => {
     const { p } = await withTab(context, 'Memory', full, CEO);
     const rows = await until('the pass rows', async () => {
-      const r = await p.locator('[data-passes] tbody tr').evaluateAll((trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, ' ').trim()));
+      const r = await p.locator('[data-passes] tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((td) => td.textContent.trim()).join(' | ')));
       return r.length && r;
     }).finally(() => p.close());
     ok(rows.length === 2, `rows: ${rows.join(' | ')}`);
@@ -267,7 +267,7 @@ async function tabs(page) {
 
   await check('Start weekly of global posts start the weekly pass for global', async () => {
     const { p, posted } = await withTab(context, 'Memory', full, CEO);
-    const row = p.locator('[data-passes] tbody tr', { hasText: /^\s*global\b/ });
+    const row = p.locator('[data-passes] tbody tr', { has: p.locator('td:first-child', { hasText: /^\s*global\s*$/ }) });
     await until('the row', () => row.isVisible());
     await row.getByRole('button', { name: /start weekly/i }).click();
     const got = await until('the post', () => posted.length && posted).finally(() => p.close());
