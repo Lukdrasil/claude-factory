@@ -17,7 +17,7 @@ human's job.
 |---|---|
 | frontmatter `repo:` | `repo` and the `<repo-key>` prefix |
 | frontmatter `task:` | the source task, its `- forge issue:` line copied onto every block, and the task to recommend closing at the end |
-| `## Proposed tasks` | one block per proposal; `tier`, `archetype`, `complexity`, `docs` and `acceptance` 1:1 |
+| `## Proposed tasks` | one block per proposal; `tier`, `archetype`, `complexity`, `docs` and `acceptance` 1:1; `steps` into `## Checklist` |
 | `## Program design` | the members a proposal's `design:` names, verbatim into `## Context` under `Design (approved in the grill):` |
 | `## Terms`, `## Decisions` and `## Out of scope` | into every block's `## Context` and `## Out of scope` |
 | `## Gap ledger` | an open row stops the script, and you |
@@ -57,5 +57,5 @@ human's job.
 state repo, and the human has the list.
 
 Never write `status: ready`, never fill `plan_hash`, `owner` or `mr_url`, never edit another task, never
-commit by hand, never change a proposal's tier, archetype, complexity, acceptance or docs: the grill decided
+commit by hand, never change a proposal's tier, archetype, complexity, acceptance, docs or steps: the grill decided
 those and `cut-check` blocks a drift.

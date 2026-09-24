@@ -124,6 +124,9 @@ A command or test that decides done/not-done once it has run.
 ## Out of scope
 What this task deliberately does not do (and which task it belongs to, if any).
 
+## Checklist
+- [ ] <step, copied from the proposal's `steps:`; a proposal with `steps: none` has no section>
+
 ## Internal
 - forge issue: <the forge issue url of the task this plan came from; omit the line and the section when it has none>
 
@@ -174,6 +177,8 @@ One sentence: what should happen and why.
 - acceptance: `<the command or test that decides done/not-done>`
 - docs: <none | the docs to update in the same branch>
 - design: <the members of ## Program design this task implements, by file and name | none>
+- steps:
+  - <step: wiring, migration, config, data or rollout that is not a design member or a doc; `- steps: none` when there is none>
 - out of scope: <what does not belong in this task>
 
 ## Out of scope

@@ -2,8 +2,8 @@
 # One self-contained brief for a block (T-128), so a coordinator spawning a wave of agents does not write five
 # briefs by hand. A subagent sees none of the coordinator's context, so everything it needs goes on stdout:
 # the block's archetype and phase with the subagent contract they bind to, the block's `Design (approved in
-# the grill):` section verbatim, its `## Acceptance` verbatim (between them they name the test files the
-# block owns), the `## Handoff` of the block's progress file when a tests phase wrote one, the repo's toolset
+# the grill):` section verbatim, its `## Checklist` verbatim when it has one, its `## Acceptance` verbatim
+# (between them they name the test files the block owns), the `## Handoff` of the block's progress file when a tests phase wrote one, the repo's toolset
 # command table, and, when an agent is named, the output of the sibling bin/agent-brief.sh for that agent.
 #
 #   block-brief.sh <block-id> [--state <dir>] [--agent <name>] [--phase <tests|implement>]
@@ -53,6 +53,10 @@ design=$(awk '/^Design \(approved in the grill\):[ \t]*$/ { on = 1 }
               on { print }' "$task")
 [ -n "$design" ] || die "block $id has no 'Design (approved in the grill):' section in $task"
 
+checklist=$(awk '/^## Checklist[ \t]*$/ { on = 1; print; next }
+                 on && /^## / { exit }
+                 on { print }' "$task")
+
 acceptance=$(awk '/^## Acceptance[ \t]*$/ { on = 1; print; next }
                   on && /^## / { exit }
                   on { print }' "$task")
@@ -89,6 +93,7 @@ printf 'Archetype: %s (skill %s/skills/block-%s/SKILL.md)\n' "$archetype" "$plug
 printf 'Phase: %s\n' "$phase"
 printf 'Contract: %s/skills/_shared/block-subagent.md\n\n' "$plugin"
 printf '%s\n\n' "$design"
+[ -z "$checklist" ] || printf '%s\n\n' "$checklist"
 printf '%s\n\n' "$acceptance"
 # why: the implement agent gets the tests phase's handoff from the brief, not from a `../state` path that a
 # why: block worktree under <root>/<key>/ does not have

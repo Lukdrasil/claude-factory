@@ -2,7 +2,8 @@
 # worktree-add.sh over a throwaway state clone and registered clone (T-228 A7): a block records the sha of its
 # base beside `base:`, and a resumed block whose base moved is reset when it has no commits of its own, refused
 # with the command when it has, and left alone when the base did not move. Without `base_sha:` only a branch
-# that is an ancestor of the new base is reset.
+# that is an ancestor of the new base is reset. T-253: a progress file it creates arrives with `## Remaining`
+# seeded from the task's `## Checklist`, and one that already exists keeps its sections.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -172,5 +173,39 @@ check 'no base_sha:, an ancestor resumes with exit 0' 0 "$rc"
 check 'no base_sha:, an ancestor of the new base is reset to it' "$I" "$(tip block/T-500-01)"
 add T-500-02
 check 'no base_sha:, a branch with own commits is not reset' "$H" "$(tip block/T-500-02)"
+
+# --- T-253: a new progress file is seeded with the checklist, an existing one keeps its sections ---
+section() { # <file> <heading>: the non-blank lines under the heading, up to the next `## `
+  awk -v h="$2" '$0 == h { on = 1; next } on && /^## / { exit } on && NF { print }' "$1"
+}
+git -C "$clone" branch -q feat/T-600-demo main
+commit_on feat/T-600-demo 'parent work J' >/dev/null
+task T-600 feat/T-600-demo
+for b in 01 02; do
+  task "T-600-$b" null
+  printf '\n## Out of scope\nnothing\n\n## Checklist\n- [ ] a\n- [ ] b\n\n## Attempts\n' >> "$state/repos/demo/tasks/T-600-$b.md"
+done
+existing="$state/repos/demo/progress/T-600-02.md"
+printf '# T-600-02: resumed\n**on track**: kept as written.\n\n## Done\n- the first half\n\n## Remaining\n- [ ] old step\n' > "$existing"
+cp "$existing" "$tmp/T-600-02.before"
+publish
+
+add T-600-01
+check 'a block with a checklist exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+new="$state/repos/demo/progress/T-600-01.md"
+check 'a new progress file seeds ## Remaining with the checklist' "$(printf '%s\n%s' '- [ ] a' '- [ ] b')" \
+  "$(section "$new" '## Remaining')"
+check 'the seeded file still records base:' feat/T-600-demo "$(progress_field T-600-01 base)"
+check 'the seeded ## Remaining is committed in the state clone' 2 \
+  "$(git -C "$state" show HEAD:repos/demo/progress/T-600-01.md 2>/dev/null | grep -cE '^- \[ \] [ab]$')"
+
+add T-600-02
+check 'a block with an existing progress file exits 0' 0 "$rc"
+check 'an existing progress file keeps its sections as they are' "$(cat "$tmp/T-600-02.before")" \
+  "$(grep -vE '^base(_sha)?:' "$existing")"
+
+check 'a block with no checklist gets no ## Remaining' 0 \
+  "$(grep -cxF '## Remaining' "$state/repos/demo/progress/T-300-01.md")"
 
 exit $fail
