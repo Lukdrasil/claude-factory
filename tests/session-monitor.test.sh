@@ -400,4 +400,44 @@ sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" >/dev/null 2>
 out=$(cat "$HERDR_STUB_LOG")
 check '--all sweeps a record under a four-digit parent'  '^tab close tab-1003 '
 
+# alias ids, T-<ALIAS>-<n>: the wave of an alias cut goes out through spawn-plan.sh, herdr-tabs.sh names, records
+# and reads its units under the parent, and --all sweeps that record. The grammar is lib-tasks.sh's predicates,
+# so this part runs once they take alias ids and is skipped before.
+if (. "$bin/lib-tasks.sh"; is_parent_id T-DM-7 && is_block_of T-DM-7 T-DM-7-01) >/dev/null 2>&1; then
+  parent T-DM-7
+  block T-DM-7-01 ready null - src/j.ts
+  out=$(sh "$bin/session-monitor.sh" --task T-DM-7 --state "$state" --dry-run 2>/dev/null)
+  check 'the wave of an alias cut goes out'        '^T-DM-7-01 printed '
+  nocheck 'the alias parent itself does not'       '^T-DM-7 '
+
+  printf -- '---\nid: T-DM-7\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: green\ncomplexity: low\n---\n\n# Goal\nfeat(demo): an alias parent\n' \
+    > "$hstate/repos/demo/tasks/T-DM-7.md"
+  printf -- '---\nid: T-DM-7-01\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): an alias block\n\nDesign (approved in the grill):\n\n### `src/j.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+    > "$hstate/repos/demo/tasks/T-DM-7-01.md"
+  mkdir -p "$hroot/demo/T-DM-7-01"
+  : > "$HERDR_STUB_LOG"
+  out=$(sh "$bin/session-monitor.sh" --task T-DM-7 --spawn herdr --state "$hstate" 2>/dev/null)
+  check 'a herdr spawn of an alias block goes out' '^T-DM-7-01 spawned '
+  out=$(cat "$HERDR_STUB_LOG")
+  check 'its agent is the lowercased id'           '^agent start t-dm-7-01 '
+  out=$(cat "$hroot/demo/.harness/T-DM-7/herdr-tabs" 2>/dev/null)
+  check 'an alias block lands in its parent tab record' '^T-DM-7-01 tab-1 pane-1$'
+  out=$(sh "$bin/herdr-tabs.sh" name T-DM-7-01 --state "$hstate" 2>/dev/null)
+  check 'an alias block is named'                  '^🦊 demo T-DM-7-01$'
+  sh "$bin/herdr-tabs.sh" record T-DM-7-01 tab-701 pane-701 --state "$hstate" 2>/dev/null
+  sh "$bin/herdr-tabs.sh" record T-DM-7-grill tab-702 pane-702 --state "$hstate" 2>/dev/null
+  out=$(sh "$bin/herdr-tabs.sh" state T-DM-7-grill --state "$hstate" 2>/dev/null)
+  check 'an alias step reads its record'           '^open$'
+  sed -i 's/^status: .*/status: done/' "$hstate/repos/demo/tasks/T-DM-7-01.md"
+  herdr_tab tab-701 idle false t-dm-7-01
+  herdr_tab tab-702 idle false t-dm-7-grill
+  : > "$HERDR_STUB_LOG"
+  sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" >/dev/null 2>&1
+  out=$(cat "$HERDR_STUB_LOG")
+  check '--all sweeps the done block of an alias parent'   '^tab close tab-701 '
+  nocheck '--all keeps the step of an alias parent at work' '^tab close tab-702 '
+else
+  printf 'SKIP alias ids: the lib-tasks.sh predicates take T-NNN ids only\n'
+fi
+
 exit $fail
