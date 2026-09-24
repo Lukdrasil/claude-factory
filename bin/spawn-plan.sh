@@ -93,14 +93,16 @@ merged() { # <block id>: its status is review or done
 
 plan=$("$bin/dag-check.sh" "$id" --state "$state") || die "dag-check.sh refuses the cut of $id, so no wave of it is safe to spawn"
 
-# the wave lines of the plan, one per line, reduced to the block ids on them
+# the wave lines of the plan, one per line, reduced to the block ids on them: every word after `wave N` that
+# lib-tasks.sh's is_block_id takes, so the id grammar lives in one place
 wave_ids() { # <wave number>
-  printf '%s\n' "$plan" | awk -v want="$1" '
+  for w in $(printf '%s\n' "$plan" | awk -v want="$1" '
     { match($0, /wave[[:space:]]*[0-9]+/); if (RSTART == 0) next
       n = substr($0, RSTART, RLENGTH); sub(/wave[[:space:]]*/, "", n)
       if (n + 0 != want + 0) next
-      while (match($0, /T-[0-9][0-9][0-9]+-[0-9][0-9]+/)) {
-        print substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } }'
+      $0 = substr($0, RSTART + RLENGTH); gsub(/[^A-Za-z0-9-]+/, " "); print }'); do
+    if is_block_id "$w"; then printf '%s\n' "$w"; fi
+  done
 }
 
 wave_numbers=$(printf '%s\n' "$plan" | awk '{ match($0, /wave[[:space:]]*[0-9]+/); if (RSTART == 0) next
