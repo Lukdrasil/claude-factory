@@ -260,15 +260,16 @@ check 'herd-watch lists T-246-99 before T-246-100' 'T-246 T-246-99 T-246-100 ' "
 
 # --- no fixed-width id pattern left under bin/ ---------------------------------------
 # An unquantified run of two or more [0-9] classes, or an exact {2} / {3} count, is a fixed-width id pattern.
-# lib-tasks.sh's predicate bodies are the one place allowed to spell the shape out. forge.sh, curate-apply.sh and
-# mr-watch.sh match numbers that are no task id with [0-9][0-9]*, which the allow-list strips before the grep.
+# lib-tasks.sh's predicate bodies are the one place allowed to spell the shape out. forge.sh, curate-apply.sh,
+# mr-watch.sh and ui-up.sh match numbers that are no task id with [0-9][0-9]*, which the allow-list strips before
+# the grep.
 fixed=$(for f in "$bin"/*.sh; do
   n=${f##*/}
   case "$n" in
     lib-tasks.sh)
       awk '/^(is_task_id|is_parent_id|is_block_id|is_block_of)[[:space:]]*\(\)/ { skip = 1; one = /}[[:space:]]*$/ }
         skip { print ""; if (one || /^}/) skip = 0; next } { print }' "$f" ;;
-    forge.sh|curate-apply.sh|mr-watch.sh) sed 's/\[0-9\]\[0-9\]\*//g' "$f" ;;
+    forge.sh|curate-apply.sh|mr-watch.sh|ui-up.sh) sed 's/\[0-9\]\[0-9\]\*//g' "$f" ;;
     *) cat "$f" ;;
   esac | grep -nE '(\[0-9\]){2,}([^+[]|$)|\{[23]\}' | sed "s|^|$n:|"
 done)
