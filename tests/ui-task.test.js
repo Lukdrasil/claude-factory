@@ -44,6 +44,35 @@ function answers(sid) {
 const drawer = (page) => page.getByRole('complementary');
 const panel = (page, name) => drawer(page).locator(`[data-panel="${name}"]`);
 const rail = (page) => drawer(page).getByRole('navigation');
+const details = (page) => drawer(page).locator('details', { has: page.locator('summary', { hasText: /^\s*Task details\s*$/ }) });
+
+async function expand(page) {
+  const d = details(page);
+  if ((await d.count()) && !(await d.first().evaluate((el) => el.open))) await d.first().locator('summary').first().click();
+}
+
+async function exposed(page, selector) {
+  return page.evaluate((selector) => {
+    const els = [...document.querySelectorAll(selector)];
+    if (!els.length) return [`nothing matches ${selector}`];
+    return els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const name = el.textContent.replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!r.height) return `${name}: not laid out`;
+      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
+        return `${name}: at ${Math.round(r.top)}..${Math.round(r.bottom)} of a ${innerHeight} px viewport`;
+      }
+      const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 20), r.top + r.height / 2);
+      return hit && el.contains(hit) ? '' : `${name}: covered by ${hit ? hit.outerHTML.slice(0, 80) : 'nothing'}`;
+    }).filter(Boolean);
+  }, selector);
+}
+
+async function noPre(page) {
+  await expand(page);
+  const n = await drawer(page).locator('[data-panel] pre').count();
+  ok(n === 0, `${n} pre elements in the panels`);
+}
 
 async function fresh(page) {
   await page.goto('about:blank');
@@ -55,9 +84,11 @@ async function openTask(page, id) {
   await until(`the row of ${id}`, () => page.locator('table tr', { hasText: id }).first().isVisible());
   await page.locator('table tr', { hasText: id }).first().getByText(id, { exact: true }).first().click();
   await until(`the drawer of ${id}`, () => drawer(page).getByText(id).first().isVisible());
+  await until(`the panels of ${id}`, async () => (await drawer(page).locator('[data-panel]').count()) > 0);
 }
 
 async function panelText(page, name) {
+  await expand(page);
   return until(`the ${name} panel`, async () => {
     const p = panel(page, name);
     return (await p.count()) && (await p.first().innerText());
@@ -72,6 +103,7 @@ function holds(text, items) {
 }
 
 async function current(page) {
+  await expand(page);
   return until('the current step of the rail', async () => {
     const c = rail(page).locator('[aria-current="step"]');
     return (await c.count()) === 1 && (await c.innerText());
@@ -80,8 +112,8 @@ async function current(page) {
 
 async function confirmYes(page, name, key) {
   const [sid, ask] = key.split('/');
-  const c = panel(page, name).locator(`[data-ask="${key}"]`);
-  await until(`${key} in the ${name} panel`, () => c.isVisible());
+  const c = drawer(page).locator(`[data-ask="${key}"]`);
+  await until(`${key} in the drawer`, () => c.isVisible());
   ok((await drawer(page).locator(`[data-ask="${key}"]`).count()) === 1, `${key} is in the drawer more than once`);
   ok(await c.getByRole('button', { name: /\byes\b/i }).count(), 'no yes');
   ok(await c.getByRole('button', { name: /\bno\b/i }).count(), 'no no');
@@ -97,7 +129,7 @@ async function confirmYes(page, name, key) {
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const page = await (await browser.newContext({ viewport: { width: 1440, height: 900 } })).newPage();
   page.setDefaultTimeout(3000);
 
   await check('the page modules export renderTaskPanels and renderBlockedQuestion', async () => {
@@ -112,10 +144,43 @@ async function confirmYes(page, name, key) {
     ok(kinds === 'function function', `typeof: ${kinds}`);
   });
 
+  await check('section takes rendered HTML and returns the nodes under the <h2> it names, up to the next <h2>', async () => {
+    const got = await page.evaluate(async () => {
+      const { section } = await import('/task-panels.js');
+      const html = '<h1>Title</h1><h2 id="context">Context</h2><p>first</p><ul><li>one</li></ul><h3>Deeper</h3><p>still</p>'
+        + '<h2 id="next">Next</h2><p>after</p>';
+      const text = (r) => (r instanceof Node ? [r] : [...(r || [])]).map((n) => (n instanceof Node ? n.textContent : `not a node: ${n}`)).join('');
+      return { hit: text(section(html, 'Context')), miss: text(section(html, 'Missing')) };
+    });
+    ok(got.hit === 'firstoneDeeperstill', `Context: ${JSON.stringify(got.hit)}`);
+    ok(got.miss === '', `Missing: ${JSON.stringify(got.miss)}`);
+  });
+
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await openTask(page, 'T-021');
+
+    await check(`at ${width}x${height} opening T-021 shows the question and options of its approve confirm in the first viewport`, async () => {
+      const q = drawer(page).locator('[data-ask="s21/ap1"] [data-q="Q1"]');
+      await until('Q1 of ap1', async () => (await q.count()) === 1);
+      ok(/Approve T-021\?/.test(await q.locator('h4').innerText()), `Q1 reads ${await q.locator('h4').innerText()}`);
+      const off = await exposed(page, ['h4', '[data-act="pick"]'].map((e) => `aside [data-ask="s21/ap1"] [data-q="Q1"] ${e}`).join(', '));
+      ok(!off.length, off.join(' | '));
+    });
+
+    await check(`at ${width}x${height} T-021 opens with Task details collapsed and the approve confirm outside it`, async () => {
+      ok((await details(page).count()) === 1, `${await details(page).count()} Task details`);
+      ok(!(await details(page).evaluate((el) => el.open)), 'Task details is open');
+      ok(!(await details(page).locator('[data-ask="s21/ap1"]').count()), 'the confirm is inside Task details');
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // --- T-021 at step 9: the rail, decompose with its cut check, approve as a confirm with the whole body ---------
   await openTask(page, 'T-021');
 
   await check('the rail of T-021 runs from triage to the done gate', async () => {
+    await expand(page);
     const text = await until('the rail', async () => (await rail(page).count()) && rail(page).innerText());
     holds(text, [/triage/i, /grill/i, /approve/i, /\bMR\b/, /\bdone\b/i]);
   });
@@ -135,7 +200,11 @@ async function confirmYes(page, name, key) {
       'The last sentence of the body of T-021.', 'T-021-01', 'T-021-02']);
   });
 
-  await check('the approve panel of T-021 is a confirm whose yes sends Q1 A to its session', async () => {
+  await check('the panels of T-021 hold no pre: the body is rendered', async () => {
+    await noPre(page);
+  });
+
+  await check('the approve confirm of T-021 is in the drawer once and its yes sends Q1 A to its session', async () => {
     await confirmYes(page, 'approve', 's21/ap1');
   });
 
@@ -157,6 +226,27 @@ async function confirmYes(page, name, key) {
   await check('the grill panel of T-022 shows the ledger with open and closed rows, the terms and the design round of its grill file', async () => {
     holds(await panelText(page, 'grill'), ['Which gauge store?', 'the flat file', 'Which gauge port?', /\bopen\b/,
       /\bclosed\b/, 'fixture gauge', 'the term the grill settled', 'src/gauge.js', 'readGauge']);
+  });
+
+  await check('the triage panel of T-022 renders the list of its context as a list', async () => {
+    await panelText(page, 'triage');
+    const items = await panel(page, 'triage').locator('li').allInnerTexts();
+    ok(items.includes('the first context item of T-022') && items.includes('the second context item of T-022'),
+      `list items: ${JSON.stringify(items)}`);
+  });
+
+  await check('the panels of T-022 hold no pre', async () => {
+    await noPre(page);
+  });
+
+  await check('the decompose panel of T-022, with nothing yet, reads Nothing recorded for this step yet.', async () => {
+    const text = await panelText(page, 'decompose');
+    holds(text, ['Nothing recorded for this step yet.']);
+    ok(!text.includes('Nothing yet.'), `the old text: ${text.slice(0, 300)}`);
+  });
+
+  await check('the drawer of T-022, with no ask, reads No open questions for this task.', async () => {
+    holds(await drawer(page).innerText(), ['No open questions for this task.']);
   });
 
   await check('the grill panel of T-022 holds nothing of the grill file of another task', async () => {
@@ -196,7 +286,18 @@ async function confirmYes(page, name, key) {
     }
   });
 
-  await check('the done panel of T-020 is a confirm whose yes sends Q1 A to its session', async () => {
+  await check('the wave of T-020 reads Not started for each block with no owner', async () => {
+    await panelText(page, 'wave');
+    for (const id of ['T-020-01', 'T-020-02']) {
+      holds(await panel(page, 'wave').locator(`[data-block="${id}"]`).innerText(), [/\bNot started\b/]);
+    }
+  });
+
+  await check('the panels of T-020 hold no pre: evidence and review are rendered', async () => {
+    await noPre(page);
+  });
+
+  await check('the done confirm of T-020 is in the drawer once and its yes sends Q1 A to its session', async () => {
     await confirmYes(page, 'done', 's20/dn1');
   });
 
@@ -210,6 +311,13 @@ async function confirmYes(page, name, key) {
   await check('blocked T-023 shows its ## Question from the state, its options and recommendation', async () => {
     holds(await panelText(page, 'blocked'), ['Which fixture queue should T-023 drain first?', 'the old queue',
       'the new queue', 'the old one is empty']);
+  });
+
+  await check('the blocked panel of T-023 reads T-023 is blocked and needs a decision, its options a rendered list', async () => {
+    holds(await panelText(page, 'blocked'), ['T-023 is blocked and needs a decision']);
+    const items = await panel(page, 'blocked').locator('li').allInnerTexts();
+    ok(items.includes('the old queue') && items.includes('the new queue'), `list items: ${JSON.stringify(items)}`);
+    ok(!(await panel(page, 'blocked').locator('pre').count()), 'a pre in the blocked panel');
   });
 
   await check('blocked T-023 goes to its live session s23 in herdr, with no solve command', async () => {
@@ -231,6 +339,20 @@ async function confirmYes(page, name, key) {
     holds(await panelText(page, 'blocked'), ['Which fixture cache should T-025-01 keep?']);
     ok(await panel(page, 'blocked').locator('code', { hasText: /factory solve T-025\b/ }).count(), 'no solve command in a code element');
   });
+
+  await check('the drawer of T-025 reads T-025-01 is blocked and needs a decision and No session is working on this task.', async () => {
+    holds(await panelText(page, 'blocked'), ['T-025-01 is blocked and needs a decision']);
+    holds(await drawer(page).innerText(), ['No session is working on this task.']);
+  });
+
+  await openTask(page, 'T-027');
+
+  for (const [n, text] of [[1, 'Idle'], [2, 'Working'], [3, 'Finished its turn'], [4, 'Session ended'], [5, 'Waiting at a dialog']]) {
+    await check(`the wave of T-027 reads ${text} for the worker of T-027-0${n}`, async () => {
+      await panelText(page, 'wave');
+      holds(await panel(page, 'wave').locator(`[data-block="T-027-0${n}"]`).innerText(), [`s27w${n}`, new RegExp(`\\b${text}\\b`)]);
+    });
+  }
 
   // --- T-026: registered through solve-next.sh --ui only, so its task and step come from what production writes ---
   await check('the grid row of T-026 marks step 3, the step solve-next.sh recorded, with its session s26', async () => {
