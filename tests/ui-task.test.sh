@@ -1,8 +1,9 @@
 #!/bin/sh
 # The task drawer for solve in a browser: the fixture of tests/ui-fixture.sh, extended with one task per solve
-# stage and its plan, grill file, verdicts, progress, blocks, sessions and gate asks, served through ui-up.sh and
-# driven by tests/ui-task.test.js through the fixture's `browser`. The server runs from an image built from this
-# checkout's ui/ under a tag of its content, so neither a stale image nor another worktree's build is tested.
+# stage and its plan, grill file, verdicts, progress, blocks, sessions and gate asks, and a wave with one worker per
+# agent state, served through ui-up.sh and driven by tests/ui-task.test.js through the fixture's `browser`. The server
+# runs from an image built from this checkout's ui/ under a tag of its content, so neither a stale image nor another
+# worktree's build is tested.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-task: no docker`.
 set -u
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -158,6 +159,9 @@ feat(fx): the fixture task in its grill
 
 ## Context
 The triage context sentence of T-022.
+
+- the first context item of T-022
+- the second context item of T-022
 EOF
 cat > "$st/plans/cf-gr-grill.md" <<'EOF'
 ---
@@ -215,6 +219,15 @@ goal 'feat(fx): the fixture task with a blocked block' | task T-025 in_progress
 goal 'feat(fx): the blocked block of T-025' | task T-025-01 blocked
 question "$st/progress/T-025-01.md" 'Which fixture cache should T-025-01 keep?' 'the warm cache' 'the cold cache' \
   '1, it is filled.'
+
+# --- T-027 in its wave: one block per worker state the relay writes to agent -----------------------------------
+goal 'feat(fx): the fixture task in its wave' | task T-027 in_progress
+for w in 1:idle 2:working 3:done 4:gone 5:blocked; do
+  n=${w%%:*} agent=${w#*:}
+  goal "feat(fx): block $n of T-027" | task "T-027-0$n" in_progress "owner: factory@fx:s27w$n"
+  session --session "s27w$n" --pane "w2:p27$n" --flow block --task "T-027-0$n" --step "block T-027-0$n"
+  printf '%s\n' "$agent" > "$ui/sessions/s27w$n/agent"
+done
 
 # --- T-026 at step 3: its session registered by solve-next.sh --ui alone, no hand-written session.md -------------
 printf -- '---\nid: T-026\nrepo: claude-factory\nstatus: ready\n---\n\n# Goal\nfeat(fx): the fixture task solve-next registered\n' \
