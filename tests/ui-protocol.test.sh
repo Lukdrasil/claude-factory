@@ -64,6 +64,96 @@ fi
 left=$(ls -A "$asks" 2>/dev/null | grep -vx 'q1.md')
 [ -z "$left" ] && pass "no temp file is left beside the ask" || flunk "no temp file is left beside the ask ($left)"
 
+# --- the body: a question or option line outside the canonical format is refused, the canonical kinds pass -----
+body_md() { # <ask id>, stdin: the body
+  printf -- '---\nask: %s\ntask: T-247\nflow: solve\nstep: Step 4 of 16\nstatus: open\n---\n\n' "$1"
+  cat
+}
+walk=$(body_md walk <<'EOF'
+**Q10.** Which store?
+
+- A) SQLite
+- B) Postgres
+EOF
+)
+out=$(printf '%s\n' "$walk" | sh "$bin/ui-ask.sh" --session "$sid" 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$asks/walk.md" ]; then
+  pass "the walk's **Q10.** / - A) body exits non-zero and writes nothing"
+else
+  flunk "the walk's **Q10.** / - A) body exits non-zero and writes nothing (exit $rc)"
+fi
+has "the refusal names the expected question header" '❓ \*\*Q<n>\*\* - \*\*Title\*\*' "$out"
+has "the refusal names the expected option shape" '\*\*A\*\* ' "$out"
+listed=$(body_md listed <<'EOF'
+❓ **Q1** - **Which store?**: where the rows live.
+- A) SQLite
+- B) Postgres
+EOF
+)
+printf '%s\n' "$listed" | sh "$bin/ui-ask.sh" --session "$sid" >/dev/null 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$asks/listed.md" ]; then
+  pass "a canonical header with - A) options exits non-zero and writes nothing"
+else
+  flunk "a canonical header with - A) options exits non-zero and writes nothing (exit $rc)"
+fi
+bare=$(body_md bare <<'EOF'
+❓ Q1. Which store?
+  **A** SQLite
+EOF
+)
+printf '%s\n' "$bare" | sh "$bin/ui-ask.sh" --session "$sid" >/dev/null 2>&1; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$asks/bare.md" ]; then
+  pass "a ❓ line that is not a ❓ **Q<n>** - **Title** header exits non-zero and writes nothing"
+else
+  flunk "a ❓ line that is not a ❓ **Q<n>** - **Title** header exits non-zero and writes nothing (exit $rc)"
+fi
+round=$(body_md round <<'EOF'
+❓ **Q1** - **Which store?**: where the rows live.
+  **A** SQLite
+  **B** Postgres
+
+➡️ **A**: one writer.
+
+---
+
+❓ **Q2** - **Which port?** (after Q1): the port the server takes.
+  **A** 7171
+  **B** a random one
+
+➡️ **A**: one URL.
+EOF
+)
+confirm=$(body_md confirm <<'EOF'
+❓ **Q1** - **Approve T-247?**: the cut is checked.
+  **A** yes
+  **B** no
+
+➡️ **A**: the cut check passed.
+EOF
+)
+notice=$(body_md notice <<'EOF'
+# Doctor
+
+Docker is running. herdr is running.
+EOF
+)
+for kind in round confirm notice; do
+  eval "md=\$$kind"
+  out=$(printf '%s\n' "$md" | sh "$bin/ui-ask.sh" --session "$sid" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(cat "$asks/$kind.md" 2>/dev/null)" = "$md" ]; then
+    pass "a well-formed $kind is accepted unchanged"
+  else
+    flunk "a well-formed $kind is accepted unchanged (exit $rc: $out)"
+  fi
+done
+
+# --- with a token file in the UI home the URL carries it as the fragment ---------------------------------------
+printf 'f00dcafe\n' > "$ui/token"
+out=$(ask_md q1 | sh "$bin/ui-ask.sh" --session "$sid" 2>&1)
+has "the ask URL carries #token= from the UI home's token file" \
+  "^http://127\.0\.0\.1:7272/\?ask=$sid/q1#token=f00dcafe\$" "$out"
+rm -f "$ui/token"
+
 # --- a missing frontmatter key, or an ask id that is not [a-z0-9-]+, is refused -------------------------------
 for k in ask task flow step status; do
   ask_md "no-$k" "$k" | sh "$bin/ui-ask.sh" --session "$sid" >/dev/null 2>&1; rc=$?
