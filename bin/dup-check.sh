@@ -76,7 +76,7 @@ awk -v repo="$repo" -v min="$BLOCK_MIN" -v cap="$CAP" -v files="$tmp/files" -v t
     if (t ~ /(public|private|protected|internal|static|async|override|virtual|sealed|partial)[ \t]/ &&
         t ~ /[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/) {
       s = t; sub(/\(.*$/, "", s); sub(/^.*[^A-Za-z0-9_]/, "", s)
-      if (s ~ /^(if|for|while|switch|catch|return|using|lock)$/) return ""
+      if (s ~ /^(if|for|while|switch|catch|return|using|lock|new|nameof|typeof|sizeof|default|base|this|await|throw|when)$/) return ""
       return s
     }
     return ""
