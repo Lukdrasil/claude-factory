@@ -152,4 +152,21 @@ try 0 'cd rel, then sed -i on $S/x.txt' "$BLK" blk "cd rel && sed -i ${q}s/a/b/$
 try 2 'a cd entered through |, then && a relative redirect into the registered clone' "$C/cf" coord 'echo | cd /tmp && echo x > README.md'
 try 2 'a cd entered through |, then ; a relative redirect into the registered clone' "$C/cf" coord 'true | cd /tmp; echo x > README.md'
 
+# T-228-07: a cd carries the cwd only while its && chain holds, a lost cd judges paths and not command words, and a
+# state-clone commit counts only the words after its bare --
+try 2 'cd /nonexistent && make ||, then a relative redirect into the registered clone' "$C/cf" coord 'cd /nonexistent && make || echo x > README.md'
+try 2 'cd /tmp && true;, then a relative redirect into the registered clone' "$C/cf" coord 'cd /tmp && true; echo x > README.md'
+try 2 'a subshell cd whose ) closes a later segment, then a relative redirect into the registered clone' "$C/cf" coord '(true; cd /tmp && true); echo x > README.md'
+try 2 'a cd inside $( ), then a relative redirect into the registered clone' "$C/cf" coord 'echo $(true; cd /tmp && pwd) > README.md'
+try 0 'cd /tmp/scratch && true &&, then a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && true && echo x > y'
+try 0 'a closed (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord '(true); cd /tmp/scratch && echo x > y'
+try 0 'a closed $(, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo $(pwd); cd /tmp/scratch && echo x > y'
+try 0 'a quoted (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo "("; cd /tmp/scratch && echo x > y'
+try 0 'cd "$d", then make | tee on an absolute file' "$BLK" blk 'cd "$d" && make | tee /tmp/b.log'
+try 0 'cd sub, then git checkout x' "$BLK" blk 'cd sub && git checkout x'
+try 2 'cd "$d", then sed -i on a relative file' "$BLK" blk 'cd "$d" && sed -i s/a/b/ x.md'
+try 2 'git commit -m "a -- b" -- with no path, in the state clone' "$W/state" coord 'git commit -m "a -- b" --'
+try 0 'git commit -m "a -- b" -- with a path, in the state clone' "$W/state" coord 'git commit -m "a -- b" -- repos/x/tasks/T-1.md'
+try 0 'git commit -m x -- with a quoted path, in the state clone' "$W/state" coord 'git commit -m x -- "repos/cf/tasks/T-900.md"'
+
 exit $fail

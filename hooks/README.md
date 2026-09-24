@@ -35,12 +35,15 @@ together with every deny they keep.
   break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
   dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
 - **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that the segments
-  joined to it by `&&` are judged against. After `;`, `||` or `|` the `cd` may have failed or run in a
-  subshell, so a relative target is judged against the cwd before the `cd` as well. A `cd` entered through `|`
-  runs in a subshell and never moves the cwd. After a `cd` the guard
+  joined to it by `&&` are judged against, and only until the next `;`, `||` or `&`. From there on the `cd`
+  may have failed, so a relative target is judged against every cwd from before a `cd` of that `&&` chain as
+  well. A `cd` followed by `;`, `||` or `|`, led by `||`, or inside an unclosed unquoted `(` or `$(` may not
+  run or may run in a subshell, so the same holds for it at once. A `cd` entered through `|` runs in a subshell
+  and never moves the cwd. After a `cd` the guard
   cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`), a relative
-  write target is denied, whether a redirect or an in-place editor's operand. An absolute target is judged as
-  any absolute target.
+  write target is denied: a redirect target, an in-place editor's operand containing a `/`, or the file
+  operand of `sed -i`/`perl -i`. A command word is never one. An absolute target is judged as any absolute
+  target.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
   with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
