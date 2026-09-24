@@ -273,6 +273,35 @@ public sealed class AskParserTests
         Assert.Contains("a loose line after the question", view.Questions[0].Html);
     }
 
+    const string ConfirmWithTail = """
+        ❓ **Q1** - **Approve T-247?**: the plan as written.
+          **A** yes
+          **B** no
+
+        ❓ a loose note after the confirm
+          **A** not an option
+        """;
+
+    [Fact]
+    public void A_headerless_segment_with_an_option_like_line_leaves_a_confirm_a_confirm_with_its_two_options()
+    {
+        var view = AskParser.Parse(ConfirmWithTail);
+
+        Assert.Equal("confirm", view.Kind);
+        Assert.Equal(["A", "B"], view.Questions[0].Options.Select(o => o.Key));
+        Assert.Equal(["yes", "no"], view.Questions[0].Options.Select(o => o.Html));
+    }
+
+    [Fact]
+    public void A_headerless_segments_text_is_rendered_after_its_questions_own_html()
+    {
+        var html = AskParser.Parse(ConfirmWithTail).Questions[0].Html;
+
+        Assert.Contains("a loose note after the confirm", html);
+        Assert.Contains("not an option", html);
+        Assert.True(html.IndexOf("the plan as written.", StringComparison.Ordinal) < html.IndexOf("a loose note after the confirm", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void A_headerless_segment_before_the_first_question_joins_the_preamble()
     {
