@@ -17,6 +17,7 @@ memory. Prepend its output to the brief you write.
 | `implementer` | a coordinator's implement phase for one block: the code, no MR, no self-report |
 | `implementer-senior` | the same phase at `complexity: high`, picked by `model-for.sh --agent` |
 | `code-reviewer` | a coordinator's review of the whole diff before the MR, read-only (ADR-0053) |
+| `architecture-auditor` | after the change, per block and once per parent: drift no doc or ADR proposal covers, the architectural risk, `.harness/<unit>/arch.md`; skipped without `docs/architecture/` |
 | `issue-finder` | the open issues a finished change solves or touches, for the MR description |
 | `mr-reviewer` | one merge request judged against its issue, read-only (ADR-0054) |
 
