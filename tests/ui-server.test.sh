@@ -227,6 +227,43 @@ is 'the token is reused'                                      "$(cat "$ui/token"
 has 'it prints the same URL'                                  "http://127\.0\.0\.1:$port1/#.*$token" "$(cat "$tmp/up.out")"
 is 'no second relay tab is opened'                            "$(relay_tabs) $(creates)" '1 1'
 
+# --- the relay tab is there but no ui-relay.sh runs in it (a herdr restart leaves a bare shell): ui-up.sh finds its
+# pane through `pane list`, sees no ui-relay.sh in `pane process-info` and runs the relay there again -------------
+relay_tab=$(grep -lx 'factory-ui-relay' "$HERDR_STUB"/tabs/* 2>/dev/null | head -n1)
+RELAY_TAB=${relay_tab##*/} RELAY_PROCS="$tmp/relaywrap/procs"
+export RELAY_TAB RELAY_PROCS
+mkdir -p "$tmp/relaywrap"
+cat > "$tmp/relaywrap/herdr" <<'STUB'
+#!/bin/sh
+case "${1:-} ${2:-}" in
+  'pane list')
+    printf '%s\n' "$*" >> "$HERDR_STUB/log"
+    printf '{"id":"cli:pane:list","result":{"panes":[{"agent_status":"unknown","focused":false,"pane_id":"w9:p1","tab_id":"w9:t1","workspace_id":"w9"},{"agent_status":"unknown","focused":false,"pane_id":"w9:p77","tab_id":"%s","workspace_id":"w9"}],"type":"pane_list"}}\n' "$RELAY_TAB"
+    exit 0 ;;
+  'pane process-info')
+    printf '%s\n' "$*" >> "$HERDR_STUB/log"
+    cat "$RELAY_PROCS"
+    exit 0 ;;
+esac
+exec "$(dirname -- "$0")/../path/herdr" "$@"
+STUB
+chmod +x "$tmp/relaywrap/herdr"
+procs() { # <foreground process json list>
+  printf '{"id":"cli:pane:process_info","result":{"process_info":{"foreground_process_group_id":1001,"foreground_processes":[%s],"pane_id":"w9:p77","shell_pid":1000},"type":"pane_process_info"}}\n' "$1" > "$RELAY_PROCS"
+}
+runs() { grep -c '^pane run w9:p77 .*ui-relay\.sh' "$HERDR_STUB/log" | tr -d ' '; }
+procs ''
+(PATH="$tmp/relaywrap:$PATH"; up --state "$state1"); rc=$?
+is 'ui-up.sh over a dead relay exits 0'                       "$rc" 0
+has 'it asks herdr what runs in the relay pane'               '^pane process-info --pane w9:p77' "$(cat "$HERDR_STUB/log")"
+is 'it runs ui-relay.sh again in the relay pane'              "$(runs)" 1
+has 'the restarted relay is pointed at the UI home'           "^pane run w9:p77 .*ui-relay\.sh.*--home.*$ui" "$(cat "$HERDR_STUB/log")"
+is 'a relay restart opens no tab'                             "$(relay_tabs) $(creates)" '1 1'
+procs "{\"argv\":[\"sh\",\"$bin/ui-relay.sh\",\"--home\",\"$ui\"],\"cmdline\":\"sh $bin/ui-relay.sh --home $ui\",\"name\":\"sh\",\"pid\":1001}"
+(PATH="$tmp/relaywrap:$PATH"; up --state "$state1"); rc=$?
+is 'ui-up.sh over a live relay exits 0'                       "$rc" 0
+is 'a live relay is left alone'                               "$(runs)" 1
+
 # --- a cf.state or cf.version label mismatch recreates the container ----------------------------------------------
 up --state "$state2"; rc=$?
 is 'ui-up.sh with another state dir exits 0'                  "$rc" 0
