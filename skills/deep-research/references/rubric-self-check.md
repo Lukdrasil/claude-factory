@@ -6,16 +6,16 @@ this set gives four, so that every tier is covered.
 | # | assignment | B | A | C | K | S | tier → model × effort |
 |---|---|---|---|---|---|---|---|
 | 1 | "What wall-clock cap does the toolset `test` binding of claude-factory put on the whole suite?" | 0 | 0 | 0 | 0 | **0** | S0 → haiku |
-| 2 | "Why does the policy guard sometimes deny a write inside a block worktree, and what are the options for fixing it?" | 2 | 2 | 1 | 1 | **6** | S1 → sonnet × high |
+| 2 | "How does `worktree-add.sh` pick the base branch of a block, and what would have to change so a block can branch from another block?" | 1 | 1 | 1 | 1 | **4** | S1 → sonnet × high |
 | 3 | "How does `state-report.sh` decide which status an agent may set, and what would have to change for a task to be pausable?" | 2 | 2 | 2 | 2 | **8** | S2 → opus × medium |
 | 4 | "Keep the state repo as a git clone every session pushes to, or move task state to a database?" | 3 | 2 | 3 | 3 | **11** | S3 → opus × high |
 
 Why those scores:
 
 1. One row in one `toolset.md`, a single reading, nothing rests on it. No escalation.
-2. Several deny paths to tell apart (the test-glob lock, worktree approval and ownership, the work-dir
-   confinement, the docs carve-out), "sometimes" hides which one applies, nearly all of it lives in
-   `policy-guard.sh` (C=1), and the fix unblocks one task. No escalation.
+2. Two sub-questions in one area (the rule today / what to change), "branch from another block" leaves small
+   gaps convention fills, the context is `worktree-add.sh` and the few files it reads (C=1), and the change
+   serves one task. No escalation.
 3. Connects the transition table in `state-report.sh` with the status set `task-new.sh` validates and the
    owner rules of the policy guard, "pausable" has several readings (a new status, a suspend and resume, a
    released owner), the context spans several scripts and every archetype's self-report section, and the
