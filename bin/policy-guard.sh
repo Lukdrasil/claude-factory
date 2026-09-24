@@ -793,6 +793,7 @@ with_alt() { # <command…>
 }
 inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; bash_write_target "$1"; }
 inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
+lost_inplace() { deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$1'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."; }
 
 guard_bash() {
   c=$1
@@ -1019,7 +1020,8 @@ guard_bash() {
   # T-228 Q3: the tokens come from the segment with its quoted spans removed, so the pieces of a quoted script are
   # never offered, and a `$` target is skipped as the redirect loop skips one. T-228-06: the script operand of a
   # `sed -i`/`perl -i` without `-e` is skipped, quoted or not, and after a `cd` the guard cannot resolve, a relative
-  # token is denied while an absolute one is judged as usual.
+  # token is denied while an absolute one is judged as usual. T-228-07: there only a token with a `/` and the last
+  # operand of `sed`/`perl` count as relative targets, never a command word.
   set -f
   oIFS=$IFS; IFS='
 '
@@ -1046,7 +1048,7 @@ guard_bash() {
       if [ -n "$cwd_lost" ]; then
         case "$t" in
           /*|[A-Za-z]:/*|"~"*) ;;
-          *) deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$t'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)." ;;
+          */*) lost_inplace "$t" ;;
         esac
       fi
       [ "$t" != . ] || continue
@@ -1060,7 +1062,10 @@ guard_bash() {
     set +f
     # the last operand of `sed -i` or `perl -i` is its file, whether it exists yet or not
     lw=$(printf '%s' "$useg" | awk '/(^|[ \t])(sed|perl)[ \t]/ && NF > 1 { print $NF }')
-    case "$lw" in -*|\$*|\`*|''|.|*/*) ;; *) with_alt inplace_last "$lw" ;; esac
+    case "$lw" in
+      -*|\$*|\`*|''|.|*/*) ;;
+      *) [ -z "$cwd_lost" ] || lost_inplace "$lw"; with_alt inplace_last "$lw" ;;
+    esac
   done
   cd_reset
   [ -z "$status_write" ] || check_status "$c"
