@@ -39,6 +39,8 @@ clone ghhttps https://github.com/acme/widgets
 clone ghscp git@github.com:acme/widgets.git
 clone glhttps https://gitlab.example.com/group/sub/widgets.git
 clone glscp git@gitlab.example.com:group/widgets.git
+clone glsshport ssh://git@gitlab.example.com:2222/g/r.git
+clone glhttpsport https://gitlab.example.com:8443/g/r
 clone noorigin ''
 printf 'noclone: {url: "https://github.com/acme/gone.git", default_branch: main, path: "%s"}\n' "$tmp/clones/gone" >> "$state/repos.yml"
 
@@ -108,6 +110,14 @@ run glscp --title "$title" --body-file "$tmp/body.md" --state "$state"
 want_exit 'gitlab scp: exit 0' 0
 want_line 'gitlab scp: -R gitlab.example.com/group/widgets' 'glab [issue] [create]' \
   '[-R] [gitlab.example.com/group/widgets]' '[--label] [ai-drafted]'
+
+# a port after the host is neither part of the host nor of owner/repo
+run glsshport --title "$title" --body-file "$tmp/body.md" --state "$state"
+want_exit 'gitlab ssh with a port: exit 0' 0
+want_line 'gitlab ssh with a port: -R gitlab.example.com/g/r' 'glab [issue] [create]' '[-R] [gitlab.example.com/g/r]'
+run glhttpsport --title "$title" --body-file "$tmp/body.md" --state "$state"
+want_exit 'gitlab https with a port: exit 0' 0
+want_line 'gitlab https with a port: -R gitlab.example.com/g/r' 'glab [issue] [create]' '[-R] [gitlab.example.com/g/r]'
 
 # the state clone from $WORK_DIR/state when --state is not given
 : > "$log"
