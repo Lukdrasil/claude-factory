@@ -12,7 +12,8 @@
 # `review` with an `mr_url` is waiting for the developer, so step 11 steps over it to the next block that still
 # needs work and only prints the reminder with the open MRs when every remaining block is one of those; a block
 # in `changes_requested` is a fix round. That holds for a task already stacked (a block whose progress file
-# records `base: block/...`). Every other task cuts its blocks from the work branch, one wave at a time: a block
+# records `base: block/...`). Every other task cuts its blocks from the work branch, one wave at a time, and puts
+# each one up through block-verify.sh, the code-reviewer and the architecture-auditor, then block-mr.sh: a block
 # in `review` with an `mr_url` does not hold the blocks of its own wave, and before a block of a later wave is
 # cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
 # the human's yes). Step 14 is then the task MR the human reviews and merges.
@@ -319,6 +320,14 @@ if [ -n "$pending" ]; then
     cmd "git -C $bwt log --format='%h %s' --name-only ${bbase:-$branch}..HEAD"
     cmd "git -C $bwt worktree add --detach $harness/red-$pending <red-commit> && (cd $harness/red-$pending && <test-filter binding over the red test files>); git -C $bwt worktree remove --force $harness/red-$pending"
     cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status"
+  elif [ -z "$stacked" ]; then
+    # why: a block cut from the work branch merges into it through its own MR, so there is no stack to prove the
+    # why: merge into; block-mr.sh builds the description from the reviewer's and the auditor's reports
+    emit "Step 11 of 16: verify, review and open the MR for $pending" "$pending is review with its mr_url set: block-verify.sh is green and wrote $own/.harness/$pending/verify.txt, the code-reviewer's final message is saved as $own/.harness/$pending/review.md and the architecture-auditor wrote $own/.harness/$pending/arch.md, both over the block diff, and block-mr.sh opened the MR into ${branch:-the work branch} from them."
+    cmd "$bin/model-for.sh $ba $bt verify $bn $bc"
+    cmd "$bin/block-verify.sh $pending --state $state"
+    cmd "$bin/block-mr.sh $pending"
+    cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): MR open'"
   else
     emit "Step 11 of 16: verify and open the MR for $pending" "$pending is review with its mr_url set, evidenced in $bprogress, and the merge into the session branch is proved green."
     cmd "$bin/model-for.sh $ba $bt verify $bn $bc"
@@ -331,7 +340,7 @@ if [ -n "$pending" ]; then
 fi
 
 if [ -n "$waiting" ] && [ -z "$stacked" ]; then
-  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done; a block whose MR rates the risk high is merged only after the human's yes (_shared/ask.md), with --confirmed. The next wave is cut from the work branch once this one is merged."
+  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done; exit 3 is a block whose MR rates the risk high, merged only after the human's yes (_shared/ask.md) by the same line with --confirmed; a class C forge prints <block> auto-merge <url>, and the line runs again once the forge has merged it. The next wave is cut from the work branch once this one is merged."
   for b in $waiting; do
     cmd "$bin/block-mr-merge.sh $b"
   done
