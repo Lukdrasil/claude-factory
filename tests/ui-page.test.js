@@ -170,6 +170,19 @@ async function stage(q, button, text) {
     });
   }
 
+  await check('the link ui-ask.sh printed for c1 opens the drawer of T-002 scrolled to the card of c1', async () => {
+    await fresh(page, fs.readFileSync(path.join(UI, 'c1.url'), 'utf8').trim());
+    await until('the drawer of T-002', async () => /T-002/.test(await drawer(page).innerText()));
+    await until('c1 in the drawer', () => drawer(page).locator('[data-ask="s2/c1"]').isVisible());
+    await until('c1 scrolled into view', () => inViewport(card(page, 's2/c1')));
+  });
+
+  await check('?ask= of a setup ask opens the setup drawer with that ask', async () => {
+    await fresh(page, `${BASE}/?ask=s4/d1#token=${TOKEN}`);
+    await until('the setup drawer', async () => /setup/i.test(await drawer(page).innerText()));
+    await until('d1 in the drawer', () => drawer(page).locator('[data-ask="s4/d1"]').isVisible());
+  });
+
   await check('the setup strip opens the setup drawer with the doctor notice and no task ask', async () => {
     await fresh(page);
     await page.getByRole('button', { name: /setup/i }).first().click();
