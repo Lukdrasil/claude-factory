@@ -20,6 +20,7 @@ while [ $# -gt 0 ]; do
 done
 case "$sid" in ''|*[!A-Za-z0-9-]*) die "--session <sid> takes letters, digits and -" ;; esac
 
+bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ui=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
 asks="$ui/sessions/$sid/asks"
 
@@ -44,6 +45,9 @@ if [ -n "$close" ]; then
   exit 0
 fi
 
+if [ ! -f "$ui/sessions/$sid/session.md" ] && [ -n "${HERDR_PANE_ID:-}" ]; then
+  sh "$bin/ui-session.sh" --session "$sid" --pane "$HERDR_PANE_ID"
+fi
 cat > "$tmp"
 for k in ask task flow step status; do
   [ -n "$(fm "$tmp" "$k")" ] || die "the frontmatter has no $k:"
