@@ -52,6 +52,8 @@ sh <plugin-root>/bin/session-monitor.sh --task T-NNN --spawn herdr
    It dispatches the current wave of that task's ready blocks, or the task alone when it is a ready leaf, and
    claims each unit `in_progress` under `factory@<host>:pending-<id>` before the session starts. The prompt it
    sends opens with the reclaim command, so the spawned session's first heartbeat is not a refused guess.
+   The implement phase of a wave goes out through the same `--task T-NNN --wave N` call once the monitor armed
+   `phase: implement` on its `tests_ready` blocks; a block whose session still runs is printed `skipped`.
 
 4. Arm the watcher through the Monitor tool, before anything else:
 

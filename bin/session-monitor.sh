@@ -7,9 +7,11 @@
 #                      [--state <dir>] [--dry-run]
 #
 # Four modes:
-#   --task T-NNN     one named task as a unit, and nothing else: the current wave of its ready, unowned
-#                    T-NNN-NN blocks when it has any (the plan of bin/spawn-plan.sh), and otherwise the task
-#                    itself when it is a ready, unowned leaf, with its archetype skill as the prompt.
+#   --task T-NNN     one named task as a unit, and nothing else: the current wave of its T-NNN-NN blocks when
+#                    it has any a dispatch may start (the plan of bin/spawn-plan.sh, less every block that is
+#                    neither ready and unowned nor tests_ready with phase: implement armed, which is skipped),
+#                    and otherwise the task itself when it is a ready, unowned leaf, with its archetype skill as
+#                    the prompt.
 #                    `--parent` is the old spelling of the same flag and still works.
 #   --task T-NNN --step <name>
 #                    one session for a parent-level step of `factory herd`: triage, grill,
@@ -139,13 +141,21 @@ blocks_of() { # <T-NNN>
     case "$b" in "$1"-[0-9][0-9]) printf '%s\n' "$b" ;; esac
   done
 }
-ready_blocks_of() { # <T-NNN>
+# a block a dispatch may start: ready and unowned, or tests_ready with the implement phase the monitor armed,
+# whose tests session has reported and holds nothing
+dispatchable() { # <task file>
+  case "$(field "$1" status)" in
+    ready) unowned "$(field "$1" owner)" ;;
+    tests_ready) [ "$(field "$1" phase)" = implement ] ;;
+    *) return 1 ;;
+  esac
+}
+dispatchable_blocks_of() { # <T-NNN>
   for t in "$state"/repos/*/tasks/*.md; do
     [ -f "$t" ] || continue
     b=$(field "$t" id)
     case "$b" in "$1"-[0-9][0-9]) ;; *) continue ;; esac
-    [ "$(field "$t" status)" = ready ] || continue
-    unowned "$(field "$t" owner)" || continue
+    dispatchable "$t" || continue
     printf '%s\n' "$b"
   done
 }
@@ -235,16 +245,23 @@ if [ -n "$parent" ]; then
         prompt="/claude-factory:decompose $ptask" ;;
     esac
     printf '%s\t%s\t%s\t%s\t%s\n' "$parent-$step" "$cwd" "$model" - "$prompt" > "$units"
-  elif [ -n "$(ready_blocks_of "$parent")" ]; then
+  elif [ -n "$(dispatchable_blocks_of "$parent")" ]; then
     # the parent is a cut: its current wave goes out, one session per block, and nothing outside this cut does
     set -- "$parent"
     [ -z "$wave" ] || set -- "$@" --wave "$wave"
     plan=$(sh "$bin/spawn-plan.sh" "$@" --state "$state") || die "spawn-plan refused the cut of $parent"
     printf '%s\n' "$plan" | while IFS=' ' read -r bid agent model brief; do
       [ -n "$bid" ] || continue
+      bf=$(task_of "$bid")
+      if ! dispatchable "$bf"; then
+        printf '%s skipped %s\n' "$bid" "$root/$key/$bid"
+        printf 'session-monitor: %s is %s and owned by %s; only a ready, unowned block or a tests_ready one armed with phase: implement is dispatched\n' \
+          "$bid" "$(field "$bf" status)" "$(field "$bf" owner)" >&2
+        continue
+      fi
       printf '%s\t%s\t%s\t%s\t%s\n' "$bid" "$root/$key/$bid" "$model" "$bid" \
-        "$(claim_prompt "$bid")You are $agent. Read $brief and do exactly what it says."
-    done > "$units"
+        "$(claim_prompt "$bid")You are $agent. Read $brief and do exactly what it says." >> "$units"
+    done
   elif [ -n "$(blocks_of "$parent")" ]; then
     echo "nothing to dispatch: every block of $parent is claimed, in review or done"
     exit 0
