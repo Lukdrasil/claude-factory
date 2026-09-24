@@ -30,8 +30,9 @@ Completion: every answer recorded, from the user or the stated default.
 
 - **Preview.** `<plugin-root>/bin/factory-init.sh --root <root>` without `--yes`, plus `--settings <file>`
   when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with `nothing to do`: continue at
-  Register. Exit 3: the output is the diff over the state repo, `repos.yml` and the settings file gaining
-  `env.WORK_DIR`.
+  Register. Exit 3: the output is the diff over the state repo, `repos.yml`, `factory.yml` and the settings
+  file gaining `env.WORK_DIR`. An existing `factory.yml` keeps its keys and gains the `ui:` asked for and a
+  `ui_port:` when it has none.
 - **Confirm.** Ask whether to apply it with a confirm (`_shared/ask.md`) that carries the printed diff
   verbatim as a fenced block, without the `pending` line:
 

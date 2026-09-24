@@ -35,6 +35,36 @@ out=$(sh "$bin/factory-init.sh" --root "$tmp/f" --settings "$settings" --spawn m
 code "a rerun exits 0" 0 "$rc"
 has "a rerun has nothing to do" '^nothing to do' "$out"
 
+# --- factory-init.sh --ui over an existing factory.yml: a missing or differing ui: and a missing ui_port: are pending
+settings2="$tmp/settings2.json"
+sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui docker --yes >/dev/null 2>&1
+printf 'curation: manual\nspawn: manual\n' > "$tmp/g/state/factory.yml"
+git -C "$tmp/g/state" -c user.name=t -c user.email=t@t commit -qm 'the factory.yml of before the UI' -- factory.yml
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui docker 2>&1); rc=$?
+code "--ui docker over a factory.yml without ui: exits 3" 3 "$rc"
+has "the diff adds ui: docker" '^\+ui: docker$' "$out"
+has "the diff adds ui_port: 7171" '^\+ui_port: 7171$' "$out"
+has "without --yes factory.yml is unchanged" '^curation: manual spawn: manual $' "$(tr '\n' ' ' < "$tmp/g/state/factory.yml")"
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui docker --yes 2>&1); rc=$?
+code "--ui docker --yes exits 0" 0 "$rc"
+yml=$(cat "$tmp/g/state/factory.yml")
+has "--yes writes ui: docker" '^ui: docker$' "$yml"
+has "--yes writes ui_port: 7171" '^ui_port: 7171$' "$yml"
+has "--yes keeps curation: manual" '^curation: manual$' "$yml"
+has "--yes keeps spawn: manual" '^spawn: manual$' "$yml"
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui docker 2>&1); rc=$?
+code "a rerun with ui: docker in place exits 0" 0 "$rc"
+has "a rerun with ui: docker in place has nothing to do" '^nothing to do' "$out"
+sed -i 's/^ui_port:.*/ui_port: 7272/' "$tmp/g/state/factory.yml"
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui off 2>&1); rc=$?
+code "--ui off over ui: docker exits 3" 3 "$rc"
+has "the diff sets ui: off" '^\+ui: off$' "$out"
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui off --yes 2>&1); rc=$?
+code "--ui off --yes exits 0" 0 "$rc"
+yml=$(cat "$tmp/g/state/factory.yml")
+has "--yes writes ui: off" '^ui: off$' "$yml"
+has "an existing ui_port is kept" '^ui_port: 7272$' "$yml"
+
 # --- factory-doctor.sh ----------------------------------------------------------------------------------------
 git init -q "$tmp/clone"
 git -C "$tmp/clone" remote add origin https://forge.test/acme/clone.git
