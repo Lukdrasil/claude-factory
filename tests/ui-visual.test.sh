@@ -91,6 +91,9 @@ is 'GET /visual with the token answers 200'                   "$code" 200
 if cmp -s "$tmp/body" "$ui/sessions/s30/visual.html"; then pass 'GET /visual serves the session'"'"'s visual.html byte for byte'
 else bad "GET /visual serves the session's visual.html byte for byte: $(head -c 300 "$tmp/body")"; fi
 has 'GET /visual is text/html'                                '^[Cc]ontent-[Tt]ype: text/html' "$(cat "$tmp/headers")"
+is 'GET /visual sends the Content-Security-Policy that keeps the token from leaving' \
+  "$(tr -d '\r' < "$tmp/headers" | sed -n 's/^[Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Ss][Ee][Cc][Uu][Rr][Ii][Tt][Yy]-[Pp][Oo][Ll][Ii][Cc][Yy]:[[:space:]]*//p')" \
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:"
 
 code=$(http "$port" '/visual?sid=s30')
 is 'GET /visual without a token answers 401'                  "$code" 401
