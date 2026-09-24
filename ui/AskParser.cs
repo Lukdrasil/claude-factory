@@ -9,7 +9,8 @@ public sealed record AskView(string Kind, string Preamble, List<QuestionView> Qu
 /// <summary>
 /// The one reader of the canonical ask format of <c>skills/grill/SKILL.md</c>: a notice has no question, a confirm is
 /// one question with the options yes and no. Options inside a fenced block are never read. A <c>❓</c> segment without a
-/// question header joins the previous question's markdown, or the preamble when no question precedes it.
+/// question header is rendered after the previous question's own text and adds no option, or joins the preamble when no
+/// question precedes it.
 /// </summary>
 public static partial class AskParser
 {
@@ -17,12 +18,12 @@ public static partial class AskParser
     {
         var parts = Split().Split(body);
         var preamble = parts[0];
-        var segments = new List<string>();
+        var segments = new List<(string Head, string Tail)>();
         foreach (var part in parts.Skip(1))
         {
             if (Header().IsMatch(part))
             {
-                segments.Add(part);
+                segments.Add((part, ""));
             }
             else if (segments.Count == 0)
             {
@@ -30,15 +31,15 @@ public static partial class AskParser
             }
             else
             {
-                segments[^1] += "❓ " + part;
+                segments[^1] = (segments[^1].Head, segments[^1].Tail + "❓ " + part);
             }
         }
         if (segments.Count == 0)
         {
             return new AskView("notice", Md.ToHtml(body), []);
         }
-        var questions = segments.Select(Question).ToList();
-        var raw = Options(segments[0]);
+        var questions = segments.Select(s => Question(s.Head, s.Tail)).ToList();
+        var raw = Options(segments[0].Head);
         var kind = questions.Count == 1 && string.Join(",", raw.Select(o => o.Label.Trim().ToLowerInvariant())) == "yes,no" ? "confirm" : "round";
         return new AskView(kind, Md.ToHtml(preamble), questions);
     }
@@ -46,7 +47,7 @@ public static partial class AskParser
     static List<(string Key, string Label)> Options(string segment) =>
         OptionLine().Matches(Fence().Replace(segment, "")).Select(m => (m.Groups[1].Value, m.Groups[2].Value.TrimEnd('\r'))).ToList();
 
-    static QuestionView Question(string segment)
+    static QuestionView Question(string segment, string tail)
     {
         var header = Header().Match(segment);
         var rest = segment[header.Length..];
@@ -74,7 +75,7 @@ public static partial class AskParser
             header.Groups[1].Value,
             Md.Inline(header.Groups[2].Value),
             after,
-            Md.ToHtml(string.Join('\n', lines)),
+            Md.ToHtml(string.Join('\n', lines)) + Md.ToHtml(tail),
             Options(rest).Select(o => new OptionView(o.Key, Md.Inline(o.Label))).ToList(),
             rec is null ? null : Md.Inline(rec),
             rec is not null && RecKey().Match(rec) is { Success: true } k ? k.Groups[1].Value : null);
