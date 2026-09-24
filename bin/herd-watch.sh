@@ -157,7 +157,8 @@ pass() {
   # the forge is not a failed pass, the task columns are still news
   [ -n "$nomr" ] || sh "$bin/mr-watch.sh" "$id" --once --state "$state" >/dev/null || :
   sh "$bin/herdr-tabs.sh" sweep "$id" --state "$state" >/dev/null || :
-  agents=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null) || agents=''
+  # a record that cannot be read is no pass: every unit would read gone and lose its leases
+  agents=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null) || return 0
   now=$(mktemp)
   : > "$now.asks"
   for f in $(task_files $all "$key"); do

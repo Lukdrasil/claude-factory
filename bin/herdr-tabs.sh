@@ -154,19 +154,19 @@ records() {
     "$dir/herdr-tabs"
 }
 
-# `<unit> <agent_status> <pane> <session> <name>` per record line on stdin, from the `agent list` JSON in $1
-match() { # <agent list json>
-  HT_LIST=$1 node -e '
-let a=null;try{a=JSON.parse(process.env.HT_LIST).result.agents}catch(e){}
+# `<unit> <agent_status> <pane> <session> <name>` per record line of $1, from the `agent list` JSON on stdin
+match() { # <record lines>
+  node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+let a=null;try{a=JSON.parse(s).result.agents}catch(e){}
 const ses=x=>String((x.agent_session&&x.agent_session.value)||"");
-for(const l of s.split("\n")){
+for(const l of process.argv[1].split("\n")){
   const [u,tab,pane,sid]=l.split(" ");if(!u)continue;
   if(pane==="closed"){console.log(u+" closed - - -");continue}
   if(!Array.isArray(a)){console.log(u+" unknown - - -");continue}
   const m=sid?(a.find(x=>ses(x)===sid)||a.find(x=>x.pane_id===pane&&!ses(x))):a.find(x=>x.pane_id===pane);
   if(!m){console.log(u+" gone - - -");continue}
-  console.log([u,m.agent_status||"unknown",m.pane_id||"-",ses(m)||"-",m.name||"-"].join(" "))}})'
+  console.log([u,m.agent_status||"unknown",m.pane_id||"-",ses(m)||"-",m.name||"-"].join(" "))}})' "$1"
 }
 
 # the herdr agent name of plan 3.6, after resolve
@@ -207,18 +207,17 @@ case "$verb" in
     is_parent_id "$1" || die "'$1' is not a parent task id of the shape T-NNN"
     resolve "$1"
     if command -v herdr >/dev/null 2>&1; then
-      list=$(herdr agent list 2>/dev/null) || list=''
+      herdr agent list 2>/dev/null | match "$(records)"
     else
-      list='{"result":{"agents":[]}}'
-    fi
-    records | match "$list" ;;
+      echo '{"result":{"agents":[]}}' | match "$(records)"
+    fi ;;
   reattach)
     is_parent_id "$1" || die "'$1' is not a parent task id of the shape T-NNN"
     command -v herdr >/dev/null 2>&1 || exit 0
     resolve "$1"
     [ -f "$dir/herdr-tabs" ] || exit 0
     list=$(herdr agent list 2>/dev/null) || die "herdr agent list failed; nothing renamed"
-    records | match "$list" | while read -r u st pane sid name; do
+    printf '%s' "$list" | match "$(records)" | while read -r u st pane sid name; do
       case "$st" in closed) continue ;; gone) printf '%s gone\n' "$u"; continue ;; esac
       resolve "$u"
       want=$(agent_name "$u")
