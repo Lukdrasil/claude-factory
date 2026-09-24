@@ -31,7 +31,7 @@ printf 'x\n' > "$C/cf/README.md"
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u HARNESS_WORKER HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -227,5 +227,16 @@ try 0 'an echo naming glab issue create mid-quote' "$C/cf" coord 'echo "run glab
 try 0 'bin/issue-create.sh is not a direct create' "$C/cf" coord 'sh bin/issue-create.sh cf --title "fix: x" --body-file /tmp/b.md'
 try 0 'gh issue list stays allowed' "$C/cf" coord 'gh issue list --state open --limit 100'
 try 0 'glab issue list stays allowed' "$C/cf" coord 'glab issue list --per-page 100'
+
+# T-252-03: a cwd under $W that is not a task worktree is confined to its own top-level directory, and the
+# coordinator reach of coord_scope and read_scope stays closed from there. The target is judged, never written,
+# and sits outside /tmp, which check_path allows from any cwd (issue #358), so it cannot live under $H.
+try 2 'a state-clone session writes outside $W' "$W/state" coord 'printf x > /home/t252/outside.txt'
+try 2 'a key-dir session writes outside $W' "$W/cf" coord 'printf x > /home/t252/outside.txt'
+try 0 'the registered clone writes the same path' "$C/cf" coord 'printf x > /home/t252/outside.txt'
+try 0 'a state-clone session writes inside the state clone' "$W/state" coord "printf x > $W/state/notes.txt"
+try 0 'a key-dir session writes inside its key dir' "$W/cf" coord "printf x > $W/cf/notes.txt"
+try 2 'a state-clone session writes the stamp dir of a task it owns' "$W/state" coord "printf x > $W/cf/.harness/T-900/x.md"
+try 2 'a state-clone session reads a block of a task it owns' "$W/state" coord "cat $BLK/tests/x.test.sh"
 
 exit $fail
