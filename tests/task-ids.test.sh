@@ -354,13 +354,13 @@ wt() { # <id> -> worktree-add's stdout lines joined by |
   (cd "$clone" && sh "$bin/worktree-add.sh" "$1" --state "$w/state" 2>/dev/null) | tr '\n' '|'
 }
 wt T-1000-01 >/dev/null
-check 'worktree-add stacks a T-1000 block on its T-1000 dependency' \
-  "path: $w/demo/T-1000-02|branch: block/T-1000-02|base: block/T-1000-01|" "$(wt T-1000-02)"
+check 'worktree-add cuts a T-1000 block from the work branch, not from its T-1000 dependency' \
+  "path: $w/demo/T-1000-02|branch: block/T-1000-02|base: feat/T-1000-demo|" "$(wt T-1000-02)"
 check 'a hundredth block is a block, cut from its parent' \
   "path: $w/demo/T-246-100|branch: block/T-246-100|base: feat/T-246-demo|" "$(wt T-246-100)"
 wt T-246-99 >/dev/null
-check 'the stack base is the highest dependency by number, T-246-100 over T-246-99' \
-  "path: $w/demo/T-246-101|branch: block/T-246-101|base: block/T-246-100|" "$(wt T-246-101)"
+check 'a block with dependencies T-246-100 and T-246-99 is cut from the work branch too' \
+  "path: $w/demo/T-246-101|branch: block/T-246-101|base: feat/T-246-demo|" "$(wt T-246-101)"
 WORK_DIR=''
 
 # --- factory-list ---------------------------------------------------------------
