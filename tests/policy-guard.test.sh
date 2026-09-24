@@ -32,10 +32,11 @@ task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
 dash=''
+home=$H
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER ${dash:+DASHBOARD_URL=$dash} HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER -u HOME ${dash:+DASHBOARD_URL=$dash} ${home:+HOME=$home} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -215,5 +216,36 @@ try 2 'a worktree of a registered clone under the work root keeps the catch-all'
 try 2 'a block writes into a sibling block, T-264 regression' "$BLK" blk "echo x > $W/cf/T-900-02/x"
 try 2 'a write from the state clone to outside it and outside /tmp, T-264 regression' "$W/state" coord \
   'echo x > /opt/outside.txt'
+
+# T-264-02: a redirect target is read off the segment with the quote tracking of split_segs, escapes included, and
+# `~` and `~/x` expand to $HOME in both target loops. A quoted `~` stays relative to the cwd, as the shell writes it.
+try 0 'printf into ~/.claude-factory/… && mv it, from the registered clone' "$C/cf" coord \
+  'printf x > ~/.claude-factory/ui/sessions/x/visual.md.tmp && mv ~/.claude-factory/ui/sessions/x/visual.md.tmp ~/.claude-factory/ui/sessions/x/visual.md'
+try 0 "a grep pattern quoting '>', from the registered clone" "$C/cf" coord "grep -n \"'>'\\|redirect\\|tilde\" bin/policy-guard.sh"
+try 0 "a grep pattern quoting '>' and a later quote, from the registered clone" "$C/cf" coord \
+  "grep -n \"'>'\\|redirect\\|tilde\\|'~'\" bin/policy-guard.sh"
+try 0 'tee ~/x, from the registered clone' "$C/cf" coord 'tee ~/x < /dev/null'
+try 0 'an escaped quote inside a quoted span, then a redirect to /tmp, from the registered clone' "$C/cf" coord \
+  "printf '%s\\n' \"a\\\"b > c\" > /tmp/y"
+try 2 'an escaped quote, then a relative redirect into the registered clone' "$C/cf" coord 'echo \" > README.md \"'
+try 2 'a redirect to ~/<registered clone>/README.md' "$C/cf" coord 'echo x > ~/clones/cf/README.md'
+try 2 'tee ~/<registered clone>/README.md' "$C/cf" coord 'tee ~/clones/cf/README.md < /dev/null'
+try 2 'a quoted relative redirect into the registered clone' "$C/cf" coord 'echo x > "README.md"'
+try 2 'a quoted ~/ target, relative to the registered clone' "$C/cf" coord 'echo x > "~/y"'
+try 0 'a quoted ~/ target, relative to the own worktree' "$BLK" blk 'echo x > "~/y"'
+try 2 'a 2> redirect into the registered clone' "$C/cf" coord 'echo x 2> README.md'
+try 2 'a &> redirect into the registered clone' "$C/cf" coord 'echo x &> README.md'
+try 2 'a >> redirect into the registered clone' "$C/cf" coord 'echo x >> README.md'
+try 2 'a redirect with no space into the registered clone' "$C/cf" coord 'echo x >README.md'
+try 2 'a quoted >, then a relative redirect into the registered clone' "$C/cf" coord 'echo "a > b" > README.md'
+try 2 'a second redirect into the registered clone' "$C/cf" coord 'echo x > /tmp/y 2> README.md'
+try 0 "a quoted >, then a redirect to /tmp, from the registered clone" "$C/cf" coord "echo ${q}a > b${q} > /tmp/y"
+try 0 'a quoted $S redirect target, from the registered clone' "$C/cf" coord 'echo x > "$S/x"'
+try 0 '>&2 and 2>&1 name no file, from the registered clone' "$C/cf" coord 'echo x >&2 2>&1'
+try 0 'an arrow after = or - is not a redirect, from the registered clone' "$C/cf" coord 'echo x=>y a->b'
+home=''
+try 2 'with HOME unset, a redirect to ~/y' "$BLK" blk 'echo x > ~/y'
+try 2 'with HOME unset, tee ~/y' "$BLK" blk 'tee ~/y < /dev/null'
+home=$H
 
 exit $fail
