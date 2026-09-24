@@ -2,10 +2,9 @@
 # PreToolUse tripwire for the architect curation (architect-agent plan, decision 8): a Write or Edit creating a task
 # file under repos/<key>/tasks/ in a state clone needs a valid verdict when the registered clone of <key> has
 # docs/architecture/. exit 2 = deny, the reason on stderr. The rule is architect_verdict in lib-tasks.sh, the one
-# task-new.sh applies to every block write (T-249), and the verdict format is defined in
+# task-new.sh applies to every block write, and the verdict format is defined in
 # skills/architect-review/SKILL.md. The state clone comes from the file path and the product repo from the
-# repos.yml `path:`, never from the cwd. There is no Bash branch any more: nothing standalone POSTs to /api/tasks,
-# and the worker/rc probing of the cwd went with it.
+# repos.yml `path:`, never from the cwd. A Bash call is not checked here: task-new.sh applies the rule itself.
 # Deny on positive evidence only: everything the gate cannot resolve passes with a warning, so a forgotten check is
 # blocked and an unrelated flow never is.
 set -eu
