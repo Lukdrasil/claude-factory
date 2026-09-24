@@ -92,7 +92,7 @@ async function openTask(page, id) {
 async function stage(q, button, text) {
   await q.getByRole('button', { name: button }).first().click();
   await q.getByRole('textbox').last().fill(text);
-  await q.getByRole('button', { name: /stage/i }).last().click();
+  await q.getByRole('button', { name: /add to answer/i }).last().click();
 }
 
 (async () => {
@@ -103,14 +103,19 @@ async function stage(q, button, text) {
   const requests = [];
   page.on('request', (r) => requests.push({ url: r.url(), token: r.headers()['x-factory-token'] }));
 
-  await check('the page modules export renderPipeline, renderAsk and renderDrawer', async () => {
+  await check('the page modules export renderPipeline, renderAsk, compose and renderDrawer, and no parseAsk', async () => {
     await fresh(page, `${BASE}/`);
-    const kinds = await page.evaluate(async () => [
-      typeof (await import('/pipeline.js')).renderPipeline,
-      typeof (await import('/ask-card.js')).renderAsk,
-      typeof (await import('/drawer.js')).renderDrawer,
-    ].join(' '));
-    ok(kinds === 'function function function', `typeof: ${kinds}`);
+    const kinds = await page.evaluate(async () => {
+      const card = await import('/ask-card.js');
+      return [
+        typeof (await import('/pipeline.js')).renderPipeline,
+        typeof card.renderAsk,
+        typeof card.compose,
+        typeof card.parseAsk,
+        typeof (await import('/drawer.js')).renderDrawer,
+      ].join(' ');
+    });
+    ok(kinds === 'function function function undefined function', `typeof: ${kinds}`);
   });
 
   await check('without the token in the fragment no task is shown', async () => {
@@ -172,11 +177,27 @@ async function stage(q, button, text) {
     ok(!(await drawer(page).locator('[data-ask="s2/r1"]').count()), 'r1 is in the setup drawer');
   });
 
-  await check('the notice renders its text and offers no options, More detail, Explore or Defer', async () => {
+  await check('the notice renders its text and offers Write my answer, no options, Explain more, Compare options or Decide later', async () => {
     const c = card(page, 's4/d1');
     ok(/Docker is running\. herdr is running\./.test(await c.innerText()), await c.innerText());
-    const extra = await c.getByRole('button', { name: /^[A-D]\b|more detail|explore|defer/i }).count();
+    const extra = await c.getByRole('button', { name: /^[A-D]\b|explain more|compare options|decide later/i }).count();
     ok(extra === 0, `${extra} such buttons`);
+    ok(await c.getByRole('button', { name: /write my answer/i }).count(), 'no Write my answer');
+  });
+
+  await check('the notice with Own answer text posts that text verbatim, commas included', async () => {
+    const c = card(page, 's4/d1');
+    const own = 'ok, but rerun doctor after the install, please';
+    await c.getByRole('button', { name: /write my answer/i }).click();
+    await c.getByRole('textbox').last().fill(own);
+    await c.getByRole('button', { name: /add to answer/i }).click();
+    await c.getByRole('button', { name: /^send answer$/i }).click();
+    const files = await until('an answer file for d1', () => {
+      const f = answers('s4').filter((n) => /^\d+-d1\.txt$/.test(n));
+      return f.length && f;
+    });
+    const text = fs.readFileSync(path.join(UI, 'sessions/s4/answers', files[0]), 'utf8');
+    ok(text === own, `file: ${JSON.stringify(text)}`);
   });
 
   await check('the drawer of T-001 holds its goal and its open asks q1 and q3, not the answered q2', async () => {
@@ -190,15 +211,17 @@ async function stage(q, button, text) {
     ok(!(await d.locator('[data-ask="s4/d1"]').count()), 'the setup notice is there');
   });
 
-  await check('q1, named by an answer file, shows sent, and the relay held reason blocked as a dialog', async () => {
+  await check('q1, named by an answer file, shows Sent, waiting for the session, and the held reason blocked with its pane', async () => {
     const text = await card(page, 's1/q1').innerText();
-    ok(/\bsent\b/i.test(text), `no sent: ${text}`);
-    ok(/dialog/i.test(text), `no dialog: ${text}`);
+    ok(/Sent, waiting for the session/.test(text), `no sent: ${text}`);
+    ok(/Not delivered yet: the session shows a dialog\. Answer it in herdr pane w1:p1, then this goes through by itself\./.test(text),
+      `no dialog: ${text}`);
   });
 
   await check('the relay held reason gone reaches q1 without a reload', async () => {
     writeAtomic(path.join(UI, 'sessions/s1/relay'), '1 gone\n');
-    await until('gone on q1', async () => /\bgone\b/i.test(await card(page, 's1/q1').innerText()), 1500);
+    await until('gone on q1', async () => /Not delivered: the session has ended\. Run \/claude-factory:factory solve T-001 to continue\./
+      .test(await card(page, 's1/q1').innerText()), 1500);
   });
 
   await check('a session outside herdr shows its task state and its ask with no answer box', async () => {
@@ -208,68 +231,68 @@ async function stage(q, button, text) {
     ok(/in_progress/.test(await d.innerText()), 'no task status in the drawer');
     const c = d.locator('[data-ask="s3/o1"]');
     ok(/Which outside answer\?/.test(await c.innerText()), 'the question is not shown');
+    ok(/This session runs outside herdr, so answer it in its terminal\./.test(await c.innerText()), await c.innerText());
     ok(!(await c.getByRole('button', { name: /send/i }).count()), 'a Send button');
     ok(!(await c.getByRole('textbox').count()), 'a text box');
     const live = await c.getByRole('button', { name: /^[A-D]\b/ }).evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 0, `${live} enabled option buttons`);
   });
 
-  let composed = '';
-  await check('the round card composes every staged item into the shorthand the relay will type', async () => {
+  const staged = ['Q1 B', 'Q2 more', 'explore Q3', 'Q4 cf-ui-fixture, on port 7171', 'Q5 ? why not both, SQLite and files', 'Q6 defer'];
+  await check('the round card shows Will be sent: with one staged item per line, Own answer and Ask a question text with commas', async () => {
     await fresh(page);
     await openTask(page, 'T-002');
     const c = card(page, 's2/r1');
     await question(c, 'Q1').getByRole('button', { name: /^B\b/ }).click();
-    await question(c, 'Q2').getByRole('button', { name: /more detail/i }).click();
-    await question(c, 'Q3').getByRole('button', { name: /explore/i }).click();
-    await stage(question(c, 'Q4'), /own answer/i, 'cf-ui-fixture');
-    await stage(question(c, 'Q5'), /discuss/i, 'why not both');
-    await question(c, 'Q6').getByRole('button', { name: /defer/i }).click();
-    composed = await c.locator('output').first().innerText();
-    for (const item of [/\bQ1 B\b/, /\bQ2 more\b/, /\bexplore Q3\b/, /\bQ4 cf-ui-fixture\b/, /\bQ5\b[^\n,]*why not both/, /\bQ6 defer\b/]) {
-      ok(item.test(composed), `no ${item} in: ${composed}`);
-    }
+    await question(c, 'Q2').getByRole('button', { name: /explain more/i }).click();
+    await question(c, 'Q3').getByRole('button', { name: /compare options/i }).click();
+    await stage(question(c, 'Q4'), /write my answer/i, 'cf-ui-fixture, on port 7171');
+    await stage(question(c, 'Q5'), /ask a question/i, 'why not both, SQLite and files');
+    await question(c, 'Q6').getByRole('button', { name: /decide later/i }).click();
+    ok(/Will be sent:/.test(await c.innerText()), 'no Will be sent:');
+    const lines = (await c.locator('output').first().innerText()).replace('Will be sent:', '')
+      .split('\n').map((l) => l.trim()).filter(Boolean);
+    ok(JSON.stringify(lines) === JSON.stringify(staged), `preview lines: ${JSON.stringify(lines)}`);
   });
 
-  await check('Send writes one answer file for r1 whose text is the composed shorthand byte for byte', async () => {
-    ok(composed, 'nothing composed');
-    await card(page, 's2/r1').getByRole('button', { name: /send/i }).click();
+  await check('Send answers writes one answer file for r1 whose lines are exactly the staged items', async () => {
+    await card(page, 's2/r1').getByRole('button', { name: /^send answers$/i }).click();
     const files = await until('an answer file for r1', () => {
       const f = answers('s2').filter((n) => /^\d+-r1\.txt$/.test(n));
       return f.length && f;
     });
     ok(files.length === 1, `files: ${files.join(' ')}`);
     const text = fs.readFileSync(path.join(UI, 'sessions/s2/answers', files[0]), 'utf8');
-    ok(text === composed, `file: ${JSON.stringify(text)} composed: ${JSON.stringify(composed)}`);
+    ok(text === staged.join('\n'), `file: ${JSON.stringify(text)}`);
   });
 
-  await check('r1 shows sent without a reload once its answer file exists', async () => {
-    await until('sent on r1', async () => /\bsent\b/i.test(await card(page, 's2/r1').innerText()), 1500);
+  await check('r1 shows Sent, waiting for the session without a reload once its answer file exists', async () => {
+    await until('sent on r1', async () => /Sent, waiting for the session/.test(await card(page, 's2/r1').innerText()), 1500);
   });
 
   await check('r1 shows answered and offers no Send once its session closed it', async () => {
     const file = path.join(UI, 'sessions/s2/asks/r1.md');
     writeAtomic(file, fs.readFileSync(file, 'utf8').replace(/^status: open$/m, 'status: answered'));
-    await until('answered on r1', async () => /answered/i.test(await card(page, 's2/r1').innerText()), 1500);
+    await until('answered on r1', async () => /\bAnswered\b/.test(await card(page, 's2/r1').innerText()), 1500);
     const live = await card(page, 's2/r1').getByRole('button', { name: /send/i })
       .evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 0, `${live} enabled Send buttons`);
   });
 
-  await check('the confirm card offers yes and no, no Explore or Defer, and sends Q1 A for yes', async () => {
+  await check('the confirm card offers yes and no, no Compare options or Decide later, and sends Q1 A for yes', async () => {
     const c = card(page, 's2/c1');
     ok(await c.getByRole('button', { name: /\byes\b/i }).count(), 'no yes');
     ok(await c.getByRole('button', { name: /\bno\b/i }).count(), 'no no');
-    ok(!(await c.getByRole('button', { name: /explore|defer/i }).count()), 'Explore or Defer on a confirm');
+    ok(!(await c.getByRole('button', { name: /compare options|decide later/i }).count()), 'Compare options or Decide later on a confirm');
     await c.getByRole('button', { name: /\byes\b/i }).first().click();
-    await c.getByRole('button', { name: /send/i }).click();
+    await c.getByRole('button', { name: /^send answer$/i }).click();
     const files = await until('an answer file for c1', () => {
       const f = answers('s2').filter((n) => /^\d+-c1\.txt$/.test(n));
       return f.length && f;
     });
     const text = fs.readFileSync(path.join(UI, 'sessions/s2/answers', files[0]), 'utf8');
     ok(text === 'Q1 A', `file: ${JSON.stringify(text)}`);
-    await until('sent on c1', async () => /\bsent\b/i.test(await card(page, 's2/c1').innerText()), 1500);
+    await until('sent on c1', async () => /Sent, waiting for the session/.test(await card(page, 's2/c1').innerText()), 1500);
   });
 
   await check('a new ask raises the counter within 1 s of its write (QS-03)', async () => {
@@ -309,6 +332,48 @@ async function stage(q, button, text) {
     });
     ok(Math.abs(box.left) <= 1 && Math.abs(box.right - box.width) <= 1,
       `the drawer spans ${box.left} to ${box.right} of a ${box.width} px viewport`);
+  });
+
+  await check('at 390x844 the ask m1 shows its preamble, the paragraph under Q1, its table as a table, its ### section and Why B:', async () => {
+    await fresh(page);
+    await openTask(page, 'T-003');
+    const c = card(page, 's3/m1');
+    await until('m1 in the drawer', () => c.isVisible());
+    const text = await c.innerText();
+    for (const s of ['The preamble sentence of m1, before its first question.', 'The paragraph under Q1 of m1.',
+      'The sentence under the section of m1.', 'Why B: one pair of commands.']) {
+      ok(text.includes(s), `no ${JSON.stringify(s)} in: ${text.slice(0, 600)}`);
+    }
+    ok(await c.getByRole('heading', { name: 'The section of m1' }).count(), 'the ### section is not a heading');
+    const rows = await c.locator('table tr').evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((td) => td.textContent.trim()).join('|')));
+    ok(rows.join('\n') === 'runner|start|stop\nscript|ui-up.sh|ui-down.sh\ncompose|docker compose up|docker compose down',
+      `table rows: ${JSON.stringify(rows)}`);
+  });
+
+  await check('at 390x844 each option of m1 holds its label, inline code included, as one line box', async () => {
+    const opts = await until('the options of m1 laid out', async () => {
+      const all = await card(page, 's3/m1').locator('[data-act="pick"]').evaluateAll((bs) => bs.map((b) => {
+        const walk = document.createTreeWalker(b, NodeFilter.SHOW_TEXT);
+        const lines = [];
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          if (!n.textContent.trim() || n.parentElement.closest('.chip')) continue;
+          const range = document.createRange();
+          range.selectNodeContents(n);
+          for (const r of range.getClientRects()) {
+            if (!r.width) continue;
+            const line = lines.find((l) => r.top < l.bottom && r.bottom > l.top);
+            if (line) Object.assign(line, { top: Math.min(line.top, r.top), bottom: Math.max(line.bottom, r.bottom) });
+            else lines.push({ top: r.top, bottom: r.bottom });
+          }
+        }
+        return { key: b.dataset.k, lines: lines.length, text: b.innerText };
+      }));
+      return all.length && all.every((o) => o.lines > 0) && all;
+    });
+    ok(opts.map((o) => o.key).join() === 'A,B', `options: ${JSON.stringify(opts)}`);
+    for (const o of opts) ok(o.lines === 1, `option ${o.key} spans ${o.lines} line boxes: ${JSON.stringify(o.text)}`);
+    const b = opts[1].text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim());
+    ok(b.some((l) => /\brun ui-up\.sh then ui-down\.sh\b/.test(l)), `option B reads ${JSON.stringify(opts[1].text)}`);
   });
 
   await browser.close();
