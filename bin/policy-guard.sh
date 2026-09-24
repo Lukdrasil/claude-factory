@@ -810,17 +810,20 @@ cd_track() { # <one command segment>
   case "$cd_to" in
     *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cd_lose ;;
     /*|[A-Za-z]:/*)
+      norm_into ct_to "$cd_to"
       if [ -n "$cd_plain" ]; then
-        norm_into cwd "$cd_to"
-      else
-        norm_into ct_to "$cd_to"
-        alt_add "$ct_to"
-      fi ;;
+        ct_real=$(cd -P -- "$ct_to" 2>/dev/null && pwd -P) || ct_real=$ct_to
+        [ "$ct_real" = "$ct_to" ] || cd_unplain
+      fi
+      if [ -n "$cd_plain" ]; then cwd=$ct_to; else alt_add "$ct_to"; fi ;;
     *) cd_lose ;;
   esac
 }
 cd_lose() {
   cwd_lost=1
+  cd_unplain
+}
+cd_unplain() {
   [ -n "$cd_plain" ] || return 0
   cd_plain=''
   [ "$cwd" = "$cwd0" ] || alt_add "$cwd0"

@@ -42,8 +42,9 @@ together with every deny they keep.
   no segment starts with `.`, and no assignment (`CDPATH=` included) is prefixed to a `cd`. In every other
   shape the cwd stays the hook's, and the target of every `cd` or `pushd` seen, even behind `builtin`,
   `command`, `eval`, `exec` or an assignment, joins a set of bases. A relative target is denied when it is a
-  protected target under any base. A `cd` the guard cannot resolve (a relative path, `-`, a variable, `..`, a
-  quoted path, a target containing `)`, a bare `pushd` or `popd`) turns the shape off for the rest of the
+  protected target under any base. A `cd` to an existing path whose resolved spelling (`pwd -P`) differs from its
+  text, such as a symlink, ends the shape for the rest of the command, and the hook cwd stays among the bases.
+  A `cd` the guard cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`, a bare `pushd` or `popd`) turns the shape off for the rest of the
   command, keeps the hook cwd among the bases, and denies a relative write target: a redirect target, an
   in-place editor's operand containing a `/`, or the file operand of `sed -i`/`perl -i`. A command word is
   never one. An absolute target is judged as any absolute target.
