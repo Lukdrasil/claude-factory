@@ -58,7 +58,10 @@ if [ -z "$state" ]; then
 fi
 [ -d "$state/repos" ] || die "$state is not a state clone"
 
-[ -n "$(task_of "$parent" || :)" ] || die "no task file for '$parent' in $state"
+ptask=$(task_of "$parent" || :)
+[ -n "$ptask" ] || die "no task file for '$parent' in $state"
+pkey=${ptask#"$state/repos/"}
+pkey=${pkey%%/*}
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -116,7 +119,11 @@ deps_of() { # <task file>
 
 # invariant: blocks are selected by their `id:` line and an id-shape check, never by an `<id>-*.md` glob: the
 # invariant: parent file T-200-parent.md sits in the same directory and a glob would pick it up too.
-for f in "$state"/repos/*/tasks/*.md; do
+# invariant: the blocks sit under the parent's repo key, live or archived (task_files --all, the way task_of
+# invariant: finds the parent): an archived parent moved with all its blocks, so its cut stays whole.
+# why: a depends_on outside the parent's blocks, live or archived, is no edge of the wave plan: it orders
+# why: parents, the queue (queue-next.sh) waits for it, and an archived id is done.
+while IFS= read -r f; do
   [ -f "$f" ] || continue
   bid=$(sed -n 's/^id:[[:space:]]*//p' "$f" | sed 's/[[:space:]]*#.*//' | head -n 1)
   is_block_of "$parent" "$bid" || continue
@@ -124,7 +131,9 @@ for f in "$state"/repos/*/tasks/*.md; do
   claimed_paths "$f" > "$tmp/paths/$bid"
   deps_of "$f" > "$tmp/deps/$bid"
   acceptance_phrase "$f" > "$tmp/integration/$bid"
-done
+done <<EOF
+$(task_files --all "$pkey")
+EOF
 [ -f "$tmp/blocks" ] || die "'$parent' has no T-NNN-NN blocks, so it is not a parent task"
 sort -u "$tmp/blocks" | sort_ids > "$tmp/blocks.sorted" && mv -f "$tmp/blocks.sorted" "$tmp/blocks"
 

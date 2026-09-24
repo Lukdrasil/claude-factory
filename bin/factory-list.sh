@@ -23,9 +23,13 @@ root=$(printf '%s' "$root" | sed 's:/*$::')
 state="$root/state"
 [ -d "$state/repos" ] || die "$state/repos is not there, is $root the factory root?"
 
-# the same glob the hooks read tasks with (lib-tasks.sh); an unmatched glob stays literal, hence the -f guard
-set -- "$state"/repos/*/tasks/*.md
-[ -f "$1" ] || exit 0
+# the live task files, as the hooks read them (task_files, lib-tasks.sh); the archive of finished parents is
+# history and not listed
+set --
+while IFS= read -r f; do [ -z "$f" ] || set -- "$@" "$f"; done <<EOF
+$(task_files)
+EOF
+[ $# -gt 0 ] || exit 0
 
 # ponytail: one awk over every task file; the frontmatter is flat key: value (task-new.sh validates it),
 # so a line-wise read is enough, no yaml parser for six keys.
