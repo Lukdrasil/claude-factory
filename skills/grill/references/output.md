@@ -7,9 +7,17 @@ the boundaries where the result can be verified, not along layers. Per proposal 
 sentence: `tier`, `archetype` and `complexity` per `<plugin-root>/skills/_shared/tiers.md`; `depends_on`,
 only proposals from this plan and no cycles; `docs`, `none` or the docs this task updates in the same branch;
 `design`, the members of `## Program design` this task implements, by file and name, `none` only for a
-`research` proposal. A proposal that changes public behaviour or architecture and still says `none` for docs
-needs the one sentence why. A term of `## Terms` that the product repo's `CONTEXT.md` does not define puts
+`research` proposal; `steps`, the work the block has to do that is neither a design member nor a doc (wiring,
+migrations, config, data, rollout), one indented `  - <step>` sub-bullet under an empty `- steps:` per step,
+or `- steps: none` with no sub-bullet, required on every proposal except `research`. A proposal that changes
+public behaviour or architecture and still says `none` for docs needs the one sentence why. A term of `## Terms` that the product repo's `CONTEXT.md` does not define puts
 `CONTEXT.md` into the `docs` of the proposal that introduces it. Decompose does not remake these decisions; `decompose.sh` copies them 1:1.
+
+## Proposals round
+
+Before you write `plan-ready.md`, put the cut to the human as one question: every proposal with its title,
+tier, archetype, depends_on and steps. It is approved as written; any change is a new cut, asked again. A
+steps list the human has not approved does not go into the plan.
 
 ## The plan file
 
