@@ -272,4 +272,82 @@ else
   printf 'PASS an unresolvable unit exits 1\n'
 fi
 
+# the close before start: a unit's recorded tab is closed before the unit starts again, and a tab still at
+# work keeps the unit from starting
+HERDR_TAB_ID=tab-self
+export HERDR_TAB_ID
+rec() { # <T-NNN> <unit> <tab_id>
+  mkdir -p "$hroot/demo/.harness/$1"
+  printf '%s %s pane-%s\n' "$2" "$3" "${3#tab-}" >> "$hroot/demo/.harness/$1/herdr-tabs"
+}
+armed() { # <parent> <block>
+  mkdir -p "$hroot/demo/$2"
+  printf -- '---\nid: %s\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: yellow\ncomplexity: medium\n---\n\n# Goal\nfeat(demo): a parent\n' \
+    "$1" > "$hstate/repos/demo/tasks/$1.md"
+  printf -- '---\nid: %s\nrepo: demo\nstatus: tests_ready\nphase: implement\narchetype: feature\ntier: yellow\ncomplexity: medium\nowner: null\n---\n\n# Goal\nfeat(demo): a block\n\nDesign (approved in the grill):\n\n### `src/h.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+    "$2" > "$hstate/repos/demo/tasks/$2.md"
+}
+
+armed T-104 T-104-01
+rec T-104 T-104-01 tab-104
+herdr_tab tab-104 idle false t-104-01
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --task T-104 --spawn herdr --state "$hstate" 2>/dev/null)
+check 'an armed block with an idle tab goes out' '^T-104-01 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'its recorded tab is closed'               '^tab close tab-104 '
+if awk '/^tab close tab-104 / && !c { c = NR } /^agent start t-104-01 / && !a { a = NR } END { exit !(c && a && c < a) }' "$HERDR_STUB_LOG"
+then printf 'PASS the close comes before the agent start\n'
+else printf 'FAIL the close does not come before the agent start\n'; fail=1; fi
+
+armed T-105 T-105-01
+rec T-105 T-105-01 tab-105
+herdr_tab tab-105 working false t-105-01
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --task T-105 --spawn herdr --state "$hstate" 2>/dev/null)
+check 'an armed block with a working tab is skipped' '^T-105-01 skipped '
+out=$(cat "$HERDR_STUB_LOG")
+nocheck 'the working tab is not closed'          '^tab close tab-105 '
+nocheck 'the skipped block starts no agent'      '^agent start t-105-01 '
+
+leaf T-106 demo
+rec T-106 T-106-triage tab-106
+herdr_tab tab-106 idle false t-106-triage
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --task T-106 --step grill --spawn herdr --state "$hstate" 2>/dev/null)
+check 'the grill step goes out'                  '^T-106-grill spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'the grill step closes the triage tab'     '^tab close tab-106 '
+out=$(cat "$hroot/demo/.harness/T-106/herdr-tabs")
+check 'the triage close is in the tab record'    '^T-106-triage tab-106 closed$'
+
+# --all closes the recorded tabs of units that are over before it dispatches anything
+leaf T-108 demo
+sed -i 's/^status: ready$/status: done/' "$hstate/repos/demo/tasks/T-108.md"
+rec T-108 T-108 tab-108
+herdr_tab tab-108 idle false t-108
+leaf T-109 demo
+sed -i 's/^status: ready$/status: review/' "$hstate/repos/demo/tasks/T-109.md"
+rec T-109 T-109 tab-109
+herdr_tab tab-109 idle false t-109
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/null)
+out=$(cat "$HERDR_STUB_LOG")
+check '--all closes the tab of a leaf at done'   '^tab close tab-108 '
+nocheck '--all keeps the tab of a leaf at review' '^tab close tab-109 '
+
+# the verbs herd-watch and session-monitor share
+out=$(sh "$bin/herdr-tabs.sh" state T-108-grill --state "$hstate" 2>/dev/null)
+check 'a unit with no record is none'            '^none$'
+out=$(sh "$bin/herdr-tabs.sh" state T-109 --state "$hstate" 2>/dev/null)
+check 'a recorded open tab is open'              '^open$'
+out=$(sh "$bin/herdr-tabs.sh" state T-108 --state "$hstate" 2>/dev/null)
+check 'a closed tab is closed'                   '^closed$'
+out=$(sh "$bin/herdr-tabs.sh" close T-109 --state "$hstate" 2>/dev/null)
+check 'close prints the closed tab'              '^T-109 closed tab-109$'
+rec T-109 T-109-grill tab-110
+herdr_tab tab-110 blocked false t-109-grill
+out=$(sh "$bin/herdr-tabs.sh" close T-109-grill --state "$hstate" 2>/dev/null)
+check 'close prints a kept tab with its reason'  '^T-109-grill kept tab-110 [^ ]'
+
 exit $fail

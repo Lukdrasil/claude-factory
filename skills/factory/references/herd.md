@@ -60,7 +60,8 @@ The rule behind the split: anything that writes the change is a session, anythin
 3. Arm the watcher through the Monitor tool (step one of this file, and it stays armed for the whole herd):
    `sh <plugin-root>/bin/herd-watch.sh <T-NNN> --interval 60`. It prints one line per change:
    `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
-   `<id> mr <old> -> <new>`. A quiet pass prints nothing.
+   `<id> mr <old> -> <new>`. A quiet pass prints nothing. The agent values are herdr's own (working, idle,
+   blocked, done, unknown), plus `closed` for a tab the scripts closed and `gone` for a session no longer live.
 4. On any line, rerun `solve-next.sh` and do what it prints. A monitor step you do yourself; a session step
    you dispatch and go back to 3.
 5. `<id> agent <state> -> blocked` means that session is at an approval or question dialog. Read it with
@@ -69,9 +70,12 @@ The rule behind the split: anything that writes the change is a session, anythin
    the human.
 6. `<id> agent <state> -> gone` with the status unchanged is a session that died without reporting. Rerun
    `solve-next.sh` and dispatch it again; two deaths in a row is `_shared/blocked-question.md`.
-7. After each wave, close the herdr tab of every unit at `done` or `closed`: the tab is labelled with the
-   unit's id in `herdr tab list --workspace $HERDR_WORKSPACE_ID`, and `herdr tab close <tab_id>` closes it.
-   Then post one line per active task, `<id> <status> <next step>`, so the human never has to ask.
+   `<id> agent <state> -> closed` is no dead session: the scripts closed a tab whose work was over.
+7. The scripts close the tabs, you report them. `herd-watch.sh` closes the recorded tab of every unit at
+   `done` or `closed`, and the step tabs once the parent is; `session-monitor.sh` closes a unit's own tab and
+   the step tabs of its parent before it starts that unit again. A tab that is focused, is your own, or holds
+   an agent at work stays open. Never close a tab by hand. After each wave, post one line per active task,
+   `<id> <status> <next step>`, so the human never has to ask.
 
 ## `review` is not the end
 

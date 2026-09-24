@@ -51,6 +51,12 @@
 # lowercased id. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh record`,
 # `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`.
 #
+# A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-NNN, before the
+# claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
+# or an agent at work) is printed `skipped` and not started. `--all` first runs `herdr-tabs.sh sweep` over
+# every T-NNN with a tab record, which closes the tabs of units at `done` or `closed` and prints one
+# `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line per recorded tab it tried.
+#
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
 # the task cannot be resolved and when no mode was named, 2 when herdr was asked for and a spawn failed.
@@ -284,6 +290,12 @@ if [ -n "$parent" ]; then
     unit_line "$ptask" "$parent" "$key" > "$units"
   fi
 else
+  if [ "$mode" = herdr ] && [ -z "$dry" ]; then
+    for rec in "$root"/*/.harness/T-[0-9][0-9][0-9]/herdr-tabs; do
+      [ -f "$rec" ] || continue
+      sh "$bin/herdr-tabs.sh" sweep "$(basename -- "$(dirname -- "$rec")")" --state "$state" || :
+    done
+  fi
   for task in "$state"/repos/*/tasks/*.md; do
     [ -f "$task" ] || continue
     [ "$(field "$task" status)" = ready ] || continue
@@ -328,6 +340,18 @@ while IFS='	' read -r id cwd model claimid prompt; do
     printf '%s skipped %s\n' "$id" "$cwd"
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
+  fi
+  # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
+  # claim, so a unit whose tab is still at work is neither claimed nor started twice
+  if [ "$mode" = herdr ] && [ -z "$dry" ]; then
+    t=$(printf '%s' "$id" | cut -c1-5)
+    kept=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-grill" "$t-plan-check" "$t-decompose" \
+      --state "$state" | awk -v u="$id" '$1 == u && $2 == "kept"')
+    if [ -n "$kept" ]; then
+      printf '%s skipped %s\n' "$id" "$cwd"
+      printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
+      continue
+    fi
   fi
   # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
   # changes nothing, so it claims nothing
