@@ -231,7 +231,7 @@ out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn herdr --state "$hstate" 
 check 'a herdr spawn of a leaf goes out'        '^T-101 spawned '
 out=$(cat "$HERDR_STUB_LOG")
 check 'the tab carries the session name'        '^tab create .*--label "🦊 demo T-101"'
-check 'claude carries the session name'         '^agent start t-101 .* -- .*--name "🦊 demo T-101"'
+check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🦊 demo T-101"'
 out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
 check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
 
@@ -250,7 +250,7 @@ out=$(sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/
 check '--all spawns the unit of the other repo' '^T-102 spawned '
 out=$(cat "$HERDR_STUB_LOG")
 check '--all names the tab by its repo'         '^tab create .*--label "[^ ]* plain T-102"'
-check '--all names the claude session too'      '^agent start t-102 .* -- .*--name "[^ ]* plain T-102"'
+check '--all names the claude session too'      '^agent start implementer_t-102 .* -- .*--name "[^ ]* plain T-102"'
 out=$(cat "$hroot/plain/.harness/T-102/herdr-tabs" 2>/dev/null)
 check '--all records its tab'                   '^T-102 tab-1 pane-1$'
 
@@ -296,7 +296,7 @@ out=$(sh "$bin/session-monitor.sh" --task T-104 --spawn herdr --state "$hstate" 
 check 'an armed block with an idle tab goes out' '^T-104-01 spawned '
 out=$(cat "$HERDR_STUB_LOG")
 check 'its recorded tab is closed'               '^tab close tab-104 '
-if awk '/^tab close tab-104 / && !c { c = NR } /^agent start t-104-01 / && !a { a = NR } END { exit !(c && a && c < a) }' "$HERDR_STUB_LOG"
+if awk '/^tab close tab-104 / && !c { c = NR } /^agent start implementer_t-104-01 / && !a { a = NR } END { exit !(c && a && c < a) }' "$HERDR_STUB_LOG"
 then printf 'PASS the close comes before the agent start\n'
 else printf 'FAIL the close does not come before the agent start\n'; fail=1; fi
 
@@ -308,7 +308,7 @@ out=$(sh "$bin/session-monitor.sh" --task T-105 --spawn herdr --state "$hstate" 
 check 'an armed block with a working tab is skipped' '^T-105-01 skipped '
 out=$(cat "$HERDR_STUB_LOG")
 nocheck 'the working tab is not closed'          '^tab close tab-105 '
-nocheck 'the skipped block starts no agent'      '^agent start t-105-01 '
+nocheck 'the skipped block starts no agent'      '^agent start implementer_t-105-01 '
 
 leaf T-106 demo
 rec T-106 T-106-triage tab-106
@@ -349,8 +349,8 @@ unset HERDR_STUB_CREATE
 check 'a tab with no id still spawns the unit'   '^T-111-01 spawned '
 check 'the next unit of the batch is spawned'    '^T-111-02 spawned '
 out=$(cat "$HERDR_STUB_LOG")
-check 'the first unit starts its agent'          '^agent start t-111-01 '
-check 'the next unit starts its agent'           '^agent start t-111-02 '
+check 'the first unit starts its agent'          '^agent start implementer_t-111-01 '
+check 'the next unit starts its agent'           '^agent start implementer_t-111-02 '
 out=$(cat "$hroot/demo/.harness/T-111/herdr-tabs" 2>/dev/null)
 nocheck 'a tab with no id writes no record line' '^T-111-0'
 
@@ -481,7 +481,7 @@ if (. "$bin/lib-tasks.sh"; is_parent_id T-DM-7 && is_block_of T-DM-7 T-DM-7-01) 
   out=$(sh "$bin/session-monitor.sh" --task T-DM-7 --spawn herdr --state "$hstate" 2>/dev/null)
   check 'a herdr spawn of an alias block goes out' '^T-DM-7-01 spawned '
   out=$(cat "$HERDR_STUB_LOG")
-  check 'its agent is the lowercased id'           '^agent start t-dm-7-01 '
+  check 'its agent is role_ plus the id less t-'  '^agent start implementer_dm-7-01 '
   out=$(cat "$hroot/demo/.harness/T-DM-7/herdr-tabs" 2>/dev/null)
   check 'an alias block lands in its parent tab record' '^T-DM-7-01 tab-1 pane-1$'
   out=$(sh "$bin/herdr-tabs.sh" name T-DM-7-01 --state "$hstate" 2>/dev/null)
@@ -501,5 +501,255 @@ if (. "$bin/lib-tasks.sh"; is_parent_id T-DM-7 && is_block_of T-DM-7 T-DM-7-01) 
 else
   printf 'SKIP alias ids: the lib-tasks.sh predicates take T-NNN ids only\n'
 fi
+
+# the agent org (plan 3.1, 3.3, 3.6 to 3.8), over a fresh stub and a state with an alias repo and a capacity:
+# block: every herdr spawn passes the three --env pairs and names its agent <role>_<id less t->, every dispatch
+# leases `sessions <unit>` (plus repo-lead for a lead and the agent role for a block), a lead gets its own
+# workspace in the parent worktree and claims nothing, and every pass ends with state-push.sh
+herdr_stub "$tmp/stub3"
+unset HERDR_TAB_ID
+oroot="$tmp/o"
+ostate="$oroot/state"
+mkdir -p "$ostate/repos/ecs-core/tasks" "$oroot/ecs-core/T-ECS-12/.git" "$oroot/ecs-core/T-ECS-20-01" \
+  "$oroot/ecs-core/T-ECS-30" "$tmp/eclone"
+ocaps() { # <sessions> <repo-lead>
+  printf 'spawn: herdr\ncapacity:\n  sessions: %s\n  roles: {repo-lead: %s, implementer: 4}\n' "$1" "$2" > "$ostate/factory.yml"
+}
+ocaps 10 3
+printf 'ecs-core: { path: %s, alias: ECS, emoji: 🐳 }\n' "$tmp/eclone" > "$ostate/repos.yml"
+otask() { # <state> <id> <status> [<frontmatter line>...]
+  ot_f="$1/repos/ecs-core/tasks/$2.md" ot_id=$2 ot_st=$3
+  shift 3
+  { printf -- '---\nid: %s\nrepo: ecs-core\nstatus: %s\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n' "$ot_id" "$ot_st"
+    for l; do printf '%s\n' "$l"; done
+    printf -- '---\n\n# Goal\nfeat(ecs): %s\n\nDesign (approved in the grill):\n\n### `src/%s.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+      "$ot_id" "$ot_id"
+  } > "$ot_f"
+}
+otask "$ostate" T-ECS-12 ready 'request: R-20260925-1' 'priority: P2'
+otask "$ostate" T-ECS-13 ready 'request: R-20260925-1'
+otask "$ostate" T-ECS-14 ready 'request: R-20260925-1'
+otask "$ostate" T-ECS-20 in_progress
+otask "$ostate" T-ECS-20-01 ready
+otask "$ostate" T-ECS-30 ready
+otask "$ostate" T-ECS-50 ready 'request: R-20260925-1'
+git init -q -b main "$ostate"
+git -C "$ostate" config user.email harness@localhost
+git -C "$ostate" config user.name harness
+git -C "$ostate" add -A
+git -C "$ostate" commit -q -m 'the org fixture state'
+git init -q --bare "$tmp/o-root"
+git -C "$ostate" remote add origin "$tmp/o-root"
+git -C "$ostate" push -q -u origin main
+sm() { sh "$bin/session-monitor.sh" "$@" --state "$ostate"; }
+envof() { cat "$HERDR_STUB_DIR/env/pane-1" 2>/dev/null; }
+exists() { # <what> <path>
+  if [ -e "$2" ]; then printf 'PASS %s\n' "$1"; else printf 'FAIL %s\n' "$1"; fail=1; fi
+}
+absent() { # <what> <path>
+  if [ -e "$2" ]; then printf 'FAIL %s\n' "$1"; fail=1; else printf 'PASS %s\n' "$1"; fi
+}
+before() { # <what> <first pattern> <second pattern>: both in the stub log, the first one earlier
+  if awk -v a="$2" -v b="$3" '$0 ~ a && !x { x = NR } $0 ~ b && !y { y = NR } END { exit !(x && y && x < y) }' "$HERDR_STUB_LOG"
+  then printf 'PASS %s\n' "$1"; else printf 'FAIL %s\n' "$1"; fail=1; fi
+}
+lease="$ostate/.capacity"
+
+# --step chart: a step tab with the env, the name and the wayfinder prompt, leased and not claimed
+: > "$HERDR_STUB_LOG"
+out=$(sm --task T-ECS-12 --step chart 2>/dev/null)
+check 'the chart step goes out'                     "^T-ECS-12-chart spawned $oroot/ecs-core/T-ECS-12\$"
+out=$(envof)
+check 'a spawn passes FACTORY_ROLE'                 '^FACTORY_ROLE=chart$'
+check 'a spawn passes FACTORY_UNIT'                 '^FACTORY_UNIT=T-ECS-12-chart$'
+check 'a spawn turns the auto memory off'           '^CLAUDE_CODE_DISABLE_AUTO_MEMORY=1$'
+out=$(cat "$HERDR_STUB_LOG")
+check 'a step agent is <step>_<id less t->'         '^agent start chart_ecs-12 --kind claude '
+check 'agent start waits up to 120 s'               '^agent start chart_ecs-12 .*--timeout 120000 '
+check 'the chart prompt charts the request map'     '^agent prompt chart_ecs-12 "/claude-factory:wayfinder chart R-20260925-1 T-ECS-12" $'
+exists 'a step leases a sessions slot'              "$lease/sessions/T-ECS-12-chart"
+out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-12.md")
+check 'a chart step claims nothing'                 '^status: ready$'
+if sm --task T-ECS-20 --step chart --dry-run >/dev/null 2>&1; then
+  printf 'FAIL a chart of a task with no request: was accepted\n'; fail=1
+else
+  printf 'PASS a chart of a task with no request: is refused\n'
+fi
+
+# --step lead: its own workspace in the parent worktree, the lead name and role, two leases, no claim
+: > "$HERDR_STUB_LOG"
+out=$(sm --task T-ECS-12 --step lead 2>/dev/null)
+check 'a lead goes out in the parent worktree'      "^T-ECS-12-lead spawned $oroot/ecs-core/T-ECS-12\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'a lead gets its own workspace'               "^workspace create --cwd $oroot/ecs-core/T-ECS-12 --label \"T-ECS-12 ecs-core\" .*--no-focus"
+nocheck 'a lead opens no tab'                       '^tab create '
+check 'the lead starts in the root pane'            '^agent start lead_ecs-12 --kind claude --pane pane-1 '
+check 'the lead prompt herds its task'              '^agent prompt lead_ecs-12 "/claude-factory:factory herd T-ECS-12" $'
+out=$(envof)
+check 'the lead role is repo-lead'                  '^FACTORY_ROLE=repo-lead$'
+check 'the lead unit is <T-id>-lead'                '^FACTORY_UNIT=T-ECS-12-lead$'
+exists 'a lead leases a sessions slot'              "$lease/sessions/T-ECS-12-lead"
+exists 'a lead leases a repo-lead slot'             "$lease/repo-lead/T-ECS-12"
+out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-12.md")
+check 'a lead leaves the status alone'              '^status: ready$'
+check 'a lead claims no owner'                      '^owner: null$'
+out=$(cat "$oroot/ecs-core/.harness/T-ECS-12/herdr-tabs" 2>/dev/null)
+check 'the lead tab is in the tab record'           '^T-ECS-12-lead tab-1 pane-1$'
+
+# the lead prompt reads the repo-lead playbook first, only when there is one; a manual line carries the env
+out=$(sm --task T-ECS-12 --step lead --dry-run 2>/dev/null)
+check 'with no playbook the lead prompt is the herd' ' "/claude-factory:factory herd T-ECS-12"$'
+check 'a manual line prints the env as a prefix' \
+  "cd $oroot/ecs-core/T-ECS-12 && FACTORY_ROLE=repo-lead FACTORY_UNIT=T-ECS-12-lead CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+mkdir -p "$ostate/repos/ecs-core/agents/repo-lead"
+printf '# repo-lead\n' > "$ostate/repos/ecs-core/agents/repo-lead/playbook.md"
+out=$(sm --task T-ECS-12 --step lead --dry-run 2>/dev/null)
+check 'with a playbook the lead reads it first' \
+  "\"Read $ostate/repos/ecs-core/agents/repo-lead/playbook.md first. /claude-factory:factory herd T-ECS-12\"\$"
+sm --task T-ECS-14 --step chart --dry-run >/dev/null 2>&1
+absent 'a dry run leases nothing'                   "$lease/sessions/T-ECS-14-chart"
+
+# agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
+herdr_agent chart_ecs-13 idle pane-13
+: > "$HERDR_STUB_LOG"
+out=$(HERDR_STUB_START=agent_not_ready sm --task T-ECS-13 --step chart 2>/dev/null)
+check 'a start at a dialog still goes out'          '^T-ECS-13-chart spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'agent_not_ready waits for idle or done'      '^agent wait chart_ecs-13 --until idle --until done --timeout 120000 '
+before 'the prompt comes after the wait'            '^agent wait chart_ecs-13 ' '^agent prompt chart_ecs-13 '
+herdr_agent chart_ecs-14 working pane-14
+: > "$HERDR_STUB_LOG"
+out=$(HERDR_STUB_START=agent_not_ready sm --task T-ECS-14 --step chart 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ]; then printf 'PASS a wait that times out exits 2\n'; else printf 'FAIL a wait that timed out exited %s\n' "$rc"; fail=1; fi
+out=$(cat "$HERDR_STUB_LOG")
+nocheck 'a wait that times out prompts nothing'     '^agent prompt chart_ecs-14 '
+
+# the sessions cap: a block with no slot is skipped and not claimed; a lead needs two free slots
+rm -rf "$lease"
+ocaps 2 3
+sh "$bin/capacity.sh" acquire sessions T-X-1 --state "$ostate"
+sh "$bin/capacity.sh" acquire sessions T-X-2 --state "$ostate"
+: > "$HERDR_STUB_LOG"
+out=$(sm --task T-ECS-20 2>&1)
+check 'a block with no slot is skipped'             '^T-ECS-20-01 skipped '
+check 'the skip says the sessions cap is full'      'capacity: sessions full'
+out=$(cat "$HERDR_STUB_LOG")
+nocheck 'a block with no slot starts no agent'      '^agent start '
+out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-20-01.md")
+check 'a block with no slot is not claimed'         '^status: ready$'
+sh "$bin/capacity.sh" release T-X-2 --state "$ostate"
+: > "$HERDR_STUB_LOG"
+out=$(sm --task T-ECS-20 2>/dev/null)
+check 'a block with a free slot goes out'           '^T-ECS-20-01 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'a block agent is <role>_<id less t->'        '^agent start implementer_ecs-20-01 '
+out=$(envof)
+check 'a block passes its agent role'               '^FACTORY_ROLE=implementer$'
+exists 'a block leases a sessions slot'             "$lease/sessions/T-ECS-20-01"
+exists 'a block leases its agent role'              "$lease/implementer/T-ECS-20-01"
+rm -rf "$lease"
+ocaps 3 3
+sh "$bin/capacity.sh" acquire sessions T-X-1 --state "$ostate"
+sh "$bin/capacity.sh" acquire sessions T-X-2 --state "$ostate"
+out=$(sm --task T-ECS-12 --step lead 2>&1)
+check 'a lead with one free slot is skipped'        '^T-ECS-12-lead skipped '
+check 'the lead skip names the sessions cap'        'capacity: sessions full'
+rm -rf "$lease"
+ocaps 10 3
+
+# a leaf reads its brief from .harness/<id>/brief.md; a dry run pushes and writes nothing, a pass pushes
+git -C "$ostate" commit -q --allow-empty -m 'a local commit'
+sm --task T-ECS-30 --dry-run >/dev/null 2>&1
+absent 'a dry run writes no brief'                  "$oroot/ecs-core/.harness/T-ECS-30/brief.md"
+out=$(git -C "$tmp/o-root" log --format=%s main)
+nocheck 'a dry run pushes nothing'                  '^a local commit$'
+out=$(sm --task T-ECS-30 --spawn manual 2>/dev/null)
+check 'a leaf reads its brief'                      "\"First take ownership of T-ECS-30.* Read $oroot/ecs-core/.harness/T-ECS-30/brief.md "
+check 'a leaf still runs its archetype skill'       '/claude-factory:block-feature '
+check 'a leaf runs as its agent role'               'FACTORY_ROLE=implementer FACTORY_UNIT=T-ECS-30 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude '
+if [ -s "$oroot/ecs-core/.harness/T-ECS-30/brief.md" ]; then printf 'PASS the leaf brief is written\n'
+else printf 'FAIL the leaf brief is not written\n'; fail=1; fi
+out=$(git -C "$tmp/o-root" log --format=%s main)
+check 'the pass ends with state-push.sh'            '^claim: T-ECS-30 '
+check 'the push carries the earlier commit too'     '^a local commit$'
+
+# --step pass: the daily memory pass of one repo agent, in the state clone
+: > "$HERDR_STUB_LOG"
+out=$(sm --step pass --scope ecs-core/implementer 2>/dev/null)
+check 'the daily pass goes out in the state clone'  "^pass-ecs-core-implementer spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the pass is pass_<alias>-<agent>'            '^agent start pass_ecs-implementer '
+check 'the pass prompts the daily skill'            '^agent prompt pass_ecs-implementer "/claude-factory:memory-daily ecs-core/implementer" $'
+out=$(envof)
+check 'the pass unit is pass-<key>-<agent>'         '^FACTORY_UNIT=pass-ecs-core-implementer$'
+exists 'a pass leases a sessions slot'              "$lease/sessions/pass-ecs-core-implementer"
+: > "$HERDR_STUB_LOG"
+sm --step pass --scope ecs-core/implementer-senior-architecture >/dev/null 2>&1
+out=$(cat "$HERDR_STUB_LOG")
+check 'a herdr name stops at 31 characters'         '^agent start pass_ecs-implementer-senior-arc '
+for bad in '--step pass' '--scope ecs-core/implementer' '--task T-ECS-12 --step pass --scope ecs-core/implementer' \
+  '--step pass --scope ecs-core'; do
+  # shellcheck disable=SC2086
+  if sm $bad --dry-run >/dev/null 2>&1; then printf 'FAIL %s was accepted\n' "$bad"; fail=1
+  else printf 'PASS %s is refused\n' "$bad"; fi
+done
+
+# a lead with no parent worktree has worktree-add.sh make it first; one it cannot make is skipped
+out=$(sm --task T-ECS-50 --step lead --dry-run 2>/dev/null)
+check 'a lead with no worktree makes it first'      "worktree-add.sh T-ECS-50 "
+out=$(sm --task T-ECS-50 --step lead --spawn manual 2>/dev/null)
+check 'a lead whose worktree fails is skipped'      '^T-ECS-50-lead skipped '
+
+# --queue: queue-next.sh lines from the top, each as --step lead, while two sessions and one repo-lead are free
+qroot="$tmp/q"
+qstate="$qroot/state"
+mkdir -p "$qstate/repos/ecs-core/tasks" "$qroot/ecs-core/T-ECS-40/.git" "$qroot/ecs-core/T-ECS-41/.git" \
+  "$qroot/ecs-core/T-ECS-42/.git"
+printf 'ecs-core: { path: %s, alias: ECS }\n' "$tmp/eclone" > "$qstate/repos.yml"
+printf 'spawn: herdr\ncapacity:\n  sessions: 5\n  roles: {repo-lead: 3}\n' > "$qstate/factory.yml"
+otask "$qstate" T-ECS-40 ready 'request: R-20260925-2' 'priority: P2'
+otask "$qstate" T-ECS-41 ready 'request: R-20260925-2' 'priority: P0'
+otask "$qstate" T-ECS-42 ready 'request: R-20260925-2' 'priority: P1'
+qbin=$bin
+if [ ! -f "$bin/queue-next.sh" ]; then
+  printf 'SKIP queue: bin/queue-next.sh is not there yet\n'
+  # a throwaway copy of bin/ with a stand-in that prints the contract's lines, so the monitor's side still runs
+  qbin="$tmp/qbin"
+  cp -R "$bin" "$qbin"
+  cat > "$qbin/queue-next.sh" <<'EOF'
+#!/bin/sh
+max=5
+while [ $# -gt 0 ]; do case "$1" in --max) max=$2; shift 2 ;; *) shift ;; esac; done
+printf 'T-ECS-41 ecs-core P0 R-20260925-2\nT-ECS-42 ecs-core P1 R-20260925-2\nT-ECS-40 ecs-core P2 R-20260925-2\n' | head -n "$max"
+EOF
+fi
+qm() { sh "$qbin/session-monitor.sh" "$@" --state "$qstate"; }
+out=$(qm --queue --dry-run 2>/dev/null)
+order=$(printf '%s\n' "$out" | awk '$2 == "printed" { printf "%s ", $1 }')
+if [ "$order" = 'T-ECS-41-lead T-ECS-42-lead T-ECS-40-lead ' ]; then printf 'PASS the queue goes out in dispatch order\n'
+else printf 'FAIL the queue went out as %s\n' "$order"; fail=1; fi
+check 'a queued unit is a lead' \
+  "cd $qroot/ecs-core/T-ECS-41 && FACTORY_ROLE=repo-lead FACTORY_UNIT=T-ECS-41-lead CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude "
+out=$(qm --queue --max 1 --dry-run 2>/dev/null)
+check '--queue --max 1 takes the top line'          '^T-ECS-41-lead printed '
+nocheck '--queue --max 1 takes no second line'      '^T-ECS-42-lead '
+sh "$qbin/capacity.sh" acquire sessions T-X-1 --state "$qstate"
+sh "$qbin/capacity.sh" acquire sessions T-X-2 --state "$qstate"
+: > "$HERDR_STUB_LOG"
+out=$(qm --queue 2>/dev/null)
+check 'the queue spawns the first lead'             '^T-ECS-41-lead spawned '
+check 'the queue spawns while two slots are free'   '^T-ECS-42-lead spawned '
+nocheck 'the queue stops at one free slot'          '^T-ECS-40-lead '
+exists 'a queued lead leases a repo-lead slot'      "$qstate/.capacity/repo-lead/T-ECS-41"
+exists 'a queued lead leases a sessions slot'       "$qstate/.capacity/sessions/T-ECS-41-lead"
+out=$(cat "$HERDR_STUB_LOG")
+check 'a queued lead gets its own workspace'        '^workspace create .*--label "T-ECS-41 ecs-core"'
+out=$(cat "$qstate/repos/ecs-core/tasks/T-ECS-41.md")
+check 'the queue claims nothing'                    '^owner: null$'
+rm -rf "$qstate/.capacity"
+printf 'spawn: herdr\ncapacity:\n  sessions: 10\n  roles: {repo-lead: 1}\n' > "$qstate/factory.yml"
+sh "$qbin/capacity.sh" acquire repo-lead T-ECS-99 --state "$qstate"
+out=$(qm --queue --dry-run 2>/dev/null)
+nocheck 'a full repo-lead cap takes nothing'        ' printed '
 
 exit $fail
