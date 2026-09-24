@@ -54,7 +54,9 @@ The rule behind the split: anything that writes the change is a session, anythin
    or for a wave of blocks `--wave N` with no `--step`. Each prints `<id> spawned <cwd>`. The tabs are
    created in your own herdr workspace (`$HERDR_WORKSPACE_ID`), so the group stays together. Every unit is
    claimed `in_progress` before its session starts, and the prompt opens with the reclaim command, so a
-   worker's first heartbeat lands.
+   worker's first heartbeat lands. The implement phase of a wave goes out through the same `--wave N` call
+   once you armed `phase: implement` on its `tests_ready` blocks; a block whose session still runs is printed
+   `skipped`.
 3. Arm the watcher through the Monitor tool (step one of this file, and it stays armed for the whole herd):
    `sh <plugin-root>/bin/herd-watch.sh <T-NNN> --interval 60`. It prints one line per change:
    `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and

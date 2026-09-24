@@ -111,6 +111,47 @@ out=$(sh "$bin/session-monitor.sh" --task T-006 --state "$state" --dry-run 2>/de
 check 'the wave of the cut goes out'  '^T-006-01 printed '
 nocheck 'the parent itself does not'  '^T-006 '
 
+block() { # <id> <status> <owner> <phase or -> <path>
+  mkdir -p "$root/demo/$1"
+  {
+    printf -- '---\nid: %s\nrepo: demo\nstatus: %s\narchetype: feature\ntier: yellow\ncomplexity: medium\nowner: %s\n' \
+      "$1" "$2" "$3"
+    [ "$4" = - ] || printf 'phase: %s\n' "$4"
+    printf -- '---\n\n# Goal\nfeat(demo): block %s\n\nDesign (approved in the grill):\n\n### `%s`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+      "$1" "$5"
+  } > "$state/repos/demo/tasks/$1.md"
+}
+parent() { # <id>
+  printf -- '---\nid: %s\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: yellow\ncomplexity: medium\n---\n\n# Goal\nfeat(demo): a parent\n' \
+    "$1" > "$state/repos/demo/tasks/$1.md"
+}
+
+# the implement phase of the last wave: every unmerged block is tests_ready with phase: implement armed
+parent T-007
+block T-007-01 done null - src/a.ts
+block T-007-02 tests_ready null implement src/b.ts
+block T-007-03 tests_ready null implement src/c.ts
+out=$(sh "$bin/session-monitor.sh" --task T-007 --state "$state" --dry-run 2>/dev/null)
+check 'an armed implement block goes out'        '^T-007-02 printed '
+check 'every armed implement block goes out'     '^T-007-03 printed '
+check 'it goes out with the implement agent'     'You are factory-block-implement\.'
+nocheck 'a done block does not'                  '^T-007-01 '
+
+# a tests_ready block the monitor has not armed is still in the hands of its tests phase
+parent T-008
+block T-008-01 tests_ready null - src/d.ts
+out=$(sh "$bin/session-monitor.sh" --task T-008 --state "$state" --dry-run 2>/dev/null)
+nocheck 'an unarmed tests_ready block is not dispatched' '^T-008-01 printed'
+
+# a block whose session still runs is skipped, next to an armed one in the same wave
+parent T-009
+block T-009-01 tests_ready null implement src/e.ts
+block T-009-02 in_progress factory@host:abc - src/f.ts
+out=$(sh "$bin/session-monitor.sh" --task T-009 --state "$state" --dry-run 2>/dev/null)
+check 'the armed block of the wave goes out'     '^T-009-01 printed '
+check 'the block in its session is skipped'      '^T-009-02 skipped '
+nocheck 'the block in its session gets no prompt' 'First take ownership of T-009-02'
+
 # a block in `review` with its MR open: the batch mode watches its parent for the merge
 cat > "$state/repos/demo/tasks/T-004-01.md" <<'EOF'
 ---
