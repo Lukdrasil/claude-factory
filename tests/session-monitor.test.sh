@@ -400,6 +400,68 @@ sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" >/dev/null 2>
 out=$(cat "$HERDR_STUB_LOG")
 check '--all sweeps a record under a four-digit parent'  '^tab close tab-1003 '
 
+# the stub answers the verbs the monitor, herd-watch and capacity.sh drive with the herdr 0.8.2 shapes, over a
+# fresh stub; `js <expression>` prints one expression over the JSON on stdin, `o` being the parsed reply
+js() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const o=JSON.parse(s);process.stdout.write(String(eval(process.argv[1])))})' "$1"; }
+herdr_stub "$tmp/stub2"
+herdr_agent lead_ecs-12 working w1:p2 sess-a
+herdr_agent - idle w1:p3 sess-b
+herdr_tab tab-9 done false t-009
+out=$(herdr agent list | js 'o.result.type+" "+o.result.agents.map(a=>[a.name||"-",a.pane_id,a.agent_status,a.agent_session?a.agent_session.value:"-"].join(",")).sort().join(" ")')
+check 'agent list names every live agent with pane, status and session' \
+  '^agent_list -,w1:p3,idle,sess-b lead_ecs-12,w1:p2,working,sess-a t-009,pane-9,done,-$'
+out=$(herdr agent get lead_ecs-12 | js 'o.result.type+" "+o.result.agent.pane_id+" "+o.result.agent.agent_session.value')
+check 'agent get takes a name'                   '^agent_info w1:p2 sess-a$'
+out=$(herdr agent get w1:p3 | js 'o.result.agent.agent_status+" "+("name" in o.result.agent)')
+check 'agent get takes a pane id, an unnamed agent has no name' '^idle false$'
+out=$(herdr agent get nosuch 2>&1 >/dev/null | js 'o.error.code'; herdr agent get nosuch >/dev/null 2>&1; echo " $?")
+check 'an absent agent is agent_not_found, exit 1' '^agent_not_found 1$'
+out=$(herdr agent wait w1:p3 --until idle --until done --timeout 1000 | js 'o.result.agent.agent_status')
+check 'agent wait answers an agent already in the state' '^idle$'
+out=$(herdr agent wait lead_ecs-12 --until idle --timeout 1000 2>&1 >/dev/null | js 'o.error.code'; herdr agent wait lead_ecs-12 --timeout 1 >/dev/null 2>&1; echo " $?")
+check 'agent wait of a working agent times out'  '^timeout 1$'
+herdr agent rename w1:p3 architecture-auditor_ecs-142-03 >/dev/null
+out=$(herdr agent get architecture-auditor_ecs-142-03 | js 'o.result.agent.pane_id')
+check 'agent rename names the agent of a pane'   '^w1:p3$'
+out=$(HERDR_STUB_READ='Do you trust the files in this folder?' herdr agent read lead_ecs-12 --source recent --lines 40)
+check 'agent read prints HERDR_STUB_READ as text' '^Do you trust the files in this folder?$'
+out=$(herdr agent send-keys lead_ecs-12 1 enter | js 'o.result.type')
+check 'agent send-keys answers ok'               '^ok$'
+out=$(cat "$HERDR_STUB_LOG")
+check 'the keys are in the log'                  '^agent send-keys lead_ecs-12 1 enter $'
+out=$(herdr workspace create --cwd "$tmp" --label 'T-ECS-12 ecs' --env FACTORY_ROLE=repo-lead --no-focus \
+  | js 'o.result.type+" "+o.result.workspace.workspace_id+" "+o.result.tab.tab_id+" "+o.result.root_pane.pane_id')
+check 'workspace create answers workspace, tab and root pane' '^workspace_created ws-1 tab-1 pane-1$'
+out=$(cat "$HERDR_STUB_DIR/env/pane-1")
+check 'workspace create keeps its --env for the pane' '^FACTORY_ROLE=repo-lead$'
+out=$(herdr tab create --workspace ws-1 --label 'x y' --env FACTORY_ROLE=implementer --env FACTORY_UNIT=T-ECS-12-03 --no-focus \
+  | js 'o.result.type+" "+o.result.tab.tab_id+" "+o.result.tab.workspace_id+" "+o.result.root_pane.pane_id')
+check 'tab create answers tab and root pane'     '^tab_created tab-1 ws-1 pane-1$'
+out=$(cat "$HERDR_STUB_DIR/env/pane-1")
+check 'tab create honours every --env'           '^FACTORY_UNIT=T-ECS-12-03$'
+nocheck 'a new pane forgets the env of the last one' 'FACTORY_ROLE=repo-lead'
+out=$(herdr tab get tab-9 | js 'o.result.tab.agent_status+" "+o.result.tab.workspace_id')
+check 'tab get answers the live tab'             '^done ws-1$'
+herdr tab close tab-9 >/dev/null
+out=$(herdr agent get t-009 2>&1 >/dev/null | js 'o.error.code')
+check 'tab close ends the agent in that tab'     '^agent_not_found$'
+out=$(herdr notification show 'T-ECS-12-grill waits' --body 'Which store?' --sound request | js 'o.result.type+" "+o.result.shown+" "+o.result.reason')
+check 'notification show is shown by default'    '^notification_show true shown$'
+out=$(HERDR_STUB_NOTIFY=disabled herdr notification show x | js 'o.result.shown+" "+o.result.reason')
+check 'HERDR_STUB_NOTIFY sets the reason'        '^false disabled$'
+out=$(herdr pane process-info --pane w1:p2 | js 'o.result.type+" "+o.result.process_info.foreground_processes.map(p=>p.name).join(",")')
+check 'process-info of an agent pane shows claude' '^pane_process_info claude$'
+herdr_procs w1:p9 "sh $tmp/bin/ui-relay.sh --port 7171"
+out=$(herdr pane process-info --pane w1:p9 | js 'o.result.process_info.foreground_processes[0].argv.join(" ")')
+check 'herdr_procs sets the foreground argv'     "^sh $tmp/bin/ui-relay.sh --port 7171\$"
+herdr_procs w1:p8
+out=$(herdr pane process-info --pane w1:p8 | js 'o.result.process_info.foreground_processes.length')
+check 'herdr_procs with no command is a bare shell' '^0$'
+out=$(herdr pane process-info --pane w9:p9 2>&1 >/dev/null | js 'o.error.code')
+check 'process-info of an unknown pane is pane_not_found' '^pane_not_found$'
+out=$(HERDR_STUB_START=agent_not_ready herdr agent start x --kind claude --pane w1:p2 2>&1 >/dev/null | js 'o.error.code')
+check 'HERDR_STUB_START fails agent start with its code' '^agent_not_ready$'
+
 # alias ids, T-<ALIAS>-<n>: the wave of an alias cut goes out through spawn-plan.sh, herdr-tabs.sh names, records
 # and reads its units under the parent, and --all sweeps that record. The grammar is lib-tasks.sh's predicates,
 # so this part runs once they take alias ids and is skipped before.
