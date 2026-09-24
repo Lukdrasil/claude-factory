@@ -64,6 +64,11 @@ code "--ui off --yes exits 0" 0 "$rc"
 yml=$(cat "$tmp/g/state/factory.yml")
 has "--yes writes ui: off" '^ui: off$' "$yml"
 has "an existing ui_port is kept" '^ui_port: 7272$' "$yml"
+printf 'curation: manual\nspawn: manual\nui:  docker\nui_port: 7171' > "$tmp/g/state/factory.yml"
+git -C "$tmp/g/state" -c user.name=t -c user.email=t@t commit -qm 'a hand-written factory.yml' -- factory.yml
+out=$(sh "$bin/factory-init.sh" --root "$tmp/g" --settings "$settings2" --spawn manual --ui docker 2>&1); rc=$?
+code "--ui docker over ui:  docker with no final newline exits 0" 0 "$rc"
+has "--ui docker over ui:  docker with no final newline has nothing to do" '^nothing to do' "$out"
 
 # --- factory-doctor.sh ----------------------------------------------------------------------------------------
 git init -q "$tmp/clone"
@@ -90,5 +95,6 @@ has "a registered clone gets its factory context" 'Factory context for repo prod
 out=$(start "$tmp/stranger"); rc=$?
 code "session-start exits 0 for an unregistered clone" 0 "$rc"
 has "an unregistered clone gets the nudge" 'This clone is not registered' "$out"
+has "an unregistered clone gets its identity line" 'Session identity: session_id s-1, owner string factory@[^:]+:s-1' "$out"
 
 exit $fail
