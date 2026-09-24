@@ -1,11 +1,12 @@
 import { groupOf, renderPipeline, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
-import { compose, parseAsk } from './ask-card.js';
+import { compose } from './ask-card.js';
 import { renderSetupStrip } from './setup.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
 const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null };
+let linked = new URLSearchParams(location.search).get('ask');
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
 const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane })));
@@ -40,6 +41,9 @@ async function load() {
   S.setup = JSON.parse(setup);
   S.detail = detail && JSON.parse(detail);
   render();
+  const a = linked && allAsks().find((w) => keyOf(w) === linked);
+  linked = null;
+  if (a) show(a);
 }
 
 let loading = null;
@@ -87,11 +91,13 @@ function render() {
   const at = typing && [typing.closest('[data-ask]').dataset.ask, typing.closest('[data-q]').dataset.q, typing.selectionStart];
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
+  const details = app.querySelector('aside .details')?.open;
   app.replaceChildren(renderPipeline(S.board, S.sessions));
   app.querySelector('.strip').append(renderSetupStrip(S.setup));
   app.querySelector('.grid-wrap').scrollLeft = left;
   if (S.drawer) {
     app.append(renderDrawer(group(S.drawer)));
+    if (details) app.querySelector('aside .details')?.setAttribute('open', '');
     app.querySelector('aside').scrollTop = top;
   }
   const box = at && app.querySelector(`[data-ask="${at[0]}"] [data-q="${at[1]}"] textarea`);
@@ -110,7 +116,10 @@ function open(id) {
 function next() {
   const list = waiting(S.sessions);
   if (!list.length) return;
-  const a = list[(list.findIndex((w) => keyOf(w) === S.cursor) + 1) % list.length];
+  show(list[(list.findIndex((w) => keyOf(w) === S.cursor) + 1) % list.length]);
+}
+
+function show(a) {
   S.cursor = keyOf(a);
   open(groupOf(a.task));
   app.querySelector(`aside [data-ask="${S.cursor}"]`)?.scrollIntoView({ block: 'start' });
@@ -118,7 +127,7 @@ function next() {
 
 async function send(key, staged) {
   const [sid, ask] = key.split('/');
-  const text = compose(parseAsk(allAsks().find((a) => keyOf(a) === key).body), staged.items);
+  const text = compose(allAsks().find((a) => keyOf(a) === key).view, staged.items);
   staged.sending = true;
   render();
   try {
@@ -129,7 +138,7 @@ async function send(key, staged) {
     });
     delete S.staged[key];
   } catch (err) {
-    staged.error = `Not sent: ${err.message}`;
+    staged.error = `Couldn't send: ${err.message}. Your answer is kept, try Send again.`;
     staged.sending = false;
   }
   render();

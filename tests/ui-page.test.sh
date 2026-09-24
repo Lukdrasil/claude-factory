@@ -1,6 +1,6 @@
 #!/bin/sh
 # The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, three
-# more sessions and an ask of every kind, served through ui-up.sh and driven by tests/ui-page.test.js through the
+# more sessions, an ask of every kind and a drawn visual of s2, served through ui-up.sh and driven by tests/ui-page.test.js through the
 # fixture's `browser`, as the host uid so the asks it writes mid-run belong to the host.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-page: no docker`.
 set -u
@@ -39,6 +39,7 @@ session --session s1 --step 'Step 4 of 16: grill T-001'
 session --session s2 --pane w1:p2 --flow solve --task T-002 --step 'Step 11 of 16: wave 1 implement, from T-002-01'
 session --session s3 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 session --session s4 --pane w1:p4 --flow doctor --task none --step 'doctor'
+session --session s5 --pane w1:p5 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 
 put() { # <sid> <ask> <task> <flow> <mtime>, stdin: the markdown
   { printf -- '---\nask: %s\ntask: %s\nflow: %s\nstep: fixture\nstatus: open\n---\n\n' "$2" "$3" "$4"; cat; } \
@@ -105,11 +106,42 @@ put s3 o1 T-003 solve '2026-09-24 09:30' <<'EOF'
 
 ➡️ **A**: it is answered where it was asked.
 EOF
+put s3 m1 T-003 solve '2026-09-24 09:31' <<'EOF'
+The preamble sentence of m1, before its first question.
+
+❓ **Q1** - **Which runner?**: how the page is started.
+
+The paragraph under Q1 of m1.
+
+| runner | start | stop |
+|---|---|---|
+| script | ui-up.sh | ui-down.sh |
+| compose | docker compose up | docker compose down |
+
+### The section of m1
+
+The sentence under the section of m1.
+
+  **A** the script alone
+  **B** run `ui-up.sh` then `ui-down.sh`
+
+➡️ **B**: one pair of commands.
+EOF
 put s4 d1 none doctor '2026-09-24 10:00' <<'EOF'
 # Doctor
 
 Docker is running. herdr is running. promptSuggestionEnabled is false.
 EOF
+put s5 g1 T-003 solve '2026-09-24 09:10' <<'EOF'
+❓ **Q1** - **Which gone answer?**: the session of this ask has ended.
+  **A** the queued one
+  **B** the other one
+
+➡️ **A**: the relay queues it.
+EOF
+printf 'gone\n' > "$ui/sessions/s5/agent"
+printf '<!doctype html>\n<p id="out">the drawing of s2</p>\n' > "$ui/sessions/s2/visual.html"
+printf -- '---\nrow: 2\nversion: 1\nstatus: current\n---\n' > "$ui/sessions/s2/visual.md"
 touch -d '2026-09-24 09:00' "$ui/sessions/s1/asks/q1.md"
 touch -d '2026-09-24 10:02' "$ui/sessions/s1/asks/q3.md"
 mkdir -p "$ui/sessions/s1/answers"
@@ -118,13 +150,21 @@ printf '1 blocked\n' > "$ui/sessions/s1/relay"
 
 has 'CONTEXT.md defines the drawer'                           '^- \*\*drawer\*\*:' "$(cat "$repo/CONTEXT.md")"
 
-# --- the server, then the browser --------------------------------------------------------------------------------
+# --- the image from this tree, so the page under test is the one in ui/wwwroot, then the server and the browser ---
+ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/.claude-plugin/plugin.json" | head -n1)
+timeout 15m docker build -q -t "claude-factory-ui:$ver" "$repo/ui" > "$tmp/build.out" 2>&1 \
+  || { bad "building claude-factory-ui:$ver failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
 up --state "$state1"; rc=$?
 is 'ui-up.sh exits 0'                                         "$rc" 0
 [ "$rc" = 0 ] || { sed 's/^/  up: /' "$tmp/up.err" | tail -n 30; exit 1; }
 port=$(cat "$ui/port" 2>/dev/null)
 token=$(cat "$ui/token" 2>/dev/null)
 ready "$port" || { bad "the server never answered / on $port: $(docker logs "$name" 2>&1 | tail -n 20)"; exit 1; }
+
+url=$(sh "$bin/ui-ask.sh" --session s2 < "$ui/sessions/s2/asks/c1.md")
+touch -d '2026-09-24 10:03' "$ui/sessions/s2/asks/c1.md"
+is 'ui-ask.sh prints the link of c1 with the port and the token' "$url" "http://127.0.0.1:$port/?ask=s2/c1#token=$token"
+printf '%s\n' "$url" > "$ui/c1.url"
 
 browser "$repo/tests/ui-page.test.js"
 rc=$?

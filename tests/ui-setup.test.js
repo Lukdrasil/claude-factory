@@ -121,11 +121,13 @@ async function fixture(page) {
     ok((await repoRow(page, 'claude-factory').getAttribute('data-toolset')) === 'false', 'claude-factory has a toolset');
   });
 
-  await check('the init confirm in the setup drawer stays a confirm and shows the printed diff in a pre block', async () => {
+  await check('the init confirm in the setup drawer heads with its step and 1 question, stays a confirm and shows the printed diff in a pre block', async () => {
     await openSetup(page);
     const c = card(page, 's-init/apply');
     await until('s-init/apply in the drawer', () => c.isVisible());
-    ok(/\bconfirm\b/.test(await c.locator('header').first().innerText()), 'not a confirm');
+    const head = await c.locator('header').first().innerText();
+    ok(head.includes('init: confirm the diff') && /\b1 question\b/.test(head), `header: ${head}`);
+    ok(!(await c.getByRole('button', { name: /compare options|decide later/i }).count()), 'not a confirm');
     const pre = await c.locator('pre').allInnerTexts().catch(() => []);
     const text = pre.join('\n');
     ok(text.split('\n').includes(`+ git init -b main ${ROOT}/state`), `no git init line in the pre blocks: ${text.slice(0, 300)}`);
@@ -135,20 +137,21 @@ async function fixture(page) {
   await check('yes on the init confirm writes the answer Q1 A', async () => {
     const c = card(page, 's-init/apply');
     await c.locator('[data-act="pick"][data-k="A"]').click();
-    await c.getByRole('button', { name: /^send$/i }).click();
+    await c.getByRole('button', { name: /^send answer$/i }).click();
     const got = await until('the answer file', () => answer('s-init', '1-apply.txt'));
     ok(got === 'Q1 A', `answer: ${got}`);
   });
 
-  await check('the doctor round asks one question per tool and sends Q1 A, Q2 B', async () => {
+  await check('the doctor round heads with its step and 2 questions and sends Q1 A and Q2 B one per line', async () => {
     const c = card(page, 's-doctor/tools');
     await until('s-doctor/tools in the drawer', () => c.isVisible());
-    ok(/\bround\b/.test(await c.locator('header').first().innerText()), 'not a round');
+    const head = await c.locator('header').first().innerText();
+    ok(head.includes('doctor: offer the fixes') && /\b2 questions\b/.test(head), `header: ${head}`);
     await c.locator('[data-q="Q1"] [data-act="pick"][data-k="A"]').click();
     await c.locator('[data-q="Q2"] [data-act="pick"][data-k="B"]').click();
-    await c.getByRole('button', { name: /^send$/i }).click();
+    await c.getByRole('button', { name: /^send answers$/i }).click();
     const got = await until('the answer file', () => answer('s-doctor', '1-tools.txt'));
-    ok(got === 'Q1 A, Q2 B', `answer: ${got}`);
+    ok(got === 'Q1 A\nQ2 B', `answer: ${JSON.stringify(got)}`);
   });
 }
 
@@ -161,11 +164,11 @@ async function bare(page) {
     ok(!keys.length, `repos: ${keys.join(' ')}`);
   });
 
-  await check('the setup drawer still shows the init confirm, now sent', async () => {
+  await check('the setup drawer still shows the init confirm, now Sent, waiting for the session', async () => {
     await openSetup(page);
     const c = card(page, 's-init/apply');
     await until('s-init/apply in the drawer', () => c.isVisible());
-    ok(/\bsent\b/.test(await c.innerText()), 'not sent');
+    ok(/Sent, waiting for the session/.test(await c.innerText()), 'not sent');
   });
 }
 

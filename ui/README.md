@@ -20,8 +20,8 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | route | what |
 |---|---|
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh` |
-| `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline |
-| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent` and the relay's `held` reason, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
+| `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
+| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets and the last doctor notice |
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
@@ -42,9 +42,22 @@ frame, which can carry the token to another origin. The Host check is what keeps
 from reaching the API with it. It answers 401 for a missing or
 wrong token, 400 for a missing sid or one outside `[A-Za-z0-9-]+`, and 404 without `visual.html`.
 
-`sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw`, so an ask
+The server is the one reader of an ask. `view` is `AskParser`'s reading of the body: `kind` is `notice` without a
+question, `confirm` for one question whose options are exactly yes and no, `round` otherwise. `preamble` is the
+rendered text before the first `❓`, the whole body for a notice. Each question has `q`, `title`, `after`, `html`
+(its text without the header, option and `➡️` lines), `options` (`key` and inline `html`), `rec` and `recKey`.
+Options inside a fenced block are never read. A `❓` segment without a question header is rendered after the previous
+question's `html` and adds no option and no say in `kind`, or joins the preamble when no question precedes it. `body`
+stays, the text the terminal shows.
+
+Markdown is rendered by Markdig with the advanced extensions except generic attributes and media links, so no markdown
+attaches an event attribute or an iframe, and raw HTML escaped. A link whose URL is not http, https, relative or a
+fragment keeps its text and loses its `href`, autolinks included. `/`, its static files and the API are sent with
+`Content-Security-Policy: default-src 'self'; img-src 'self' data:`, and `/visual` replaces it with its own.
+
+`sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw` or `Q<n> more`, so an ask
 rewritten under the same id reads open again. `held` is the reason in `sessions/<sid>/relay` while the relay
-holds one of the ask's answers, otherwise null.
+holds any answer file of the ask newer than the ask, a `Q<n> redraw` or `Q<n> more` included, otherwise null.
 
 ## The page
 
@@ -55,23 +68,38 @@ no task.
 
 | module | what |
 |---|---|
-| `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the waiting-on-you counter |
-| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its open asks, its sessions' visuals and its context |
-| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a round, a confirm or a notice, and `compose`, the shorthand Send posts |
+| `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the to-answer counter |
+| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, its sessions' visuals and its context, in decision mode with an open ask |
+| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view, and `compose(view, items)`, the answer Send posts |
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream and the clicks |
 
-The counter counts the open asks nobody has sent an answer for, of sessions in herdr. Each click opens the next
+The counter counts the open asks nobody has sent an answer for, of sessions in herdr whose `agent` is not
+`gone`; a gone session's asks still show in their drawer, since the relay queues answers. Each click opens the next
 one, oldest first by mtime, in its drawer. A drawer keeps an ask it opened with even after its session closes
 it, so the card shows answered.
 
-An ask with no `❓ **Qn**` is a notice, whose Send posts `ok`. One question with the options yes and no is a
-confirm. Anything else is a round. A card stages one item per question until Send: an option (`Q1 B`), More
-detail (`Q2 more`), Explore (`explore Q3`), Own answer (`Q4 <text>`), Discuss (`Q5 ? <text>`) or Defer
-(`Q6 defer`). The `<output>` shows the joined shorthand exactly as the answer file will hold it. A card is open,
-sent or answered, with the relay's held reason. The card of a session outside herdr shows no answer box.
+The card renders the ask view of `/api/sessions`, the server's reading of the ask, and parses no markdown. An ask
+with no `❓ **Qn**` is a notice. One question with the options yes and no is a confirm. Anything else is a round.
+The header shows the ask's step and its question count, the session id sits in a small line at the bottom. Each
+option is a full-width button holding its rendered label, and the recommendation reads `Why B: ...`. A card
+stages one item per question until Send: an option (`Q1 B`), Explain more (`Q2 more`), Compare options
+(`explore Q3`), Write my answer (`Q4 <text>`), Ask a question (`Q5 ? <text>`) or Decide later (`Q6 defer`).
+Every card, a notice included, has Write my answer: a notice posts that text verbatim, or `ok` without one.
+Send posts the staged items one answer per line in question order, since free text may hold commas, and the
+`<output>` under Will be sent: shows them exactly as the answer file will hold them. A card needs your answer,
+is sent and waiting for the session, or is answered, and shows the relay's held reason whenever the ask is held.
+The card of a session outside herdr shows no answer box.
 
-On a narrow screen the grid scrolls sideways inside its container and the drawer takes the full width.
+A drawer with an open ask opens in decision mode: at least 60% of the viewport wide, the asks first with the
+question text at about 70ch, and the blocked question, wave, panels, visuals and context in one "Task details",
+collapsed on open and kept as you left it across refreshes. A card's footer, Will be sent: and Send, sticks to the
+bottom of the drawer. The approve and done asks render with the other asks, once. Without an open ask the drawer
+shows all of it in one column. The panels render the task's markdown from its `html` twin, so no panel shows a
+`<pre>` of markdown.
+
+On a narrow screen the grid scrolls sideways inside its container and the drawer takes the full width, decision
+mode included.
 
 ## Tests
 

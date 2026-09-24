@@ -34,8 +34,16 @@ calls AskUserQuestion:
    EOF
    ```
 
+   The URL is `/?ask=<sid>/<ask>#token=<token>`, the token read from `token` in the UI home, without the
+   fragment when that file is missing; it opens the page on that ask's drawer, scrolled to its card.
+   `ui-ask.sh` exits non-zero and writes nothing when a question or option line breaks the canonical format:
+   a line starting `❓ ` or `**Q<n>` that is not a `❓ **Q<n>** - **Title**` header, or a list-style option
+   such as `- A)` instead of `  **A** label`. Fenced blocks are not checked, and a notice with no question
+   passes. Rewrite the ask in the canonical format before you end your turn.
+
 3. **End your turn.** The answer arrives as the next user turn in the grill shorthand (`Q3 A`, `Q3 ok`, free
-   text), typed in the terminal or relayed from the browser. Both are the human's input.
+   text), several answers in one message one per line, typed in the terminal or relayed from the browser. Both are
+   the human's input.
 4. **Close** the ask once that turn has settled every question in it:
    `sh <plugin-root>/bin/ui-ask.sh --session <session_id> --close <ask>`. `Qn more` or a partial round leaves
    it open: answer, and write the ask again under the same id when its questions changed.

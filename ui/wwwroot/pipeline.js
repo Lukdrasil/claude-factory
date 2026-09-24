@@ -6,9 +6,9 @@ const STEPS = [[3, 'triage'], [4, 'grill'], [5, 'plan-check'], [6, 'decompose'],
 /** The drawer a task id or an ask's task belongs to: the parent task of a block, or setup for none. */
 export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-\d{3}/) || [task])[0]);
 
-/** The open, unsent asks of sessions in herdr, oldest first: what the counter counts and walks. */
+/** The open, unsent asks of live sessions in herdr, oldest first: what the counter counts and walks. */
 export function waiting(sessions) {
-  return sessions.filter((s) => s.pane)
+  return sessions.filter((s) => s.pane && s.agent !== 'gone')
     .flatMap((s) => s.asks.filter((a) => a.status === 'open' && !a.sent).map((a) => ({ ...a, sid: s.sid, pane: s.pane })))
     .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified));
 }
@@ -22,7 +22,7 @@ function taskRow(t, sessions) {
   const open = waiting(mine).length;
   const cells = STEPS.map(([n]) => {
     if (n === step) {
-      return `<td class="cur" aria-current="step">${open ? `<span class="chip warn">${open} waiting</span>` : ''}${mine.map(sessionChip).join('')}</td>`;
+      return `<td class="cur" aria-current="step">${open ? `<span class="chip warn">${open} to answer</span>` : ''}${mine.map(sessionChip).join('')}</td>`;
     }
     return t.status === 'done' || n < step ? '<td class="done">✓</td>' : '<td></td>';
   });
@@ -36,7 +36,7 @@ function blockRow(b, parent, sessions) {
 }
 
 /**
- * The pipeline page: the waiting-on-you counter, the setup strip, and the grid of tasks across the solve steps with
+ * The pipeline page: the to-answer counter, the setup strip, and the grid of tasks across the solve steps with
  * each task's blocks in sub-rows under it and the step its session reports marked current.
  */
 export function renderPipeline(board, sessions) {
@@ -49,10 +49,10 @@ export function renderPipeline(board, sessions) {
     + board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id)).map((b) => blockRow(b, t.id, sessions)).join(''));
   const el = document.createElement('div');
   el.className = 'page';
-  el.innerHTML = `<header class="top"><h1>Factory</h1><button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all} waiting on you</button></header>`
+  el.innerHTML = `<header class="top"><h1>Factory</h1><button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}</button></header>`
     + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip">${esc(s.flow || s.sid)}</span>`).join('')}`
-    + `${setupWaiting ? `<span class="chip warn">${setupWaiting} waiting</span>` : ''}</button>`
+    + `${setupWaiting ? `<span class="chip warn">${setupWaiting} to answer</span>` : ''}</button>`
     + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th>${STEPS.map(([n, label]) => `<th>${n} <small>${label}</small></th>`).join('')}</tr></thead>`
-    + `<tbody>${rows.join('') || `<tr><td colspan="${STEPS.length + 1}" class="muted">No tasks in the state repo.</td></tr>`}</tbody></table></div>`;
+    + `<tbody>${rows.join('') || `<tr><td colspan="${STEPS.length + 1}" class="muted">No tasks yet. Start one with <code>/claude-factory:factory new</code>.</td></tr>`}</tbody></table></div>`;
   return el;
 }

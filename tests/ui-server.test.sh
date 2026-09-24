@@ -87,6 +87,9 @@ ready "$port1" || bad "the server never answered / on $port1: $(docker logs "$na
 
 # --- the token guards /api/*, never / -----------------------------------------------------------------------------
 is '/ is served without the token'                            "$(http "$port1" /)" 200
+csp=$(curl -s -m 5 -o /dev/null -D - "http://127.0.0.1:$port1/" | tr -d '\r' | grep -i '^content-security-policy:')
+has '/ answers with a Content-Security-Policy of self and data images' \
+  "^[Cc]ontent-[Ss]ecurity-[Pp]olicy: default-src 'self'; img-src 'self' data:\$" "$csp"
 is 'GET /api/board without the token is 401'                  "$(http "$port1" /api/board)" 401
 is 'GET /api/board with a wrong token is 401'                 "$(http "$port1" /api/board -H 'X-Factory-Token: 0123456789abcdef')" 401
 is 'GET /api/board with an empty token is 401'                "$(http "$port1" /api/board -H 'X-Factory-Token:')" 401
@@ -97,7 +100,14 @@ is 'GET /api/board with the token is 200'                     "$(http "$port1" /
 has 'the board lists the fixture task'                        'T-001' "$(cat "$tmp/body")"
 is 'GET /api/tasks/T-001 with the token is 200'               "$(http "$port1" /api/tasks/T-001 -H "X-Factory-Token: $token")" 200
 has 'the task detail carries its body'                        'The fixture sentence of state one\.' "$(cat "$tmp/body")"
-hasnt 'the task detail carries no rendered html field'      '"html":' "$(cat "$tmp/body")"
+has 'the task detail carries html.body, its body rendered'  '"html":\{"body":".*(<|\\u003[Cc])p(>|\\u003[Ee])The fixture sentence of state one\.' "$(cat "$tmp/body")"
+is 'GET /api/sessions with the token is 200'                  "$(http "$port1" /api/sessions -H "X-Factory-Token: $token")" 200
+view=$(grep -o '"ask":"q1".*' "$tmp/body" | head -c 3000)
+has 'an ask of /api/sessions carries its view, a round'       '"view":\{"kind":"round","preamble":"[^"]*","questions":\[\{"q":"Q1","title":"Which fixture\?"' "$view"
+has 'the view carries the rendered question text'             '"html":"(<|\\u003[Cc])p(>|\\u003[Ee])the question of the fixture\.' "$view"
+has 'the view carries the options with their labels'          '"options":\[\{"key":"A","html":"the first"\},\{"key":"B","html":"the second"\}\]' "$view"
+has 'the view carries the recommendation and its key'         '"rec":"(<|\\u003[Cc])strong(>|\\u003[Ee])A(<|\\u003[Cc])/strong(>|\\u003[Ee]): the first is the fixture\.","recKey":"A"' "$view"
+has 'the ask keeps its terminal-equal body'                   '"body":"\\n.*Which fixture' "$view"
 is 'GET /api/setup with the token is 200'                     "$(http "$port1" /api/setup -H "X-Factory-Token: $token")" 200
 has 'the setup carries repos.yml'                             'claude-factory' "$(cat "$tmp/body")"
 
@@ -154,6 +164,21 @@ printf -- '---\nask: q6\ntask: T-001\nflow: grill\nstep: round 4\nstatus: open\n
 sleep 1
 has 'a Q1 more on q6 succeeds'                                '^20[01]$' "$(post "$port1" s1 '{"ask":"q6","text":"Q1 more"}')"
 is 'q6 with only a Q1 more answer is not sent'                "$(sent q6)" false
+
+# --- held: the relay's reason reaches an ask whenever it holds any of its answers, a kept-open one included -------
+held() { # <ask>: the held field of that ask of s1 in /api/sessions
+  http "$port1" /api/sessions -H "X-Factory-Token: $token" >/dev/null
+  grep -o "\"ask\":\"$1\"[^}]*" "$tmp/body" | sed -n 's/.*"held":"\([^"]*\)".*/\1/p' | head -n1
+}
+seq_of() { ls "$ui/sessions/s1/answers" | sed -n "s/^\([0-9]*\)-$1\.txt\$/\1/p" | tail -n1; }
+printf -- '---\nask: q7\ntask: T-001\nflow: grill\nstep: round 5\nstatus: open\n---\n\nThe visual row of q7.\n' > "$ui/sessions/s1/asks/q7.md"
+sleep 1
+has 'a redraw of q7 succeeds'                                 '^20[01]$' "$(post "$port1" s1 '{"ask":"q7","text":"Q1 redraw"}')"
+printf '%s gone\n' "$(seq_of q7)" > "$ui/sessions/s1/relay"
+is 'q7 whose only answer is a held Q1 redraw reads held gone' "$(held q7)" gone
+printf '%s gone\n' "$(seq_of q6)" > "$ui/sessions/s1/relay"
+is 'q6 whose only answer is a held Q1 more reads held gone'   "$(held q6)" gone
+rm -f "$ui/sessions/s1/relay"
 
 # --- the stream: a change under /state reaches it within 1 s, past a folder it cannot read ------------------------
 curl -sN -m 60 -H "X-Factory-Token: $token" "http://127.0.0.1:$port1/api/stream" > "$tmp/stream" 2>/dev/null &
@@ -263,10 +288,11 @@ is 'ui-down.sh with nothing running closes nothing'           "$(closes)" "$n"
 # --- the server's own tests in the SDK image, as the host uid so an unreadable folder is unreadable there too ------
 timeout 15m docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
   -v "$repo:/src:ro" mcr.microsoft.com/dotnet/sdk:10.0-alpine sh -c \
-  'mkdir -p /tmp/w/tests && cp -r /src/ui /tmp/w/ui && cp -r /src/tests/ui /tmp/w/tests/ui && cd /tmp/w && timeout 900 dotnet test tests/ui/FactoryUi.Tests.csproj' \
+  'mkdir -p /tmp/w/tests && cp -r /src/ui /tmp/w/ui && cp -r /src/tests/ui /tmp/w/tests/ui && cd /tmp/w && timeout 900 dotnet test tests/ui/FactoryUi.Tests.csproj --logger "console;verbosity=normal"' \
   > "$tmp/dotnet.out" 2>&1; rc=$?
 is 'the SDK-image dotnet test passes'                         "$rc" 0
 [ "$rc" = 0 ] || tail -n 40 "$tmp/dotnet.out" | sed 's/^/  dotnet: /'
-has 'the SDK-image dotnet test ran tests'                     'Total: +[1-9]' "$(cat "$tmp/dotnet.out")"
+has 'the SDK-image dotnet test ran tests'                     'Total tests: +[1-9]' "$(cat "$tmp/dotnet.out")"
+has 'the SDK-image dotnet test ran AskParserTests'           'Passed AskParserTests\.' "$(cat "$tmp/dotnet.out")"
 
 exit $fail
