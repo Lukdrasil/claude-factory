@@ -5,11 +5,10 @@
 # proposals/ — is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
 # `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets a one-line nudge towards the
-# factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and prints nothing. Exit 0 always.
+# factory skill's init. Exit 0 always.
 # Two lines ride along with that context: the standalone-posture line (T-187, there is no dashboard and no gate
 # that is not a command) and, when it applies, the stale-plugin warning of incident C below.
 set -u
-[ "${HARNESS_WORKER:-}" != 1 ] || exit 0
 
 . "$(dirname -- "$0")/lib-tasks.sh"
 stdin=$(cat)

@@ -57,16 +57,8 @@ if ! { [ -n "$root" ] && resolve_layout "$abs" "$root"; }; then
   d=${cwd%/*}; root=${d%/*}
   resolve_layout "$abs" "$root" || exit 0
 fi
-# resolve_layout answers for any path under the root; only a task worktree (T-NNN or T-NNN-NN) is gated
-is_task_id "$LO_TASK" || exit 0
 state=$LO_STATE
-key=''
-if [ "$LO_POSTURE" = standalone ]; then
-  norm_into nroot "$root"; rest=${abs#"$nroot"/}; key=${rest%%/*}
-elif [ -d "$state" ]; then
-  tf=$(task_of "$LO_TASK") || tf=''
-  [ -n "$tf" ] && key=$(sed -n 's/^repo:[[:space:]]*//p' "$tf" | head -n1 | sed 's/[[:space:]]*#.*//')
-fi
+norm_into nroot "$root"; rest=${abs#"$nroot"/}; key=${rest%%/*}
 if [ -n "$key" ] && [ -f "$state/repos/$key/toolset.md" ]; then
   mode=$(awk '/^---[ \t\r]*$/ { if (++fence == 2) exit; next }
               fence == 1 && /^comments:[ \t]*/ { sub(/^comments:[ \t]*/, ""); sub(/[ \t\r]+$/, ""); print; exit }' \

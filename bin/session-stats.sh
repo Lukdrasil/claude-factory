@@ -18,12 +18,9 @@ sid=$(hook_field "$stdin" session_id)
 # resolve_state_dir (lib-tasks.sh) is the one state-clone rule, shared with self-report-check.sh and state-report.sh
 state=$(resolve_state_dir "$PWD")
 
-# the tasks are identified by CLAUDE.md in cwd, same as self-report-check.sh — or, with no `# Task <id>` there, by
-# the `owner:` ending in this session's id (`factory@<host>:<session_id>`, ADR-0050)
-ids=$(sed -n '1s/^# Task //p' CLAUDE.md 2>/dev/null) || :
-if [ -z "${ids:-}" ]; then
-  ids=$(owned_task_ids "$sid") || :
-fi
+# the tasks are the ones whose `owner:` ends in this session's id (`factory@<host>:<session_id>`, ADR-0050), same
+# as self-report-check.sh
+ids=$(owned_task_ids "$sid") || :
 [ -n "${ids:-}" ] || exit 0
 
 # line 1 = stats, the rest = failed tool calls (tool + first line of the error, top 5 by frequency); read once
