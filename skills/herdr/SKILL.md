@@ -79,9 +79,17 @@ starts `claude` there and sends the prompt. On `manual`, or on a machine with no
 
 Every session is named `<emoji> <repo> <id>`, for example `🦊 arthurcore T-251-01`: the tab label and the
 `claude --name`, and the `--name` of a printed line too. The emoji is the repo's `emoji:` in `repos.yml`, else
-a fixed pick by the repo key. The herdr agent name stays the lowercased id (`t-251-01`), so `herdr agent read
-<name>` takes that. Each tab it opens is recorded as `<unit> <tab_id> <pane_id>` in
-`<work-dir>/<repo>/.harness/<T-NNN>/herdr-tabs`, written only through `bin/herdr-tabs.sh`.
+a fixed pick by the repo key. The herdr agent name is `<role>_<unit>`, the unit lowercased without its leading
+`t-` for an alias id (`lead_ecs-12`, `implementer_ecs-142-03`, `grill_cf-3`) and with it for a legacy id
+(`lead_t-264`); the CEO is `ceo`. `herdr agent read <name>` takes that name. Every spawn passes `--env
+FACTORY_ROLE=<role> --env FACTORY_UNIT=<unit> --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`, and capacity leases
+count it (`bin/capacity.sh`). Each tab it opens is recorded as `<unit> <tab_id> <pane_id> [<session_id>]` in
+`<work-dir>/<repo>/.harness/<T-NNN>/herdr-tabs`, written only through `bin/herdr-tabs.sh`; after a herdr
+restart `herdr-tabs.sh reattach <T-NNN>` finds each recorded pane and session again and renames it back.
+
+In the org (`<plugin-root>/skills/factory/references/ceo.md`) the CEO starts the sessions: the steps before the
+approval in its own workspace `factory`, and each lead through `session-monitor.sh --queue` in a workspace of
+its own labelled `<T-id> <key>`, whose block tabs then land in that workspace.
 
 Closing is scripted, never done by hand. Before a unit starts again, `session-monitor.sh` closes its recorded
 tab and the step tabs of its parent, and prints the unit `skipped` when its own tab is still at work. Every
@@ -103,11 +111,14 @@ it walks around the claim and the prompt contract above.
 ```sh
 herdr agent list                       # what is live, and its state
 herdr agent read <name>                # its terminal output
-herdr agent prompt <name> "<text>"     # send it work
+herdr agent send-keys <name> <key>...  # answer a dialog: a digit, up, down, enter, esc
+herdr agent prompt <name> "<text>"     # send an idle session work
 ```
 
-`blocked` means the session is at an approval or question dialog. Read it, ask the user, then answer. With
-`ui: docker` the user answers the dialog in that session's pane, which the page names; nothing answers it for them.
+`blocked` means the session is at an approval or question dialog. Read it (`herdr agent read <name> --source
+recent-unwrapped --lines 120`), ask the user, then answer with `herdr agent send-keys`: a blocked agent refuses
+`herdr agent prompt`. With `ui: docker` the user answers the dialog in that session's pane, which the page
+names; nothing answers it for them.
 
 ## Spawned sessions are not subagents
 

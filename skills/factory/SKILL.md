@@ -1,6 +1,6 @@
 ---
 name: factory
-description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, approve and done for the human gates. Use when the user says factory, or solve, herd, approve, done, list, curate, consolidate, doctor, add-repo or init against it.
+description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, approve and done for the human gates. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo or init against it.
 ---
 
 # factory
@@ -21,6 +21,8 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | `consolidate` | duplicates, contradictions and staleness in one or more memory scopes, as proposals | `references/consolidate.md` |
 | `solve` | one problem end to end: triage, grill, decompose, blocks in their own worktrees, the MR | `references/solve.md`, quick lane `references/solve-quick.md` |
 | `herd` | one task the user named, end to end like `solve`, but every work step runs as an interactive session in a herdr tab and this session becomes its monitor: it dispatches, watches until `done` or `closed`, and gates | `references/herd.md` |
+| `ceo` | the org: one herdr session in `$WORK_DIR/state` that takes requests, routes them per repository under one request id, dispatches the chain as step sessions, asks the plan approval, starts a lead per approved parent from the queue, watches every herd and offers the memory passes | `references/ceo.md` |
+| `lead` | one approved parent end to end in its worktree: `herd` for that parent with the block MRs merged by the lead and the task MR for the human; a session the CEO started as `lead_<unit>` (`FACTORY_ROLE=lead`) reads this with its `herd` | `references/lead.md` |
 | `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh --task <T-NNN>` starts one named task, or the current wave of its blocks, as their own sessions and claims each one; with no argument it only lists the ready tasks to choose from, and `--all` (the batch a user has to ask for by name) also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |

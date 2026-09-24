@@ -6,7 +6,9 @@ A block or a ready task can instead run as its own interactive session, which
 binds it, except that its report arrives through the state repo rather than as a returned brief.
 The rules of a spawn are in `<plugin-root>/skills/_shared/rules.md`, which
 `<plugin-root>/bin/agent-brief.sh <agent>` prints at the top of every brief together with that agent's own
-memory. Prepend its output to the brief you write.
+memory and, when the state has one, the playbook of that agent for the repository
+(`repos/<key>/agents/<agent>/playbook.md`); the SubagentStart hook hands a subagent the same playbook. Prepend
+its output to the brief you write.
 
 | agent | for |
 |---|---|
@@ -34,5 +36,10 @@ Model and effort live in the agent definitions, not here.
   Policy hooks apply to subagent tool calls; delegation is not a way around them.
 - Each block agent runs only the tests it wrote; the coordinator reruns the whole suite over the merged diff.
 - At most **five** block agents run concurrently; a wider wave queues.
+- Every role has a capacity shared across all leads (factory.yml `capacity:`). When the PreToolUse hook denies
+  an agent with `role <r> is full`, run `<plugin-root>/bin/capacity.sh wait <r>` and call it again; a timeout is
+  a blocked question (`<plugin-root>/skills/_shared/blocked-question.md`), never the caller doing the role's work.
+- SendMessage stays inside one task: a lead with its own subagents and block sessions, and the lead with the
+  CEO. A message coordinates; the state repo is the record, and a message never carries an approval.
 - A subagent's report may end with one `## Lessons` line (Why plus evidence) about its own craft, which the
   calling session turns into a proposal per `<plugin-root>/skills/_shared/knowledge-review.md`.
