@@ -1,7 +1,9 @@
 #!/bin/sh
 # PreToolUse attribution gate (P7 "the text describes, the hook enforces"): the deterministic twin of the
 # attribution rule in prompts/worker-system-prompt.md. Nothing this harness publishes says who or what wrote
-# it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji.
+# it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji. The one sanctioned
+# marker is the ai-drafted label: the forge label every issue created through bin/issue-create.sh carries, so a
+# reader can tell a drafted issue from a human one. It is a label, not text, and the scan below never sees it.
 #
 # Why it scans more than the command string (incident 2026-09-22, MR !414): the footer reached the forge
 # through a file. The agent wrote a corrected body into a scratch file and ran `glab mr update 414
@@ -75,7 +77,7 @@ case "$f_tool" in
     pub=''
     printf '%s\n' "$scan" | grep -qE "$git_re" && pub=1 || :
     case "$scan" in
-      *"gh pr "*|*"gh release "*|*"gh issue "*|*"glab mr "*|*"glab issue "*) pub=1 ;;
+      *"gh pr "*|*"gh release "*|*"gh issue "*|*"glab mr "*|*"glab issue "*|*issue-create.sh*) pub=1 ;;
     esac
     if [ -z "$pub" ]; then
       case "$scan" in
