@@ -6,6 +6,7 @@
 ADR-0049; `../state` only where the clone really is a sibling of your worktree).
 Read mid-flight: **under 200 words**, one line per bullet, the state in the first line. Cite
 `path/file.ext:line` or a SHA instead of retelling; what you considered and declined stays out.
+`worktree-add.sh` creates the file, so it exists before your first snapshot: Read it before you Write or Edit it.
 
 ```markdown
 # <id>: <task title>
@@ -59,6 +60,6 @@ A **new file** of your own — a research report, an ADR or memory proposal, a p
 
 ```sh
 git -C "$WORK_DIR/state" add repos/<key>/research/<id>-<slug>.md
-git -C "$WORK_DIR/state" commit -m "research: <id>"
+git -C "$WORK_DIR/state" commit -m "research: <id>" -- repos/<key>/research/<id>-<slug>.md
 git -C "$WORK_DIR/state" pull --rebase --autostash -X theirs && git -C "$WORK_DIR/state" push
 ```
