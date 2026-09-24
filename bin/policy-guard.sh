@@ -400,14 +400,13 @@ read_scope() { # <absolute path>
   [ "$posture" = standalone ] || return 1
   case "$1" in *..*) return 1 ;; esac
   norm_into rs_p "$1"
-  case "$task" in
-    T-[0-9][0-9][0-9]-[0-9][0-9])
-      [ -n "$own" ] && [ "$rs_p" = "${own%/*}/.harness/${task%-[0-9][0-9]}/brief-$task.md" ] && return 0 ;;
-  esac
+  if is_block_id "$task"; then
+    [ -n "$own" ] && [ "$rs_p" = "${own%/*}/.harness/${task%-*}/brief-$task.md" ] && return 0
+  fi
   resolve_layout "$rs_p" "$WORK_DIR" || return 1
   [ "$LO_POSTURE" = standalone ] || return 1
-  case "$LO_TASK" in T-[0-9][0-9][0-9]-[0-9][0-9]) ;; *) return 1 ;; esac
-  owner_is_session "${LO_TASK%-[0-9][0-9]}"
+  is_block_id "$LO_TASK" || return 1
+  owner_is_session "${LO_TASK%-*}"
 }
 # — $WORK_DIR/<key>/.harness/<T>[/…] recognised, the task id in HT_TASK
 harness_target() { # <absolute path>
@@ -429,21 +428,20 @@ coord_scope() { # <absolute path>
   if [ -n "$own" ]; then
     cs_hdir=${stamp%/*}
     case "$1" in
-      "$cs_hdir/$task"|"$cs_hdir/$task"/*|"$cs_hdir/$task"-[0-9][0-9]|"$cs_hdir/$task"-[0-9][0-9]/*) return 0 ;;
+      "$cs_hdir/$task"|"$cs_hdir/$task"/*) return 0 ;;
+      "$cs_hdir/$task"-*) cs_b=${1#"$cs_hdir"/}; is_block_of "$task" "${cs_b%%/*}" && return 0 ;;
     esac
     resolve_layout "$1" "$WORK_DIR" || return 1
     [ "$LO_POSTURE" = standalone ] || return 1
-    case "$LO_TASK" in "$task"-[0-9][0-9]) ;; *) return 1 ;; esac
+    is_block_of "$task" "$LO_TASK" || return 1
     [ "$LO_OWN" = "${own%/*}/$LO_TASK" ] || return 1
     owner_is_session "$LO_TASK" && return 0
     return 1
   fi
   harness_target "$1" || return 1
   owner_is_session "$HT_TASK" && return 0
-  case "$HT_TASK" in
-    T-[0-9][0-9][0-9]-[0-9][0-9]) owner_is_session "${HT_TASK%-[0-9][0-9]}" ;;
-    *) return 1 ;;
-  esac
+  is_block_id "$HT_TASK" || return 1
+  owner_is_session "${HT_TASK%-*}"
 }
 
 check_path() {

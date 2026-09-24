@@ -46,10 +46,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] || die "usage: herd-watch.sh <T-NNN> [--once] [--interval <s>] [--no-mr] [--state <dir>]"
-case "$id" in
-  T-[0-9][0-9][0-9]) ;;
-  *) die "'$id' is not a parent task id of the shape T-NNN" ;;
-esac
+is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 case "$interval" in ''|*[!0-9]*) die "--interval takes seconds, not '$interval'" ;; esac
 
 # see: mr-watch.sh, the one state resolution of the factory scripts
@@ -103,7 +100,7 @@ pass() {
   for f in "$state"/repos/"$key"/tasks/*.md; do
     [ -f "$f" ] || continue
     u=$(field "$f" id)
-    case "$u" in "$id"|"$id"-[0-9][0-9]) ;; *) continue ;; esac
+    [ "$u" = "$id" ] || is_block_of "$id" "$u" || continue
     s=$(field "$f" status); [ -n "$s" ] || s=none
     p=$(field "$f" phase); [ -n "$p" ] && [ "$p" != null ] || p=none
     printf '%s %s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" "$(mr_state "$u")" >> "$now"

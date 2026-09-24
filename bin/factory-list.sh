@@ -4,6 +4,7 @@
 #
 #   factory-list.sh --root <dir> [--repo <key>] [--status <s>[,<s>…]]
 set -eu
+. "$(dirname -- "$0")/lib-tasks.sh"
 
 root='' repo='' status=''
 die() { printf 'factory-list: %s\n' "$1" >&2; exit 1; }
@@ -49,4 +50,4 @@ awk -v want_repo="$repo" -v want_status="$status" '
   !infm && /^#/ { seen_goal = 1; next }
   !infm && seen_goal && goal == "" && $0 !~ /^[ \t]*$/ { goal = $0 }
   END { flush() }
-' "$@"
+' "$@" | sort_ids

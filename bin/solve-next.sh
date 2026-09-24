@@ -46,10 +46,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>]"
-case "$id" in
-  T-[0-9][0-9][0-9]) ;;
-  *) die "'$id' is not a parent task id of the shape T-NNN" ;;
-esac
+is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
 # see: anchored absolute because resolve_state_dir answers relative to the cwd
@@ -150,10 +147,8 @@ blocks=''
 for f in "$state"/repos/*/tasks/*.md; do
   [ -f "$f" ] || continue
   b=$(fm "$f" id)
-  case "$b" in
-    "$id"-[0-9][0-9]) blocks="$blocks$b
-" ;;
-  esac
+  if is_block_of "$id" "$b"; then blocks="$blocks$b
+"; fi
 done
 blocks=$(printf '%s' "$blocks" | sort)
 
@@ -207,7 +202,7 @@ fi
 # the blocks in the order the wave plan names them, the rest appended so a block missing from the plan is still
 # reached; an id is listed once, at its first mention
 ordered=$(
-  { wave_lines | grep -oE "$id-[0-9][0-9]" || :
+  { wave_lines | grep -oE "$id-[0-9]{2,}" || :
     printf '%s\n' "$blocks"
   } | awk 'NF && !seen[$0]++'
 )

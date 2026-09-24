@@ -65,7 +65,8 @@ else
 fi
 
 # every block of this parent: T-NNN-NN task files, sorted for a stable diff
-blocks=$(grep -lx "id: $id-[0-9][0-9]" "$state"/repos/*/tasks/*.md 2>/dev/null | sort || :)
+blocks=$(grep -HxE "id: $id-[0-9]{2,}" "$state"/repos/*/tasks/*.md 2>/dev/null \
+  | sed 's/^\(.*\):id: \(.*\)$/\2 \1/' | sort_ids | cut -d' ' -f2- || :)
 
 # E3: the whole critical section, from the write to the push, under the one lock per state clone that
 # state-report.sh takes, so a report running beside this one cannot ride in on its commit.
@@ -120,10 +121,11 @@ state_unlock
 
 cleanup() { # <task file>
   cu_id=$(sed -n 's/^id:[[:space:]]*//p' "$1" | head -n1)
-  case "$cu_id" in
-    T-*-[0-9][0-9]) cu_branch="block/$cu_id" ;;
-    *) cu_branch=$(sed -n 's/^branch:[[:space:]]*//p' "$1" | head -n1) ;;
-  esac
+  if is_block_id "$cu_id"; then
+    cu_branch="block/$cu_id"
+  else
+    cu_branch=$(sed -n 's/^branch:[[:space:]]*//p' "$1" | head -n1)
+  fi
   cu_wt="$WORK_DIR/$key/$cu_id"
   if [ -e "$cu_wt" ]; then
     if [ -n "$(git -C "$cu_wt" status --porcelain 2>/dev/null)" ]; then

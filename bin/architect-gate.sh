@@ -59,7 +59,7 @@ $(cat "$rf")"; fi
     rest=${p#*/repos/}
     key=${rest%%/*}
     slug=$(node_json tool_input.content | plan_slug)
-    task_id=$(basename "$p" .md | grep -oE '^T-[0-9]{3}(-[0-9]{2})?' || :)
+    task_id=$(basename "$p" .md | grep -oE '^T-[0-9]{3,}(-[0-9]{2,})?' || :)
     ;;
   *) exit 0 ;;
 esac
