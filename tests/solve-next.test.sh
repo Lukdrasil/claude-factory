@@ -73,4 +73,40 @@ check 'the human is asked to review and merge' 'Completion: the human has been a
 check 'mr-watch is armed'                'mr-watch.sh T-001 --interval 300' "$out"
 check 'new-comments has its own answer'  'new-comments' "$out"
 
+parent() { # <id> <context line>
+  cat > "$state/repos/demo/tasks/$1.md" <<EOF
+---
+id: $1
+repo: demo
+status: in_progress
+archetype: feature
+tier: yellow
+complexity: medium
+---
+
+# Goal
+feat(demo): $1
+
+## Context
+$2
+EOF
+}
+
+parent T-002 'no plan named here'
+printf -- '---\nrepo: demo\ntask: T-002\n---\n' > "$state/repos/demo/plans/y-plan-ready.md"
+out=$(sh "$bin/solve-next.sh" T-002 --state "$state" 2>&1)
+check 'the plan is found by its task line' 'Step 6 of 16: decompose T-002' "$out"
+check 'the plan found is the one naming the task' "plans/y-plan-ready.md" "$out"
+
+mkdir -p "$tmp/product/docs/architecture"
+printf 'demo:\n  path: %s\n' "$tmp/product" > "$state/repos.yml"
+parent T-003 'plans/x-plan-ready.md'
+block T-003-01 draft null
+out=$(sh "$bin/solve-next.sh" T-003 --state "$state" 2>&1)
+check 'a decomposed parent needs no verdict' 'Step 8 of 16: check the cut of T-003' "$out"
+
+parent T-004 'plans/x-plan-ready.md'
+out=$(sh "$bin/solve-next.sh" T-004 --state "$state" 2>&1)
+check 'a parent with no blocks still needs the verdict' 'Step 5 of 16: architect plan-check of x' "$out"
+
 exit $fail
