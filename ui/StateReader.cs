@@ -12,7 +12,10 @@ public sealed record TaskDetail(
     string? Grill,
     string? Verdicts,
     string? Progress,
-    List<string> Timeline);
+    List<string> Timeline,
+    TaskHtml Html);
+
+public sealed record TaskHtml(string Body, string? Plan, string? Grill, string? Verdicts, string? Progress);
 
 public sealed record Toolset(string Repo, string Text);
 
@@ -38,16 +41,22 @@ public sealed partial class StateReader(string root)
         var body = Frontmatter.Body(text);
         var repoDir = Path.GetDirectoryName(Path.GetDirectoryName(file))!;
         var slug = PlanSlug().Match(body) is { Success: true } m ? m.Groups[1].Value : null;
+        var plan = slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md");
+        var grill = (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id);
+        var verdicts = slug is null ? null : ReadOrNull(repoDir, "verdicts", $"{slug}.md");
+        var progress = ReadOrNull(repoDir, "progress", $"{id}.md");
         return new TaskDetail(
             Row(text),
             fields,
             body,
             Tasks().Where(t => t.Id.StartsWith(id + "-", StringComparison.Ordinal)).ToList(),
-            slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md"),
-            (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id),
-            slug is null ? null : ReadOrNull(repoDir, "verdicts", $"{slug}.md"),
-            ReadOrNull(repoDir, "progress", $"{id}.md"),
-            Timeline(Path.GetRelativePath(root, file)));
+            plan,
+            grill,
+            verdicts,
+            progress,
+            Timeline(Path.GetRelativePath(root, file)),
+            new TaskHtml(Md.ToHtml(body), plan is null ? null : Md.ToHtml(plan), grill is null ? null : Md.ToHtml(grill),
+                verdicts is null ? null : Md.ToHtml(verdicts), progress is null ? null : Md.ToHtml(progress)));
     }
 
     public SetupInfo Setup(UiHome home) => new(
