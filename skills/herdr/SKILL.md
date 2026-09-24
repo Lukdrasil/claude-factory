@@ -106,7 +106,8 @@ herdr agent read <name>                # its terminal output
 herdr agent prompt <name> "<text>"     # send it work
 ```
 
-`blocked` means the session is at an approval or question dialog. Read it, ask the user, then answer.
+`blocked` means the session is at an approval or question dialog. Read it, ask the user, then answer. With
+`ui: docker` the user answers the dialog in that session's pane, which the page names; nothing answers it for them.
 
 ## Spawned sessions are not subagents
 
