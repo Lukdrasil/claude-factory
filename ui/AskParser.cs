@@ -8,33 +8,47 @@ public sealed record AskView(string Kind, string Preamble, List<QuestionView> Qu
 
 /// <summary>
 /// The one reader of the canonical ask format of <c>skills/grill/SKILL.md</c>: a notice has no question, a confirm is
-/// one question with the options yes and no. Options inside a fenced block are never read.
+/// one question with the options yes and no. Options inside a fenced block are never read. A <c>❓</c> segment without a
+/// question header joins the previous question's markdown, or the preamble when no question precedes it.
 /// </summary>
 public static partial class AskParser
 {
     public static AskView Parse(string body)
     {
         var parts = Split().Split(body);
-        var questions = parts.Skip(1).Select(Question).OfType<QuestionView>().ToList();
-        if (questions.Count == 0)
+        var preamble = parts[0];
+        var segments = new List<string>();
+        foreach (var part in parts.Skip(1))
+        {
+            if (Header().IsMatch(part))
+            {
+                segments.Add(part);
+            }
+            else if (segments.Count == 0)
+            {
+                preamble += "❓ " + part;
+            }
+            else
+            {
+                segments[^1] += "❓ " + part;
+            }
+        }
+        if (segments.Count == 0)
         {
             return new AskView("notice", Md.ToHtml(body), []);
         }
-        var raw = Options(parts.Skip(1).First(p => Header().IsMatch(p)));
+        var questions = segments.Select(Question).ToList();
+        var raw = Options(segments[0]);
         var kind = questions.Count == 1 && string.Join(",", raw.Select(o => o.Label.Trim().ToLowerInvariant())) == "yes,no" ? "confirm" : "round";
-        return new AskView(kind, Md.ToHtml(parts[0]), questions);
+        return new AskView(kind, Md.ToHtml(preamble), questions);
     }
 
     static List<(string Key, string Label)> Options(string segment) =>
         OptionLine().Matches(Fence().Replace(segment, "")).Select(m => (m.Groups[1].Value, m.Groups[2].Value.TrimEnd('\r'))).ToList();
 
-    static QuestionView? Question(string segment)
+    static QuestionView Question(string segment)
     {
         var header = Header().Match(segment);
-        if (!header.Success)
-        {
-            return null;
-        }
         var rest = segment[header.Length..];
         var fences = Fence().Matches(rest).Select(m => (m.Index, m.Length)).ToList();
         var lines = new List<string>();

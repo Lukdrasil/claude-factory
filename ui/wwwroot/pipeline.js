@@ -51,7 +51,7 @@ export function renderPipeline(board, sessions) {
   el.className = 'page';
   el.innerHTML = `<header class="top"><h1>Factory</h1><button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}</button></header>`
     + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip">${esc(s.flow || s.sid)}</span>`).join('')}`
-    + `${setupWaiting ? `<span class="chip warn">${setupWaiting} waiting</span>` : ''}</button>`
+    + `${setupWaiting ? `<span class="chip warn">${setupWaiting} to answer</span>` : ''}</button>`
     + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th>${STEPS.map(([n, label]) => `<th>${n} <small>${label}</small></th>`).join('')}</tr></thead>`
     + `<tbody>${rows.join('') || `<tr><td colspan="${STEPS.length + 1}" class="muted">No tasks yet. Start one with <code>/claude-factory:factory new</code>.</td></tr>`}</tbody></table></div>`;
   return el;

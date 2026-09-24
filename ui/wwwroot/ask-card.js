@@ -2,7 +2,7 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.char
 
 const HELD = {
   blocked: (ask) => `Not delivered yet: the session shows a dialog. Answer it in herdr pane ${esc(ask.pane)}, then this goes through by itself.`,
-  gone: (ask) => `Not delivered: the session has ended. Run <code>/claude-factory:factory solve ${esc(ask.task)}</code> to continue.`,
+  gone: (ask) => `Not delivered: the session has ended.${ask.task === 'none' ? '' : ` Run <code>/claude-factory:factory solve ${esc(ask.task)}</code> to continue.`}`,
   'prompt-failed': () => 'Not delivered yet: herdr refused the message. It stays queued.',
 };
 
