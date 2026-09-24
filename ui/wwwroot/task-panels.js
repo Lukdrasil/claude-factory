@@ -1,18 +1,31 @@
-import { esc, renderAsk } from './ask-card.js';
+import { esc } from './ask-card.js';
 
-const EMPTY = { items: {}, editing: {}, drafts: {} };
 const RAIL = [['3', 'triage'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut check'], ['9', 'approve'],
   ['10', 'worktree'], ['11', 'blocks'], ['12', 'acceptance'], ['12b', 'duplication'], ['13', 'review'], ['14', 'MR'],
   ['15', 'self-report'], ['16', 'knowledge review'], ['', 'done']];
 
-export const section = (text, head) => {
-  const m = (text || '').match(new RegExp(`^## ${head}[^\\n]*\\n([\\s\\S]*?)(?=^## |(?![\\s\\S]))`, 'm'));
-  return m ? m[1].trim() : '';
+const parse = (html) => {
+  const t = document.createElement('template');
+  t.innerHTML = html || '';
+  return [...t.content.childNodes];
+};
+
+/** The nodes under the first `<h2>` of rendered `html` whose text starts with `head`, up to the next `<h2>`. */
+export const section = (html, head) => {
+  const nodes = parse(html);
+  const i = nodes.findIndex((n) => n.nodeName === 'H2' && n.textContent.trim().startsWith(head));
+  if (i < 0) return [];
+  const end = nodes.findIndex((n, j) => j > i && n.nodeName === 'H2');
+  return nodes.slice(i + 1, end < 0 ? undefined : end);
 };
 
 const stepOf = (s) => (s.step.match(/^Step (\w+) of 16/) || [])[1];
-const gateOf = (a) => (a.flow === 'done' ? 'done' : a.flow === 'approve' || /^Step 9 of 16/.test(a.step) ? 'approve' : null);
-const pre = (t) => (t ? `<pre>${esc(t)}</pre>` : '<p class="muted">Nothing yet.</p>');
+const md = (nodes) => {
+  const d = document.createElement('div');
+  d.className = 'md';
+  d.append(...nodes);
+  return d.textContent.trim() ? d.outerHTML : '<p class="muted">Nothing recorded for this step yet.</p>';
+};
 const panel = (name, title, html) => `<section data-panel="${name}"><h3>${title}</h3>${html}</section>`;
 const mrLink = (t) => (/^https?:\/\//.test(t.fields.mr_url || '') ? `<li><a href="${esc(t.fields.mr_url)}">${esc(t.task.id)}</a></li>` : '');
 
@@ -32,29 +45,26 @@ function blockList(blocks) {
 
 /**
  * The step rail of a solve task, current at the step its session reports, and one `[data-panel]` per step from
- * triage to done. `task` is its `/api/tasks/{id}` detail with `blockDetails`, `sessions`, `asks` and `staged`; an
- * approve or done ask is a confirm inside its panel.
+ * triage to done, each markdown section rendered from `task.html`. `task` is its `/api/tasks/{id}` detail with
+ * `blockDetails` and `sessions`.
  */
 export function renderTaskPanels(task) {
   const f = task.fields;
+  const h = task.html;
   const blocks = task.blockDetails;
-  const grill = task.grill || task.plan;
+  const grill = h.grill || h.plan;
   const mrs = [task, ...blocks].map(mrLink).join('');
   const el = document.createElement('div');
   el.className = 'panels';
   el.innerHTML = rail(task)
-    + panel('triage', 'Triage', `<p><span class="chip">${esc(f.tier)}</span> <span class="chip">${esc(f.archetype)}</span> <span class="chip">${esc(f.complexity)}</span></p>${pre(section(task.body, 'Context'))}`)
-    + panel('grill', 'Grill', pre(['Terms', 'Program design', 'Gap ledger'].map((h) => section(grill, h)).filter(Boolean).join('\n\n')))
-    + panel('decompose', 'Decompose', blockList(blocks) + pre(section(task.progress, 'Wave plan')) + pre(section(task.verdicts, 'cut-check')))
-    + panel('approve', 'Approve', pre(task.body) + blockList(blocks))
+    + panel('triage', 'Triage', `<p><span class="chip">${esc(f.tier)}</span> <span class="chip">${esc(f.archetype)}</span> <span class="chip">${esc(f.complexity)}</span></p>${md(section(h.body, 'Context'))}`)
+    + panel('grill', 'Grill', md(['Terms', 'Program design', 'Gap ledger'].flatMap((head) => section(grill, head))))
+    + panel('decompose', 'Decompose', blockList(blocks) + md(section(h.progress, 'Wave plan')) + md(section(h.verdicts, 'cut-check')))
+    + panel('approve', 'Approve', md(parse(h.body)) + blockList(blocks))
     + panel('blocks', 'Blocks', blockList(blocks))
-    + panel('verdicts', 'Verify and review', blocks.map((b) => `<h4>${esc(b.task.id)}</h4>${pre(section(b.progress, 'Evidence'))}`).join('')
-      + `<h4>Review</h4>${pre(section(task.progress, 'Review'))}`)
+    + panel('verdicts', 'Verify and review', blocks.map((b) => `<h4>${esc(b.task.id)}</h4>${md(section(b.html.progress, 'Evidence'))}`).join('')
+      + `<h4>Review</h4>${md(section(h.progress, 'Review'))}`)
     + panel('mr', 'MRs', mrs ? `<ul>${mrs}</ul>` : '<p class="muted">No MR yet.</p>')
     + panel('done', 'Done', `<p><span class="chip">${esc(task.task.status)}</span></p>`);
-  for (const name of ['approve', 'done']) {
-    el.querySelector(`[data-panel="${name}"]`)
-      .append(...task.asks.filter((a) => gateOf(a) === name).map((a) => renderAsk(a, task.staged[`${a.sid}/${a.ask}`] || EMPTY)));
-  }
   return el;
 }
