@@ -1,7 +1,7 @@
 #!/bin/sh
 # solve-next.sh over a throwaway state clone, step 11 with the stacked block MRs: a block in `review` with its
 # MR open does not hold the blocks behind it, and once every block is such a block the step is the reminder
-# that lists the open MRs for the human.
+# that lists the open MRs for the human. T-252-02: stalled is no status any more, so it is not sent to approval.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -117,5 +117,13 @@ check 'with docs/architecture/, step 11 removes the extra block verdict' 'verdic
 parent T-004 'plans/x-plan-ready.md'
 out=$(sh "$bin/solve-next.sh" T-004 --state "$state" 2>&1)
 check 'a parent with no blocks still needs the verdict' 'Step 5 of 16: architect plan-check of x' "$out"
+
+sed -i 's/^status: in_progress$/status: blocked/' "$state/repos/demo/tasks/T-001.md"
+out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
+check 'a blocked parent is sent to approval' 'Step 9 of 16: approve and claim T-001' "$out"
+sed -i 's/^status: blocked$/status: stalled/' "$state/repos/demo/tasks/T-001.md"
+out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
+if printf '%s\n' "$out" | grep -q 'Step 9 of 16'; then printf 'FAIL a stalled parent is not sent to approval\n'; fail=1
+else printf 'PASS a stalled parent is not sent to approval\n'; fi
 
 exit $fail
