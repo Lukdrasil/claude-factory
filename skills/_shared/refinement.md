@@ -15,7 +15,7 @@ the branch carries finished work, and your assignment is the human's review comm
    Do not resolve threads — the API differs between forges and a human ticks them off at the next review.
 6. On GitHub, if the MR description still announces blockers this run resolved, rewrite it once (#428): it was
    written by the previous session, which did not yet know the outcome. `gh pr edit <mr_url> --body "…"`, the body
-   shaped the way `session-contract.md` prescribes for the MR. Only `--body` gets past forge-guard — the title, the
+   shaped the way `session-contract.md` prescribes for the MR. Change only `--body`: the title, the
    base branch, reviewers and labels are not yours. On GitLab there is no equivalent yet; the comment stays the record.
 
 ## Receiving the review

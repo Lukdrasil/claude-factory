@@ -192,7 +192,7 @@ globs=''
 [ ! -f "$toolset" ] || globs=$(awk '/^test-globs:[[:space:]]*$/ { g=1; next }
      g && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/"/, ""); print; next }
      g { exit }' "$toolset" | tr '\n' ' ' | sed 's/ $//')
-if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in repos/$key/toolset.md" "add the frontmatter list (docs/design/toolset.md)"; fi
+if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in repos/$key/toolset.md" "add the frontmatter list (the plugin's toolsets/dotnet.md shows it)"; fi
 
 # --- what the dotnet coverage and crap rows need beyond the binaries ------------------------------------------------
 if [ "$stack" = dotnet ]; then

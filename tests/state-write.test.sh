@@ -9,8 +9,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=''
-DASHBOARD_URL=''
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 fail=0
 check() { # <what> <expected> <actual>

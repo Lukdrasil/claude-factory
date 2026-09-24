@@ -1,6 +1,6 @@
 # factory approve
 
-Flips a task from `draft|triaged|blocked|stalled|failed|tests_ready` to `ready` in the standalone state repo.
+Flips a task from `draft|triaged|blocked|failed|tests_ready` to `ready` in the standalone state repo.
 This is the human's confirmation of a body they read — never a click the coordinator makes for them.
 
 ## When

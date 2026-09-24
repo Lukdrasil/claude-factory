@@ -6,7 +6,6 @@ set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-unset DASHBOARD_URL
 
 state="$tmp/state"
 work="$tmp/work"

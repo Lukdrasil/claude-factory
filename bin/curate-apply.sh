@@ -1,8 +1,7 @@
 #!/bin/sh
-# The local twin of the dashboard's proposal gate (the Proposals page; StateRepository.CurateProposalAsync and
-# EditProposalAsync), the posture without a dashboard (ADR-0050): approve moves a proposal to its target — the
-# path without `proposals/`, an ADR proposal numbered on the way out — reject deletes it, edit rewrites it from
-# a file; every decision exactly one commit with the dashboard's message. Nothing is pushed.
+# The proposal gate of the standalone posture (ADR-0050): approve moves a proposal to its target (the path
+# without `proposals/`, an ADR proposal numbered on the way out), reject deletes it, edit rewrites it from a
+# file; every decision exactly one commit. Nothing is pushed.
 #
 #   curate-apply.sh list [--state <dir>]                            the queued proposals, one relative path per line
 #   curate-apply.sh approve <proposal> [<target>] [--reason <text>] [--state <dir>]
@@ -40,7 +39,7 @@ done
 [ -n "$state" ] || state=$(resolve_state_dir "$(pwd)")
 [ -d "$state/.git" ] || die "$state is not a state clone — run from one or pass --state <dir>"
 
-# StateRepository.Proposals over ProposalGlobs: the top level of the five queues, sorted bytewise.
+# The queued proposals: the top level of the five queues, sorted bytewise.
 list() {
   (cd "$state" && for q in repos/*/memory/proposals memory/global/proposals repos/*/adr/proposals repos/*/architecture/proposals agents/*/memory/proposals; do
     [ -d "$q" ] || continue
@@ -60,7 +59,8 @@ repo_keys() {
   done
 }
 
-# StateRepository.Unprefixed / AdrNumber / AdrSlug / NextAdrNumber / AdrDestination / PrimaryTarget / CheckTarget.
+# The name and target helpers: the ADR prefix, number and slug, the next ADR number, the destination and the
+# target checks.
 unprefixed() { case "$1" in [Aa][Dd][Rr]-*) printf '%s\n' "${1#????}" ;; *) printf '%s\n' "$1" ;; esac; }
 
 adr_number() { unprefixed "$1" | sed -n 's/^\([0-9][0-9]*\).*/\1/p' | sed 's/^0*//'; }

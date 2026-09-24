@@ -9,7 +9,7 @@ repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$repo/bin"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-unset HARNESS_WORKER HERDR_ENV HERDR_PANE_ID DASHBOARD_URL
+unset HERDR_ENV HERDR_PANE_ID
 
 fail=0
 pass() { printf 'PASS %s\n' "$1"; }

@@ -51,6 +51,14 @@ check 'no origin exits 0' 0 "$rc"
 check 'no origin still approves' ready "$(field T-001 status)"
 check 'no origin writes plan_hash' "$(git -C "$state" rev-parse HEAD~1)" "$(field T-001 plan_hash)"
 
+# --- T-252-02: stalled is no status any more, so it is not approved ---------
+task T-009
+sed -i 's/^status: draft$/status: stalled/' "$state/repos/demo/tasks/T-009.md"
+git -C "$state" commit -qam 'fixture T-009 stalled'
+out=$(sh "$bin/task-approve.sh" T-009 --state "$state" 2>&1); rc=$?
+check 'a stalled task is refused' 1 "$rc"
+check 'a refused stalled task keeps its status' stalled "$(field T-009 status)"
+
 # --- with an origin both commits reach the state root -----------------------
 git init -q --bare -b main "$tmp/origin.git"
 git -C "$state" remote add origin "$tmp/origin.git"

@@ -169,7 +169,7 @@ if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] 
 fi
 
 if [ -z "$blocks" ]; then
-  emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on and parallel_group."
+  emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on."
   cmd "cat $plugin/skills/decompose/SKILL.md"
   cmd "cat $plan"
   exit 0
@@ -187,7 +187,7 @@ fi
 # invariant: only a status the approval still lies ahead of asks for step 9; `review` and `done` are past it and
 # invariant: are answered by step 15 and step 16 at the bottom of this file.
 case "$status" in
-  draft|triaged|ready|claimed|blocked|stalled|failed)
+  draft|triaged|ready|claimed|blocked|failed)
     emit "Step 9 of 16: approve and claim $id" "$id is in_progress with plan_hash set."
     cmd "$bin/task-approve.sh $id --state $state"
     cmd "$bin/state-report.sh --task $id --set-status in_progress --message 'chore($id): claimed'"

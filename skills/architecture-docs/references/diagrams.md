@@ -2,21 +2,22 @@
 written_against:
   date: 2026-08
   mermaid: >
-    v11.17 (docs current at 11.17.2; the dashboard preview bundles 11.17.0). Every keyword named
-    below exists in that version: flowchart, sequenceDiagram, classDiagram, stateDiagram-v2,
-    erDiagram, C4Context/C4Container/C4Component/C4Deployment, architecture-beta, gantt, timeline.
-    The C4 family is still flagged experimental upstream, and GitHub's markdown renderer does not
-    bundle its grammar — a C4Context fence is raw text there, while the dashboard bundle renders
-    it. No UML component, package, object, use-case, communication or timing diagram exists in
-    mermaid at any version.
+    v11.17 (docs current at 11.17.2; the plugin vendors the 11.17.0 build in vendor/mermaid/).
+    Every keyword named below exists in that version: flowchart, sequenceDiagram, classDiagram,
+    stateDiagram-v2, erDiagram, C4Context/C4Container/C4Component/C4Deployment, architecture-beta,
+    gantt, timeline. The C4 family is still flagged experimental upstream, and GitHub's markdown
+    renderer does not bundle its grammar: a C4Context fence is raw text there, while the vendored
+    build renders it. No UML component, package, object, use-case, communication or timing
+    diagram exists in mermaid at any version.
   likec4: >
-    v1.59.2, published 2026-07-22 — pinned in src/worker/Dockerfile and bound to toolset
-    `arch-build`. One model with views projected from it, a separate deployment model with its own
-    views, dynamic views in diagram and sequence variants; CLI start/build/export/gen/validate/
-    format/lsp, with `gen` emitting mermaid, dot, d2 and plantuml.
+    v1.59.2, published 2026-07-22, the version this file was checked against. The plugin pins none:
+    toolset `arch-build` runs whatever `likec4` is on PATH. One model with views projected from
+    it, a separate deployment model with its own views, dynamic views in diagram and sequence
+    variants; CLI start/build/export/gen/validate/format/lsp, with `gen` emitting mermaid, dot, d2
+    and plantuml.
   note: >
-    audit re-checks this stamp against the mermaid the rendering host actually ships and the likec4
-    version pinned in the worker image — a mismatch means this file is stale and needs re-research,
+    audit re-checks this stamp against the mermaid build the plugin vendors and the likec4 version
+    the repo's `arch-build` binding runs: a mismatch means this file is stale and needs re-research,
     not that the repo did something wrong.
 ---
 
@@ -31,7 +32,7 @@ question**, because a picture answering three is read for none.
 
 Where the outputs land: the mermaid fences `templates.md` mandates in `01-context.md` and
 `03-containers.md`; sequences in `05-runtime.md`; the LikeC4 model in `docs/architecture/*.c4` per
-`docs/design/architecture-model.md`; an occasional sketch inside an ADR. `templates.md` owns the
+`<plugin-root>/skills/_shared/session-contract.md`; an occasional sketch inside an ADR. `templates.md` owns the
 inline mandate — this file does not reopen it. Preview rendering mechanics and ready-made snippets
 live in `block-research/references/diagrams.md`.
 
@@ -206,8 +207,8 @@ nested to form the hierarchy; relationships are declared between them; each view
 of the model to include, so context, container and component views cannot contradict each other.
 A separate deployment model carries its own views, and dynamic views carry scenarios. The cost is
 npm, a build, and rendering that lives outside the markdown — a cost this repo already pays:
-`likec4` is pinned in the worker image (Graphviz alongside it since #418; `arch-build` uses the
-bundled WASM engine via `--no-use-dot`, so the contract has no native dependency), `arch-build`
+`factory doctor` checks for `likec4` wherever the toolset binds `arch-build` (which uses the bundled
+WASM Graphviz via `--no-use-dot`, so the contract has no native dependency), `arch-build`
 validates the model, and the `solution-c4-map`
 skill renders the interactive map from the same DSL.
 
@@ -226,7 +227,7 @@ not render it at all, GitLab only when an administrator wires up a PlantUML serv
 stops being readable where the code is reviewed. Structurizr is C4's own tooling with the same
 model-and-views idea and a mature DSL, but its rendering runs as a service the team operates. This
 repo standardises on the two above because one renders with zero setup everywhere we read markdown
-and the other is already installed, pinned and bound to a toolset command.
+and the other is already installed and bound to a toolset command.
 
 ## The minimal set
 

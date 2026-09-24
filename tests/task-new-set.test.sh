@@ -1,6 +1,7 @@
 #!/bin/sh
 # task-new.sh rewrites the `id:` and `branch:` lines of a block draft whole: a trailing `# comment` on either
-# line is dropped, so the written block carries the exact `id:` line task_of looks up.
+# line is dropped, so the written block carries the exact `id:` line task_of looks up. T-252-02: the defaults
+# task-new.sh fills in add no key the dashboard alone read, and the status enum it names has no stalled.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -8,8 +9,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=''
-DASHBOARD_URL=''
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 fail=0
 check() { # <what> <expected> <actual>
@@ -53,5 +53,15 @@ bf="$state/repos/demo/tasks/T-001-01-fix-demo-a-block-with-commented.md"
 check "the block carries the exact line 'id: T-001-01'" 'id: T-001-01' "$(grep '^id:' "$bf" 2>/dev/null)"
 check "the block carries the exact line 'branch: feat/T-001-01-x'" 'branch: feat/T-001-01-x' \
   "$(grep '^branch:' "$bf" 2>/dev/null)"
+check "the block frontmatter holds exactly the task keys" \
+  'archetype attempt branch complexity created depends_on id mr_url owner plan_hash repo status tier ' \
+  "$(awk '/^---$/ { n++; next } n == 1 { sub(/:.*/, ""); print } n == 2 { exit }' "$bf" 2>/dev/null | sort | tr '\n' ' ')"
+
+sed 's/^status: draft$/status: bogus/' "$tmp/block.md" > "$tmp/bogus.md"
+rc=0
+out=$(sh "$bin/task-new.sh" --repo demo --parent T-001 --state "$state" --file "$tmp/bogus.md" 2>&1) || rc=$?
+check "task-new.sh refuses an unknown status" 1 "$rc"
+check "the status enum task-new.sh names" \
+  'task-new: status must be one of draft|triaged|ready|claimed|in_progress|tests_ready|review|blocked|failed|done|closed' "$out"
 
 exit "$fail"

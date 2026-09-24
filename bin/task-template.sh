@@ -5,8 +5,8 @@
 #
 # One kind per run, the skeleton on stdout, nothing else. The shapes are the ones the skills describe:
 # `task` the draft a triage writes (block-triage), `block` the task decompose hands to task-new.sh, both with
-# the frontmatter task-format.md validates; `plan-ready` the plan a grill ends with; `progress` the snapshot a
-# worker rewrites and `handoff` the section the tests phase adds to it; `investigation` the five sections an
+# the frontmatter task-new.sh validates; `plan-ready` the plan a grill ends with; `progress` the snapshot a
+# session rewrites and `handoff` the section the tests phase adds to it; `investigation` the five sections an
 # investigator reports in.
 #
 # Exit 0: the skeleton.
@@ -30,11 +30,8 @@ status: draft
 tier: <green|yellow|red>
 archetype: <feature|bugfix|refactor|research|ops>
 complexity: <low|medium|high>
-runtime: default
 depends_on: []
-parallel_group: null
 attempt: 0
-max_attempts: 3
 plan_hash: null
 owner: null
 mr_url: null
@@ -48,7 +45,7 @@ characters (the repo's `mr_title_max` in repos.yml when it sets one).
 ## Context
 The substantive context for the work itself: what matters from the issue, rewritten in your own words, and how
 to approach it. Do not repeat the title or the whole text of the issue, and do not mention anything about running
-claude-os (repo-key, repos.yml, the state repo, worker sessions); that belongs under `## Internal`.
+the factory (repo-key, repos.yml, the state repo, sessions); that belongs under `## Internal`.
 
 ## Acceptance
 A runnable criterion (a command/test), not a consideration.
@@ -60,7 +57,7 @@ What from the issue does not belong in this task.
 For the issue author, **under 150 words**, opening with the one sentence that says what will be
 done. Then the problem as you understood it, the suggested approach, what is in and out of scope, and how the
 result will be verified. Classify the work in plain words (kind of change, size, risk).
-No claude-os internals here: no repo-key, task ids, state repo, sessions, tiers or archetypes.
+No factory internals here: no repo-key, task ids, state repo, sessions, tiers or archetypes.
 This section is what gets appended to the issue description, which is written back to the issue
 by bin/forge.sh. Only when the source is a forge issue; for a roadmap draft, omit the section.
 
@@ -74,7 +71,7 @@ by bin/forge.sh. Only when the source is a forge issue; for a roadmap draft, omi
 - tier <tier>: <why>
 - complexity <complexity>: <why>
 
-Everything claude-os-related, plus verbatim excerpts from the issue. A self-contained spec: this file alone
+Everything factory-related, plus verbatim excerpts from the issue. A self-contained spec: this file alone
 must be enough for a fresh session, so copy the whole text of the issue here if `## Context` does not cover it;
 the implementation session works from this file without reading the issue again.
 
@@ -91,11 +88,8 @@ status: draft
 tier: green
 archetype: feature
 complexity: low
-runtime: default
 depends_on: []
-parallel_group: null
 attempt: 0
-max_attempts: 3
 plan_hash: null
 owner: null
 mr_url: null
@@ -109,7 +103,7 @@ characters (the repo's `mr_title_max` in repos.yml when it sets one).
 ## Context
 From the plan `repos/<repo-key>/plans/<slug>-plan-ready.md`, the path in full, so the architect gate can find
 the verdict of the plan this task came from.
-A self-contained spec: a fresh session gets only this file plus the generated CLAUDE.md.
+A self-contained spec: a fresh session gets only this file plus its SessionStart context.
 References to existing code, ADRs and decisions from the grill the agent would not otherwise guess.
 
 Design (approved in the grill):

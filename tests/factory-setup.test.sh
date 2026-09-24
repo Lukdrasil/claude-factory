@@ -6,7 +6,7 @@ set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-unset HARNESS_WORKER HERDR_ENV HERDR_PANE_ID DASHBOARD_URL
+unset HERDR_ENV HERDR_PANE_ID
 export FACTORY_UI_HOME="$tmp/ui"
 
 fail=0

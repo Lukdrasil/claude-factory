@@ -1,8 +1,8 @@
 #!/bin/sh
 # Stop hook: session statistics for the task — the archetype/tier from the frontmatter plus the model, duration
 # and tokens from the transcript (transcript_path from the hook stdin) are sent through state-report.sh as a line
-# for ## Attempts, failed tool calls as lines for ## Tool failures; the dashboard writes them (ADR-0047), or the
-# state clone commits them without one (ADR-0050). A session that owns several tasks gets one line per task.
+# for ## Attempts, failed tool calls as lines for ## Tool failures; the state clone
+# commits them (ADR-0050). A session that owns several tasks gets one line per task.
 # Telemetry: it never blocks (always exit 0); duplicates are guarded by the session_id, in the line and in a marker file.
 set -eu
 
@@ -18,12 +18,9 @@ sid=$(hook_field "$stdin" session_id)
 # resolve_state_dir (lib-tasks.sh) is the one state-clone rule, shared with self-report-check.sh and state-report.sh
 state=$(resolve_state_dir "$PWD")
 
-# the tasks are identified by CLAUDE.md in cwd, same as self-report-check.sh — or, with no `# Task <id>` there, by
-# the `owner:` ending in this session's id (`factory@<host>:<session_id>`, ADR-0050)
-ids=$(sed -n '1s/^# Task //p' CLAUDE.md 2>/dev/null) || :
-if [ -z "${ids:-}" ]; then
-  ids=$(owned_task_ids "$sid") || :
-fi
+# the tasks are the ones whose `owner:` ends in this session's id (`factory@<host>:<session_id>`, ADR-0050), same
+# as self-report-check.sh
+ids=$(owned_task_ids "$sid") || :
 [ -n "${ids:-}" ] || exit 0
 
 # line 1 = stats, the rest = failed tool calls (tool + first line of the error, top 5 by frequency); read once
@@ -77,30 +74,17 @@ for id in $ids; do
   task=$(task_of "$id")
   [ -n "${task:-}" ] && [ -f "$task" ] || continue
 
-  # T-003: the standalone layout ($WORK_DIR/<key>/<task-id>/, ADR-0049) keeps its per-session marker in
-  # $WORK_DIR/<key>/.harness/<task-id>/: one level up from the cwd is $WORK_DIR/<key>/, which every task under
-  # that key shares. T-162: a coordinator standing in the registered clone gets that same per-task marker
-  # directory. The worker layout resolves to the relative path below.
-  stamp=..
-  if resolve_session_layout "$PWD" "$id" && [ "$LO_POSTURE" = standalone ]; then
-    stamp=$LO_STAMP
-    mkdir -p "$stamp" 2>/dev/null || :
-  fi
-  sent="$stamp/.harness-stats-sent"
-
   # stats belong with the final self-report; a stop without a terminal status is bounced by self-report-check
   status=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
   case "$status" in review|blocked|failed|tests_ready) ;; *) continue ;; esac
 
-  # the line is written by the dashboard, so the local clone only carries it once it has been pulled again: the
-  # marker in the line still catches that, a marker file in the work dir catches a repeated Stop of this session.
+  # the line lands in the task file itself, so its sid marker catches a repeated Stop of this session
   grep -q "sid:$sid" "$task" 2>/dev/null && continue
-  if [ -f "$sent" ] && grep -qFx "$sid $id" "$sent" 2>/dev/null; then continue; fi
 
   [ -n "$stats" ] || parse_transcript || exit 0
 
   attempt=$(sed -n 's/^attempt:[[:space:]]*//p' "$task" | head -n1)
-  # #300: the archetype × tier of the dispatch goes into the line next to the model — the controller maps the
+  # #300: the archetype × tier of the task goes into the line next to the model: model-for.sh maps the
   # initial model from exactly this pair, so the mapping can be tuned from the stats without a second source.
   archetype=$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1)
   tier=$(sed -n 's/^tier:[[:space:]]*//p' "$task" | head -n1)
@@ -115,6 +99,5 @@ for id in $ids; do
   # the stats are a commit on top of it, never part of it. A failure is simply dropped — worst case one stats line
   # is missing, which must not bring the task down.
   sh "$(dirname -- "$0")/state-report.sh" "$@" --message "stats: $id $status" >/dev/null 2>&1 || continue
-  printf '%s %s\n' "$sid" "$id" >> "$sent" 2>/dev/null || :
 done
 exit 0

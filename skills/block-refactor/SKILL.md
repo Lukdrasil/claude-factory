@@ -1,6 +1,6 @@
 ---
 name: block-refactor
-description: Refactoring in a worker session: green baseline, small steps against unchanged tests, WIP push, self-reporting progress and status into the state repo. Started by the controller after dispatch with the path to the task file.
+description: Refactoring in a standalone session: green baseline, small steps against unchanged tests, WIP push, self-reporting progress and status into the state repo. Started with the path to the task file.
 ---
 
 # block-refactor

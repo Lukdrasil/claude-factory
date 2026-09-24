@@ -144,7 +144,10 @@ has 'the status is draft'            "$f2" 'status: draft'
 has 'the tier is copied'             "$f2" 'tier: yellow'
 has 'the archetype is copied'        "$f2" 'archetype: feature'
 has 'the complexity is copied'       "$f2" 'complexity: medium'
-has 'the runtime is the default'     "$f2" 'runtime: default'
+[ "$(awk '/^---$/ { n++; next } n == 1 { sub(/:.*/, ""); print } n == 2 { exit }' "$f2" | sort | tr '\n' ' ')" = \
+  'archetype attempt branch complexity created depends_on id mr_url owner plan_hash repo status tier ' ]
+check 'the frontmatter holds exactly the task keys' $?
+has 'the attempt count starts at 0'  "$f2" 'attempt: 0'
 has 'depends_on is left empty'       "$f3" 'depends_on: []'
 has 'plan_hash is null'              "$f2" 'plan_hash: null'
 has 'the goal is the proposal goal'  "$f2" 'feat(export): write the rows of a stream into an open handle'

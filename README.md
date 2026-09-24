@@ -1,10 +1,8 @@
 # claude-factory
 
 The Claude Code plugin behind the factory loop: grill a spec, decompose it into tasks, run each block
-in a worker session, review and merge. Skills, agents, toolsets and the policy hooks that enforce the
+in its own worktree, review and merge. Skills, agents, toolsets and the policy hooks that enforce the
 rules, in one installable plugin.
-
-Extracted from `src/harness-plugin` of the `claude-os` repo.
 
 ## Install
 
@@ -17,16 +15,19 @@ Skills are then invoked as `/claude-factory:<skill>`, e.g. `/claude-factory:gril
 
 A Windows clone gets LF line endings by design: `.gitattributes` pins them, so the `sh` scripts run under Git Bash.
 
+Some skills set `disable-model-invocation`, so the model never picks them on its own and they run only when
+invoked by name: `quality-kit` and its sub-skills `analyze-structure`, `setup-guardrails`, `architecture-tests`,
+`analyzer-fix-example`, `add-module`, `add-slice` and `write-analyzer`, and `solution-map`.
+
 ## Layout
 
 | path | what |
 |---|---|
 | `skills/` | archetype and workflow skills (`grill`, `decompose`, `block-*`, `factory`, `mr-review`, `issue-create`, ...) |
 | `agents/` | subagent definitions the skills spawn |
-| `bin/` | the shell implementation: gates, task API, forge, verification |
+| `bin/` | the shell implementation: gates, task state, forge, verification |
 | `hooks/hooks.json` | SessionStart, PreToolUse, PreCompact and Stop wiring |
 | `toolsets/` | per-stack command bindings |
-| `prompts/` | the worker session system prompt |
 | `tests/` | shell checks over the scripts above |
 | `ui/` | the Factory UI server, a .NET Native AOT container (`ui/README.md`) |
 

@@ -219,15 +219,13 @@ norm_into() { # <variable name> <path>
   esac
 }
 
-# T-003: the one layout rule the guard, the Stop hook and session-stats share. Two shapes, one implementation
-# (ADR-0049): the worker's <root>/<task-id>/… and the standalone <root>/<key>/<task-id>/…, where <task-id> is
-# `T-NNN` (a session worktree) or `T-NNN-NN` (a block worktree). Given a path (the guard's write target) or a cwd
-# (a hook) plus the work root, it sets
-#   LO_POSTURE  worker | standalone
+# T-003: the one layout rule the guard, the Stop hook and session-stats share: the standalone
+# <root>/<key>/<task-id>/… (ADR-0049), where <task-id> is `T-NNN` (a session worktree) or `T-NNN-NN` (a block
+# worktree). Given a path (the guard's write target) or a cwd (a hook) plus the work root, it sets
+#   LO_POSTURE  standalone
 #   LO_TASK     the task id
 #   LO_OWN      the session's work dir LO_STATE  the state clone   LO_STAMP  the per-session stamp directory
-# and returns 1 when the path is not under the root at all. The worker layout keeps exactly the directories it
-# always had: LO_OWN = <root>/<task-id>, LO_STATE = <own>/state, LO_STAMP = <own>.
+# and returns 1, setting nothing, for every path that is not inside such a task worktree.
 is_task_id() { is_parent_id "$1" || is_block_id "$1"; }
 
 is_parent_id() { # <id>
@@ -263,14 +261,9 @@ resolve_layout() { # <path> <work root>
   lo_s1=${lo_rest%%/*}
   lo_s2=${lo_rest#*/}
   if [ "$lo_s2" = "$lo_rest" ]; then lo_s2=''; else lo_s2=${lo_s2%%/*}; fi
-  if [ -n "$lo_s2" ] && is_task_id "$lo_s2" && ! is_task_id "$lo_s1"; then
-    LO_POSTURE=standalone; LO_TASK=$lo_s2
-    LO_OWN="$lo_root/$lo_s1/$lo_s2"; LO_STATE="$lo_root/state"; LO_STAMP="$lo_root/$lo_s1/.harness/$lo_s2"
-  else
-    LO_POSTURE=worker; LO_TASK=$lo_s1
-    LO_OWN="$lo_root/$lo_s1"; LO_STATE="$lo_root/$lo_s1/state"; LO_STAMP="$lo_root/$lo_s1"
-  fi
-  return 0
+  [ -n "$lo_s2" ] && is_task_id "$lo_s2" && ! is_task_id "$lo_s1" || return 1
+  LO_POSTURE=standalone; LO_TASK=$lo_s2
+  LO_OWN="$lo_root/$lo_s1/$lo_s2"; LO_STATE="$lo_root/state"; LO_STAMP="$lo_root/$lo_s1/.harness/$lo_s2"
 }
 
 # the same rule for a hook, which is handed no target path: the work root is $WORK_DIR when the cwd is under it,
@@ -284,7 +277,7 @@ resolve_cwd_layout() { # <cwd>
 # the state clone of a session, the one rule state-report.sh, self-report-check.sh and session-stats.sh share:
 # the sibling `../state` of the product clone when that is a clone itself, the standalone layout's $WORK_DIR/state
 # when the cwd is a work dir of it (ADR-0049) — and otherwise the cwd, which is where a triage session sits
-# (ADR-0018). `../state` first: the worker layout's sibling clone (ADR-0018) wins over the standalone rule.
+# (ADR-0018). `../state` first: a sibling state clone (ADR-0018) wins over the standalone rule.
 resolve_state_dir() { # <cwd>
   if [ -d "$1/../state/.git" ]; then printf '%s' ../state; return 0; fi
   if resolve_cwd_layout "$1" && [ "$LO_POSTURE" = standalone ]; then printf '%s' "$LO_STATE"; return 0; fi
@@ -293,7 +286,7 @@ resolve_state_dir() { # <cwd>
 }
 
 # why: a factory coordinator (ADR-0049) runs in the registered clone itself, outside $WORK_DIR, where neither the
-# worker's sibling `../state` nor the standalone layout resolves and the cwd is no state clone either. Without
+# sibling `../state` nor the standalone layout resolves and the cwd is no state clone either. Without
 # this case the Stop chain and the PreCompact hook look for its tasks under the product clone and find none.
 # Prints the registry key and returns 0 only when $WORK_DIR/state is a clone as well.
 in_registered_clone() { # <cwd>
@@ -306,7 +299,7 @@ in_registered_clone() { # <cwd>
 # the layout of a session that is reporting for a known task: resolve_cwd_layout's standalone answer where the cwd
 # is a work dir under $WORK_DIR, and otherwise the coordinator's own standalone posture, whose work dir is the
 # registered clone, whose state clone is $WORK_DIR/state and whose stamps sit in $WORK_DIR/<key>/.harness/<task-id>/,
-# the same stamp directory the task's own worker session would use. It falls back to resolve_cwd_layout, so every
+# the same stamp directory the task's own session would use. It falls back to resolve_cwd_layout, so every
 # posture the resolver already reported stays what it was.
 resolve_session_layout() { # <cwd> <task id>
   resolve_cwd_layout "$1" && [ "$LO_POSTURE" = standalone ] && return 0

@@ -28,7 +28,7 @@ done
 [ -n "$repo" ] || die "<repo-dir> is required"
 [ -d "$repo" ] || die "$repo is not a directory"
 
-# same awk shape docs/design/toolset.md uses for test-globs, over a different frontmatter key
+# same awk shape policy-guard.sh uses for test-globs, over a different frontmatter key
 extract() { awk -v key="$2:" '$0 == key { g=1; next }
      g && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/"/, ""); print; next }
      g { exit }' "$1"; }

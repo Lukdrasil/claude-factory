@@ -10,7 +10,7 @@ picks the performance with the rubric.
 
 ## Preconditions
 
-- The **state clone** is cwd if it holds `repos.yml`, otherwise `../state`; if neither, stop and say so.
+- The **state clone** is cwd if it holds `repos.yml`, otherwise `$WORK_DIR/state`; if neither, stop and say so.
 - You write **only** into the state clone; product repos are read-only.
 
 ## Arguments
