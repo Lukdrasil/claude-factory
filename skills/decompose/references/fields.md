@@ -18,6 +18,9 @@ a generated file looks wrong, to tell a plan defect from a script defect:
   carries the `Design (approved in the grill):` block verbatim.
 - `## Docs` - the grill's `docs:` answer for this proposal, copied verbatim. Do not invent one the grill did
   not make; with nothing to carry over, write `none`.
+- `## Checklist` - the proposal's `steps:` sub-bullets, one `- [ ] <step>` each, after `## Out of scope`.
+  Omitted for `steps: none` and for a proposal without `steps:`. The boxes are never ticked in the task: its
+  body is pinned by `plan_hash`, and a finished step is recorded in the progress file.
 - `- forge issue:` - the url the source task carries, copied onto **every** block. It is the join key the
   MR description and the issue are paired on, so without it the issue never learns the work exists. With no
   forge issue on the source task, the line and the whole `## Internal` section are omitted; never an empty one.
