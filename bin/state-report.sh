@@ -2,8 +2,9 @@
 # The one write path for task state, in two postures (ADR-0047, ADR-0050). The default posture is standalone:
 # DASHBOARD_URL empty or unset means there is no dashboard, the session's own state clone is the writer, and the
 # report is validated right here (including the transition, which is measured from the *committed* status of the
-# task file, not from the working copy the agent just wrote), committed into the state clone and pushed to the
-# state root; the local commit stays when the push fails.
+# task file, not from the working copy the agent just wrote), committed into the state clone and, when the clone
+# has an origin, pushed to the state root; the local commit stays when the push fails. A clone with no origin is
+# the state root itself (factory-init.sh --root), so its report stays local.
 # With DASHBOARD_URL set the report goes out instead as `PATCH $DASHBOARD_URL/api/tasks/<id>` carrying the
 # `status` of the local task file, its `mr_url` once the task has one, the whole local progress file and any line
 # for `## Attempts` / `## Tool failures`; in that posture the state clone is read-only towards the state repo, the
@@ -246,13 +247,9 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   if [ -n "$progress_file" ]; then set -- "$@" "${progress_file#"$state/"}"; fi
   state_commit "$state" "$message" "$@" || die2 "the report of $id could not be committed in $state"
 
-  # the push recipe of ADR-0012, three tries; a root that still refuses leaves the commit in the clone (exit 2)
-  n=0
-  until git -C "$state" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 && git -C "$state" push -q >/dev/null 2>&1; do
-    n=$((n + 1))
-    [ "$n" -lt 3 ] || die2 "the push to the state root failed 3 times — the report of $id is committed in $state but not pushed"
-    sleep 1
-  done
+  # the push recipe of ADR-0012 (state_push, lib-tasks.sh), three tries; a clone with no origin is the state root
+  # itself and keeps the report local, a root that still refuses leaves the commit in the clone (exit 2)
+  state_push "$state" || die2 "the push to the state root failed 3 times, the report of $id is committed in $state but not pushed"
   exit 0
 fi
 

@@ -39,7 +39,7 @@ record the command, its exit code and the key output line. The Stop hook bounces
 
 The task's `status:` and the progress file are written only through `state-report.sh`, which in the
 standalone posture of this plugin (ADR-0050, `DASHBOARD_URL` unset) validates the transition, commits in the
-state clone and pushes. There is no dashboard in that posture, so never send the user to one: a task with an
+state clone and pushes when the state clone has an origin. There is no dashboard in that posture, so never send the user to one: a task with an
 MR ends in `done` and a triage, ops or research task ends in `closed`, both through
 `<plugin-root>/bin/task-done.sh <id>` once the human has said so, and `ready` comes the same way, from
 `<plugin-root>/bin/task-approve.sh <id>`. Rewrite the progress file, then:
@@ -54,12 +54,13 @@ The first report of a session is its claim, and it carries two more flags, `--se
 `<plugin-root>` is the plugin root the skill that sent you here names. Run it at every milestone: that
 report is the liveness signal (ADR-0009), so a long operation goes after one. Exit 1 = refused, the reason
 is on stderr; fix it and run again. Exit 2 = the push did not land; the local commit stays, note it and carry
-on. The Stop hook reports for you at the end.
+on. A state clone with no origin is the state root itself: the report stays local and exits 0. The Stop hook reports for you at the end.
 
 A **new file** of your own — a research report, an ADR or memory proposal, a plan — still goes through git:
 
 ```sh
 git -C "$WORK_DIR/state" add repos/<key>/research/<id>-<slug>.md
 git -C "$WORK_DIR/state" commit -m "research: <id>" -- repos/<key>/research/<id>-<slug>.md
-git -C "$WORK_DIR/state" pull --rebase --autostash -X theirs && git -C "$WORK_DIR/state" push
+git -C "$WORK_DIR/state" remote get-url origin >/dev/null 2>&1 &&
+  git -C "$WORK_DIR/state" pull --rebase --autostash -X theirs && git -C "$WORK_DIR/state" push
 ```
