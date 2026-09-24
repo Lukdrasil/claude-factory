@@ -3,7 +3,8 @@
 # is known to run, with $repo, $bin, $tmp and $name set: the check helpers, a stub `herdr` on PATH, two state
 # repos on an ephemeral ui_port, and a UI home with session s1 (pane w1:p1, task T-001) and its asks q1 and q3
 # open and q2 answered, each one grill round. It exports FACTORY_UI_HOME and FACTORY_UI_CONTAINER. `browser` is
-# the Playwright harness of the page suites.
+# the Playwright harness of the page suites; `org_state <dir>` builds a third state repo with the real scripts for
+# the request, org and setup routes.
 
 fail=0
 pass() { printf 'PASS %s\n' "$1"; }
@@ -89,6 +90,61 @@ state_repo() { # <dir> <task sentence>
 state1="$tmp/state1" state2="$tmp/state2"
 state_repo "$state1" 'The fixture sentence of state one.'
 state_repo "$state2" 'The fixture sentence of state two.'
+
+org_task() { # <dir> <key> <id> <status> <request> <priority or -> <goal> [acceptance]
+  {
+    printf -- '---\nid: %s\nrepo: %s\nstatus: %s\ntier: green\narchetype: feature\nrequest: %s\n' "$3" "$2" "$4" "$5"
+    [ "$6" = - ] || printf 'priority: %s\n' "$6"
+    printf -- 'owner: null\n---\n\n# Goal\n%s\n\n## Context\nThe fixture of the org routes.\n' "$7"
+    [ -z "${8:-}" ] || printf '\n## Acceptance\n%s\n\n## Out of scope\nNothing else.\n' "$8"
+  } > "$1/repos/$2/tasks/$3-org.md"
+}
+org_state() { # <dir>: repos claude-factory (CF) and ecs (ECS); request R-20260925-1 in grilling with tickets 01
+  # resolved, 02 open on the frontier, 03 dropped, 04 open behind 02, 05 claimed, and parents T-ECS-1 (P1, blocks
+  # -01 without a priority and -02 at P3) and T-CF-1 (none, so P2); request R-20260920-1 done and archived with its
+  # parent T-CF-2 (P0) and block T-CF-2-01 by state-archive.sh --all; leases by capacity.sh for the lead of
+  # T-ECS-1, a block, a scout subagent and an uncapped architecture-auditor; passes stamped by pass-stamp.sh.
+  o=$1
+  mkdir -p "$o/repos/claude-factory/tasks" "$o/repos/claude-factory/progress" "$o/repos/ecs/tasks"
+  git init -q -b main "$o" && git -C "$o" config user.email ui@localhost && git -C "$o" config user.name ui || return 1
+  printf 'ui: docker\nui_port: %s\nspawn: herdr\ncapacity:\n  sessions: 10\n  roles: {repo-lead: 3, scout: 8, implementer: 4}\n' \
+    "$port1" > "$o/factory.yml"
+  printf 'claude-factory:\n  path: /nowhere/claude-factory\n  alias: CF\necs:\n  path: /nowhere/ecs\n  alias: ECS\n' > "$o/repos.yml"
+  org_task "$o" ecs T-ECS-1 in_progress R-20260925-1 P1 'feat(ecs): export invoices to the ledger' '`make test` passes.'
+  org_task "$o" ecs T-ECS-1-01 ready R-20260925-1 - 'feat(ecs): keep the export cursor' 'The cursor test passes.'
+  org_task "$o" ecs T-ECS-1-02 ready R-20260925-1 P3 'feat(ecs): the nightly job'
+  org_task "$o" claude-factory T-CF-1 ready R-20260925-1 - 'feat(ui): show the export'
+  git -C "$o" add -A && git -C "$o" commit -qm 'fixture: the org state' || return 1
+  org_task "$o" claude-factory T-CF-2 done R-20260920-1 P0 'fix(ui): the old export' 'It was done.'
+  org_task "$o" claude-factory T-CF-2-01 done R-20260920-1 - 'fix(ui): the old block'
+  printf 'The archived progress of T-CF-2.\n' > "$o/repos/claude-factory/progress/T-CF-2.md"
+  git -C "$o" add -A && git -C "$o" commit -qm 'task: T-CF-2 opened' || return 1
+
+  om() { sh "$bin/map.sh" "$@" --state "$o"; }
+  om new R-20260925-1 --destination 'Invoices reach the ledger every night.' </dev/null >/dev/null || return 1
+  printf 'Which ledger API do we post to?\n' | om ticket R-20260925-1 research 'Which ledger API' >/dev/null || return 1
+  printf 'Where does the export keep its cursor?\n' | om ticket R-20260925-1 grilling 'Pick the store' --repo ecs --blocked-by 01 >/dev/null || return 1
+  om ticket R-20260925-1 task 'Get ledger access' </dev/null >/dev/null || return 1
+  om ticket R-20260925-1 grilling 'Order the exports' --blocked-by 02 </dev/null >/dev/null || return 1
+  om ticket R-20260925-1 prototype 'Try the cursor' --repo ecs </dev/null >/dev/null || return 1
+  om claim R-20260925-1 01 --by s-chart </dev/null >/dev/null || return 1
+  printf 'The REST API, v2.\nThe report is research/ledger.md.\n' | om resolve R-20260925-1 01 >/dev/null || return 1
+  printf "Access is the other team's rollout.\n" | om drop R-20260925-1 03 >/dev/null || return 1
+  om claim R-20260925-1 05 --by chart_ecs-12 </dev/null >/dev/null || return 1
+  printf 'How the two exports are ordered once both run.\n' | om set R-20260925-1 fog >/dev/null || return 1
+  printf 'Both repos post through the REST API.\n' | om set R-20260925-1 notes >/dev/null || return 1
+  printf -- '- **Ledger**: the accounting system of record. Avoid: books\n' | om set R-20260925-1 terms >/dev/null || return 1
+  om status R-20260925-1 grilling </dev/null >/dev/null || return 1
+  om new R-20260920-1 --destination 'The old export reached the ledger.' </dev/null >/dev/null || return 1
+  for w in planned queued running done; do om status R-20260920-1 "$w" </dev/null >/dev/null || return 1; done
+  sh "$bin/state-archive.sh" --all --state "$o" >/dev/null || return 1
+
+  oc() { sh "$bin/capacity.sh" "$@" --state "$o"; }
+  oc acquire sessions T-ECS-1-lead && oc acquire repo-lead T-ECS-1 && oc acquire implementer T-ECS-1-01 \
+    && oc acquire scout agent-1 --session sess-1 && oc acquire architecture-auditor T-ECS-1-02 || return 1
+  sh "$bin/pass-stamp.sh" daily global --state "$o" >/dev/null && sh "$bin/pass-stamp.sh" weekly repo:ecs --state "$o" >/dev/null \
+    && sh "$bin/pass-stamp.sh" daily repo-agent:ecs/implementer --state "$o" >/dev/null
+}
 
 ui="$tmp/ui"
 FACTORY_UI_HOME=$ui

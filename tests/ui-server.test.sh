@@ -2,7 +2,9 @@
 # The Factory UI server in its container, driven through ui-up.sh and ui-down.sh over a fixture state repo, a
 # throwaway UI home, an ephemeral host port and a stub `herdr` on PATH: the token, the answer files, the change
 # stream, the scan past an unreadable folder, container reuse and recreation on a label mismatch, the port
-# fallback, the relay tab, the exit codes, and the server's own xunit tests in the SDK image. The container is
+# fallback, the relay tab, the exit codes, the org routes over a state built with the real scripts (requests, the
+# org, setup, the archive fallback, the free message to the CEO, the scan past .git and .capacity), and the
+# server's own xunit tests in the SDK image. The container is
 # named from FACTORY_UI_CONTAINER so a real claude-factory-ui on this machine is never touched.
 # Without Docker it prints `SKIP ui-server: no docker` and exits 0.
 set -u
@@ -312,6 +314,158 @@ is 'two racing ui-up.sh both exit 0'                          "$rc1 $rc2" '0 0'
 is 'the race leaves the container running'                    "$(running)" true
 is 'the race leaves one relay tab'                            "$(relay_tabs)" 1
 
+# --- the org routes over a state built with map.sh, state-archive.sh, capacity.sh and pass-stamp.sh, a doctor.json
+# in the shape factory-doctor.sh --json writes, and the CEO registered through ui-session.sh ----------------------
+j() { # <js expression over b, the last body>: a string as it is, anything else as JSON
+  node -e 'const b=JSON.parse(require("fs").readFileSync(process.argv[2],"utf8"));const v=eval(process.argv[1]);process.stdout.write(typeof v==="string"?v:JSON.stringify(v))' \
+    "$1" "$tmp/body" 2>&1
+}
+state3="$tmp/state3"
+if org_state "$state3" > "$tmp/org.out" 2>&1; then pass 'the org state is built with the real scripts'
+else bad 'the org state is built with the real scripts'; tail -n 20 "$tmp/org.out" | sed 's/^/  org: /'; fi
+sh "$bin/ui-session.sh" --session s-ceo --pane w1:p9 --flow ceo --task ceo || bad 'ui-session.sh registers the CEO'
+mkdir -p "$ui/setup"
+printf '{\n  "at": "2026-09-25T10:00:00Z",\n  "root": "%s",\n  "steps": [\n    {"id": "git", "state": "done", "detail": "git 2.51", "fix": ""},\n    {"id": "herdr", "state": "missing", "detail": "herdr is not on PATH", "fix": "install herdr"},\n    {"id": "repo:ecs:alias", "state": "failing", "detail": "no alias", "fix": "factory-add-repo.sh ecs --alias ECS"}\n  ]\n}\n' \
+  "$tmp" > "$ui/setup/doctor.json"
+leases_before=$(find "$state3/.capacity" -type f | sort)
+up --state "$state3"; rc=$?
+is 'ui-up.sh over the org state exits 0'                      "$rc" 0
+port3=$(cat "$ui/port" 2>/dev/null)
+ready "$port3" || bad "the server over the org state never answered on $port3"
+api() { http "$port3" "$1" -H "X-Factory-Token: $token"; }
+
+is 'GET /api/board over the org state is 200'                 "$(api /api/board)" 200
+is 'a board row has the fields of the contract, in order'     "$(j 'Object.keys(b[0]).join(",")')" 'id,status,archetype,tier,repo,owner,goal,request,priority'
+is 'the board lists the live tasks only'                      "$(j 'b.map(r=>r.id).sort().join(" ")')" 'T-CF-1 T-ECS-1 T-ECS-1-01 T-ECS-1-02'
+is 'a parent row carries its request, priority and repo'      "$(j 'const r=b.find(r=>r.id==="T-ECS-1");[r.request,r.priority,r.repo].join(" ")')" 'R-20260925-1 P1 ecs'
+is 'a block without a priority shows its parent'"'"'s'            "$(j 'b.find(r=>r.id==="T-ECS-1-01").priority')" P1
+is 'a block with a priority shows its own'                    "$(j 'b.find(r=>r.id==="T-ECS-1-02").priority')" P3
+is 'a parent without a priority is P2'                        "$(j 'b.find(r=>r.id==="T-CF-1").priority')" P2
+
+is 'GET /api/requests is 200'                                 "$(api /api/requests)" 200
+is 'a request row has the fields of the contract'             "$(j 'Object.keys(b[0]).join(",")')" 'id,status,destination,priority,parents,archived'
+is 'requests list newest first, the archived one included'    "$(j 'b.map(r=>r.id).join(" ")')" 'R-20260925-1 R-20260920-1'
+is 'the live request reads its map'                           "$(j 'const r=b[0];[r.status,r.destination,r.priority,r.parents.join("+"),r.archived].join("|")')" \
+  'grilling|Invoices reach the ledger every night.|P1|T-CF-1+T-ECS-1|false'
+is 'the archived request reads from requests/archive'         "$(j 'const r=b[1];[r.status,r.priority,r.parents.join("+"),r.archived].join("|")')" 'done|P0|T-CF-2|true'
+
+is 'GET /api/requests/R-20260925-1 is 200'                    "$(api /api/requests/R-20260925-1)" 200
+is 'a request has the fields of the contract, in order'       "$(j 'Object.keys(b).join(",")')" \
+  'id,status,destination,notes,terms,archived,decisions,outOfScope,fog,tickets,frontier,parents'
+is 'its decisions are the resolved tickets'                   "$(j 'b.decisions')" '[{"title":"Which ledger API","file":"01-which-ledger-api.md","gist":"The REST API, v2."}]'
+is 'its out of scope is the dropped ticket'                   "$(j 'b.outOfScope')" '[{"title":"Get ledger access","file":"03-get-ledger-access.md","gist":"Access is the other team'"'"'s rollout."}]'
+is 'its fog, notes and terms are the sections'                "$(j '[b.fog,b.notes,b.terms].join("|")')" \
+  'How the two exports are ordered once both run.|Both repos post through the REST API.|- **Ledger**: the accounting system of record. Avoid: books'
+is 'a ticket has the fields of the contract, in order'        "$(j 'Object.keys(b.tickets[0]).join(",")')" 'nn,title,type,status,blockedBy,repo,claimedBy,question,answer'
+is 'the tickets come in number order with their status'       "$(j 'b.tickets.map(t=>t.nn+":"+t.status).join(" ")')" '01:resolved 02:open 03:dropped 04:open 05:claimed'
+is 'ticket 02 reads its type, blockers, repo and question'    "$(j 'const t=b.tickets[1];[t.type,t.blockedBy.join("+"),t.repo,t.claimedBy,t.question,t.answer].join("|")')" \
+  'grilling|01|ecs||Where does the export keep its cursor?|'
+is 'ticket 01 reads its answer and who claimed it'            "$(j 'const t=b.tickets[0];[t.claimedBy,t.answer].join("|")')" \
+  's-chart|The REST API, v2.
+The report is research/ledger.md.'
+is 'ticket 05 is claimed'                                     "$(j 'b.tickets[4].claimedBy')" chart_ecs-12
+is 'the frontier is what map.sh frontier prints'              "$(j 'b.frontier.join(" ")')" \
+  "$(sh "$bin/map.sh" frontier R-20260925-1 --state "$state3" | cut -d' ' -f1 | tr '\n' ' ' | sed 's/ $//')"
+is 'the frontier is ticket 02'                                "$(j 'b.frontier.join(" ")')" 02
+is 'a parent has the fields of the contract, in order'        "$(j 'Object.keys(b.parents[0]).join(",")')" 'id,repo,priority,status,goal,acceptance,blocks'
+is 'the parents are the tasks of the request'                 "$(j 'b.parents.map(p=>p.id).join(" ")')" 'T-CF-1 T-ECS-1'
+is 'a parent carries its goal and acceptance'                 "$(j 'const p=b.parents[1];[p.repo,p.priority,p.status,p.goal,p.acceptance].join("|")')" \
+  'ecs|P1|in_progress|feat(ecs): export invoices to the ledger|`make test` passes.'
+is 'a block has the fields of the contract, in order'         "$(j 'Object.keys(b.parents[1].blocks[0]).join(",")')" 'id,status,goal,acceptance'
+is 'the blocks carry their acceptance, empty when none'       "$(j 'b.parents[1].blocks.map(k=>k.id+":"+k.acceptance).join("|")')" \
+  'T-ECS-1-01:The cursor test passes.|T-ECS-1-02:'
+is 'a parent without blocks has none'                         "$(j 'b.parents[0].blocks')" '[]'
+is 'GET /api/requests/R-20260920-1 (archived) is 200'         "$(api /api/requests/R-20260920-1)" 200
+is 'the archived request shows its archived parent and block' "$(j '[b.archived,b.parents[0].id,b.parents[0].acceptance,b.parents[0].blocks.map(k=>k.id).join("+")].join("|")')" \
+  'true|T-CF-2|It was done.|T-CF-2-01'
+is 'an unknown request is 404'                                "$(api /api/requests/R-20990101-1)" 404
+is 'a malformed request id is 404'                            "$(api /api/requests/nonsense)" 404
+
+is 'GET /api/tasks/T-CF-2 (archived) is 200'                  "$(api /api/tasks/T-CF-2)" 200
+is 'the archived task carries its request and priority'       "$(j '[b.task.status,b.request,b.priority,b.task.request,b.task.priority].join(" ")')" 'done R-20260920-1 P0 R-20260920-1 P0'
+is 'the archived task carries its archived block'             "$(j 'b.blocks.map(k=>k.id).join(" ")')" T-CF-2-01
+has 'the archived task carries its archived progress'         'The archived progress of T-CF-2\.' "$(j 'b.progress')"
+tl=$(j 'b.timeline.join("\n")')
+has 'its timeline follows the move: the archive commit'       'chore\(T-CF-2\): archive' "$tl"
+has 'its timeline follows the move: the commit before it'     'task: T-CF-2 opened' "$tl"
+is 'GET /api/tasks/T-ECS-1-01 is 200'                         "$(api /api/tasks/T-ECS-1-01)" 200
+is 'a block detail shows its parent'"'"'s priority'               "$(j 'b.priority')" P1
+
+is 'GET /api/org is 200'                                      "$(api /api/org)" 200
+is 'the org has the fields of the contract'                   "$(j 'Object.keys(b).join(",")')" 'capacity,leases,leads,ceo'
+is 'the sessions slot counts the session leases'              "$(j 'b.capacity.sessions')" '{"used":1,"cap":10}'
+is 'the roles are factory.yml in order, then the uncapped'    "$(j 'b.capacity.roles')" \
+  '[{"role":"repo-lead","used":1,"cap":3},{"role":"scout","used":1,"cap":8},{"role":"implementer","used":1,"cap":4},{"role":"architecture-auditor","used":1,"cap":null}]'
+has 'a lease reads its file'                                  '^\{"role":"repo-lead","key":"T-ECS-1","session":"","unit":"T-ECS-1-lead","at":"[0-9]+"\}$' \
+  "$(j 'JSON.stringify(b.leases.find(l=>l.role==="repo-lead"))')"
+is 'a subagent lease carries its session'                     "$(j 'const l=b.leases.find(l=>l.role==="scout");l.key+" "+l.session')" 'agent-1 sess-1'
+is 'every lease is listed'                                    "$(j 'b.leases.length')" 5
+is 'one lead per repo-lead lease, with its task'              "$(j 'b.leads')" \
+  '[{"task":"T-ECS-1","repo":"ecs","request":"R-20260925-1","priority":"P1","status":"in_progress","unit":"T-ECS-1-lead"}]'
+is 'the CEO is the session of flow ceo'                       "$(j 'b.ceo')" '{"sid":"s-ceo","pane":"w1:p9"}'
+is 'reading the org leaves every lease in place'              "$(find "$state3/.capacity" -type f | sort)" "$leases_before"
+is 'the org counts what capacity.sh counts'                   "$(j 'b.capacity.roles[0].used+"/"+b.capacity.roles[0].cap')" "$(sh "$bin/capacity.sh" count repo-lead --state "$state3")"
+
+is 'GET /api/setup over the org state is 200'                 "$(api /api/setup)" 200
+is 'setup keeps its fields and adds the contract'"'"'s'           "$(j 'Object.keys(b).join(",")')" 'root,reposYml,toolsets,doctorNotice,steps,doctorAt,capacity,passes'
+is 'setup carries the doctor steps'                           "$(j 'b.steps.map(s=>s.id+":"+s.state).join(" ")')" 'git:done herdr:missing repo:ecs:alias:failing'
+is 'a step has id, state, detail and fix'                     "$(j 'b.steps[1]')" '{"id":"herdr","state":"missing","detail":"herdr is not on PATH","fix":"install herdr"}'
+is 'setup carries the doctor date'                            "$(j 'b.doctorAt')" '2026-09-25T10:00:00Z'
+is 'setup carries the capacity of the org'                    "$(j 'b.capacity.sessions.used+"/"+b.capacity.roles.length')" 1/4
+is 'setup lists every passes.yml by scope'                    "$(j 'b.passes.map(p=>p.scope).join(" ")')" 'global repo:ecs repo-agent:ecs/implementer'
+has 'a stamped pass reads its stamp, the other never'         '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z never$' "$(j 'b.passes[0].daily+" "+b.passes[0].weekly')"
+has 'a weekly stamp reads as written'                         '^never [0-9]{4}-[0-9]{2}-[0-9]{2}T' "$(j 'b.passes[1].daily+" "+b.passes[1].weekly')"
+is 'the stamp is the one passes.yml holds'                    "$(j 'b.passes[0].daily')" "$(sed -n 's/^daily: //p' "$state3/memory/global/passes.yml")"
+
+# --- the Memory tab's start button: an empty ask is a free message to the CEO, typed by the relay like an answer ----
+cmsg() { ls -A "$ui/sessions/s-ceo/answers" 2>/dev/null | tr '\n' ' '; }
+is 'an empty ask to the CEO is 201'                           "$(post "$port3" s-ceo '{"ask":"","text":"start the daily pass for global"}')" 201
+is 'it is written as the next answer under the ask id msg'    "$(cmsg)" '1-msg.txt '
+is 'the message file is the text'                             "$(cat "$ui/sessions/s-ceo/answers/1-msg.txt" 2>/dev/null)" 'start the daily pass for global'
+is 'an empty ask with no text is 400'                         "$(post "$port3" s-ceo '{"ask":"","text":""}')" 400
+is 'an empty ask to an unknown session is 404'                "$(post "$port3" nosuch '{"ask":"","text":"start the daily pass for global"}')" 404
+is 'refused free messages write nothing'                      "$(cmsg)" '1-msg.txt '
+mkdir -p "$tmp/ceohome/sessions" "$tmp/ceowrap"
+cp -r "$ui/sessions/s-ceo" "$tmp/ceohome/sessions/"
+cat > "$tmp/ceowrap/herdr" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HERDR_STUB/log"
+case "${1:-} ${2:-}" in
+  'agent get') printf '{"id":"cli:agent:get","result":{"agent":{"agent":"claude","agent_session":{"source":"hook","value":"s-ceo"},"agent_status":"idle","pane_id":"w1:p9","state_change_seq":7},"type":"agent_info"}}\n' ;;
+  *) echo '{"id":"cli:stub","result":{"type":"ok"}}' ;;
+esac
+STUB
+chmod +x "$tmp/ceowrap/herdr"
+PATH="$tmp/ceowrap:$PATH" timeout 60 sh "$bin/ui-relay.sh" --home "$tmp/ceohome" --settle 0 --once > "$tmp/relay.out" 2>&1
+has 'the relay types the free message into the CEO pane'     '^agent prompt w1:p9 start the daily pass for global' "$(cat "$HERDR_STUB/log")"
+is 'the relay records it delivered'                           "$(cat "$tmp/ceohome/sessions/s-ceo/delivered" 2>/dev/null)" 1
+
+# --- the scan: one per mount for every client, a commit is one stamp on .git/logs/HEAD, .capacity is never read ---
+curl -sN -m 30 -H "X-Factory-Token: $token" "http://127.0.0.1:$port3/api/stream" > "$tmp/stream3" 2>/dev/null &
+stream=$!
+curl -sN -m 30 -H "X-Factory-Token: $token" "http://127.0.0.1:$port3/api/stream" > "$tmp/stream4" 2>/dev/null &
+stream4=$!
+sleep 1.5
+printf 'Both repos post through the REST API, nightly.\n' | sh "$bin/map.sh" set R-20260925-1 notes --state "$state3" >/dev/null \
+  || bad 'map.sh set notes commits'
+sh "$bin/capacity.sh" acquire scout agent-2 --session sess-2 --state "$state3" || bad 'capacity.sh acquires a second scout'
+printf 'plain\n' > "$state3/plain.md"
+t0=$(now)
+until tr -d '\r' < "$tmp/stream3" | grep -qxF 'data: /state/plain.md' && tr -d '\r' < "$tmp/stream4" | grep -qxF 'data: /state/plain.md' \
+  && tr -d '\r' < "$tmp/stream3" | grep -qxF 'data: /state/.git/logs/HEAD'; do
+  [ $(( $(now) - t0 )) -lt 3000 ] || break
+  sleep 0.05
+done
+s3=$(tr -d '\r' < "$tmp/stream3")
+has 'a new file reaches the first client'                     '^data: /state/plain\.md$' "$s3"
+has 'the same change reaches a second client'                 '^data: /state/plain\.md$' "$(tr -d '\r' < "$tmp/stream4")"
+has 'a commit reaches the stream as .git/logs/HEAD'           '^data: /state/\.git/logs/HEAD$' "$s3"
+has 'the committed map reaches the stream'                    '^data: /state/requests/R-20260925-1/map\.md$' "$s3"
+hasnt 'nothing else under .git reaches the stream'            '^data: /state/\.git/(objects|refs|index|COMMIT_EDITMSG|logs/refs)' "$s3"
+hasnt 'nothing under .capacity reaches the stream'            '/\.capacity/' "$s3"
+kill "$stream" "$stream4" 2>/dev/null; stream=''
+is 'a new lease shows in the org at once'                     "$(api /api/org >/dev/null; j 'b.capacity.roles.find(r=>r.role==="scout").used')" 2
+
 # --- ui-down.sh removes the container and closes the relay tab; with neither it does nothing ----------------------
 down; rc=$?
 is 'ui-down.sh exits 0'                                       "$rc" 0
@@ -331,5 +485,8 @@ is 'the SDK-image dotnet test passes'                         "$rc" 0
 [ "$rc" = 0 ] || tail -n 40 "$tmp/dotnet.out" | sed 's/^/  dotnet: /'
 has 'the SDK-image dotnet test ran tests'                     'Total tests: +[1-9]' "$(cat "$tmp/dotnet.out")"
 has 'the SDK-image dotnet test ran AskParserTests'           'Passed AskParserTests\.' "$(cat "$tmp/dotnet.out")"
+for c in RequestMapTests OrgTests StateReaderTests UiHomeTests MountScannerTests; do
+  has "the SDK-image dotnet test ran $c"                      "Passed $c\\." "$(cat "$tmp/dotnet.out")"
+done
 
 exit $fail
