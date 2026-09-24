@@ -740,6 +740,57 @@ unquoted() { # <text>
   printf '%s' "$1" | sed -E "s/'[^']*'|\"[^\"]*\"//g"
 }
 
+redirect_targets() { # <segment>
+  printf '%s\n' "$1" | awk '
+    { s = s (NR > 1 ? "\n" : "") $0 }
+    END {
+      n = length(s); q = ""
+      for (i = 1; i <= n; i++) {
+        ch = substr(s, i, 1)
+        if (q != "") {
+          if (ch == "\\" && q == "\"") { i++; continue }
+          if (ch == q) q = ""
+          continue
+        }
+        if (ch == "\\") { i++; continue }
+        if (ch == "\047" || ch == "\"") { q = ch; continue }
+        if (ch != ">") continue
+        pc = (i > 1 ? substr(s, i - 1, 1) : "")
+        if (substr(s, i + 1, 1) == ">") i++
+        if (pc == "=" || pc == "<" || pc == "-") continue
+        nc = substr(s, i + 1, 1)
+        if (nc == "&" || nc == "(") continue
+        j = i + 1
+        while (j <= n && substr(s, j, 1) ~ /[ \t]/) j++
+        w = ""; wq = ""; lead = ""
+        for (; j <= n; j++) {
+          c = substr(s, j, 1)
+          if (wq != "") {
+            if (c == "\\" && wq == "\"") { w = w substr(s, ++j, 1); continue }
+            if (c == wq) { wq = ""; continue }
+            w = w c; continue
+          }
+          if (c ~ /[ \t\n;|&<>()]/) break
+          if (c == "\\") { w = w substr(s, ++j, 1); continue }
+          if (c == "\047" || c == "\"") { if (w == "") lead = 1; wq = c; continue }
+          w = w c
+        }
+        i = j - 1
+        if (w == "") continue
+        if (lead && substr(w, 1, 1) == "~") w = "./" w
+        print w
+      }
+    }'
+}
+
+tilde_path() { # <word>
+  case "$1" in
+    "~") printf '%s' "${HOME:-}" ;;
+    "~/"*) printf '%s' "${HOME:+$HOME/${1#"~/"}}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 # T-228 Q22: `cd <abs>`, and `cd`, `cd ~`, `cd ~/x` through $HOME, name the cwd the later segments are judged
 # against. A `cd` the guard cannot resolve (relative, `-`, a variable, `..`, a quoted path, a `)`) leaves it unknown.
 # T-228-08: an allowlist, not a denylist. Only in the shape chain_shape accepts does a cd replace the cwd. In every
@@ -1048,10 +1099,12 @@ guard_bash() {
   # operand, an in-place editor's token) names a task file; the two loops below raise the flag as they go.
   # 2026-09-10: a `>` inside quotes (`x=>y` in a node -e script, `"a -> b"`, `--format="%h>%s"`, a grep pattern,
   # a PR body) is data, and one right after `=`, `-` or `<` is an arrow or `<>`, never a redirect — every one of
-  # them was denied as a write into the cwd, the registered clone, on a read-only command. Quoted spans go first
-  # (leftmost quote wins, so an apostrophe inside "…" stays inside it; a span may run over several lines), then
-  # the unquoted targets are read off what is left, and a target quoted as a whole (`> "README.md"`) off the
-  # command as written. A `$VAR/…` target is unknown here and resolving it against the cwd is a guess, not a rule.
+  # them was denied as a write into the cwd, the registered clone, on a read-only command. T-264-02:
+  # redirect_targets reads the targets with split_segs's quote tracking, escapes included, so a quote in a grep
+  # pattern no longer pairs with a later one and an escaped `\"` no longer hides a real redirect. A target quoted
+  # as a whole (`> "README.md"`) is read without its quotes, and a quoted `~` stays relative to the cwd. A bare
+  # `~` or `~/x` is expanded through $HOME, and with HOME unset it is denied. A `$VAR/…` target is unknown here
+  # and resolving it against the cwd is a guess, not a rule.
   # T-228 Q22: read per segment, split_segs keeps a quoted span on one line, and after a `cd` the guard cannot
   # resolve a relative target is denied rather than joined onto a cwd that is no longer the shell's.
   status_write=''
@@ -1068,11 +1121,12 @@ guard_bash() {
     cd_track "$prev"; prev=$seg
     case "$seg" in
       *'>'*)
-        rtargets=$(unquoted "$seg" | grep -oE '(^|[^=<>-])>>?[[:space:]]*[^[:space:]"'"'"';|&<>()]+' | sed 's/^[^>]*>*[[:space:]]*//'
-          printf '%s' "$seg" | grep -oE '(^|[^=<>-])>>?[[:space:]]*("[^"]+"|'"'"'[^'"'"']+'"'"')' | sed 's/^[^>]*>*[[:space:]]*//' | tr -d '\042\047')
+        rtargets=$(redirect_targets "$seg")
         set -f
         for p in $rtargets; do
           case "$p" in \$*) continue ;; esac
+          p=$(tilde_path "$p")
+          [ -n "$p" ] || deny "a write target under ~ with HOME unset."
           case "$p" in *tasks/*) status_write=1 ;; esac
           if [ -n "$cwd_lost" ]; then
             case "$p" in
@@ -1093,7 +1147,8 @@ guard_bash() {
   # never offered, and a `$` target is skipped as the redirect loop skips one. T-228-06: the script operand of a
   # `sed -i`/`perl -i` without `-e` is skipped, quoted or not, and after a `cd` the guard cannot resolve, a relative
   # token is denied while an absolute one is judged as usual. T-228-07: there only a token with a `/` and the last
-  # operand of `sed`/`perl` count as relative targets, never a command word.
+  # operand of `sed`/`perl` count as relative targets, never a command word. T-264-02: a `~` token is expanded
+  # through $HOME, as the redirect loop does.
   set -f
   oIFS=$IFS; IFS='
 '
@@ -1117,6 +1172,8 @@ guard_bash() {
       case "$t" in sed|perl) cmdseen=1; continue ;; -*) continue ;; esac
       if [ -n "$cmdseen" ] && [ -n "$script" ]; then script=''; continue; fi
       case "$t" in @Q|\$*|\`*|'') continue ;; esac
+      t=$(tilde_path "$t")
+      [ -n "$t" ] || deny "a write target under ~ with HOME unset."
       if [ -n "$cwd_lost" ]; then
         case "$t" in
           /*|[A-Za-z]:/*|"~"*) ;;
