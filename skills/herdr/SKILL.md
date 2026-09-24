@@ -77,6 +77,18 @@ starts `claude` there and sends the prompt. On `manual`, or on a machine with no
 `cd ... && claude ...` lines for the human to run. Either way it prints one `<id> <spawned|printed|skipped>
 <cwd>` line per unit, so the main session learns what went out without reading any of the work.
 
+Every session is named `<emoji> <repo> <id>`, for example `🦊 arthurcore T-251-01`: the tab label and the
+`claude --name`, and the `--name` of a printed line too. The emoji is the repo's `emoji:` in `repos.yml`, else
+a fixed pick by the repo key. The herdr agent name stays the lowercased id (`t-251-01`), so `herdr agent read
+<name>` takes that. Each tab it opens is recorded as `<unit> <tab_id> <pane_id>` in
+`<work-dir>/<repo>/.harness/<T-NNN>/herdr-tabs`, written only through `bin/herdr-tabs.sh`.
+
+Closing is scripted, never done by hand. Before a unit starts again, `session-monitor.sh` closes its recorded
+tab and the step tabs of its parent, and prints the unit `skipped` when its own tab is still at work. Every
+`herd-watch.sh` pass, and every `--all` run, closes the recorded tabs of units at `done` or `closed`. A
+focused tab, the caller's own `$HERDR_TAB_ID`, an agent that is `working` or `blocked` and a tab `herdr tab
+get` cannot read are kept, and a tab not in the record is never touched.
+
 `--max N` caps a batch, default 5. A unit with no worktree is skipped: run
 `<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. `--spawn herdr` overrides `spawn:` for
 one call, and the tabs are created in `$HERDR_WORKSPACE_ID` unless `--workspace` names another, so a
