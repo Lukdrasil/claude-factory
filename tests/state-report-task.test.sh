@@ -1,6 +1,7 @@
 #!/bin/sh
 # T-252-03: a task is named by `--task` or by the owner lookup, never by a first line of CLAUDE.md in the cwd.
-# state-report.sh without --task exits 2 "no --task"; self-report-check.sh judges the tasks this session owns.
+# state-report.sh without --task exits 2 "no --task"; self-report-check.sh judges the tasks this session owns, and
+# its Stop message sends the agent's own state files through state-commit.sh, the push being state-push.sh's.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(cd "$(mktemp -d)" && pwd -P)
@@ -44,6 +45,9 @@ stop() { # <cwd> <session id>
 stop "$W/demo/T-011" me
 check 'self-report-check.sh blocks on the in_progress task the session owns' 2 "$?"
 check 'and names it' yes "$(has "$tmp/err" 'task T-011')"
+check 'and sends own state files through state-commit.sh' yes "$(has "$tmp/err" 'state-commit.sh')"
+check 'and says the push runs in the background' yes "$(has "$tmp/err" 'state-push.sh')"
+check 'and no longer asks for a commit + push' no "$(has "$tmp/err" 'commit + push')"
 
 stop "$W/demo/T-010" me2
 check 'self-report-check.sh beside a CLAUDE.md naming another task blocks on the owned one' 2 "$?"

@@ -1,7 +1,8 @@
 #!/bin/sh
 # The human gate that ends a task, `factory done` (T-007), run in the standalone posture straight against the
-# state clone. It flips the parent and every T-NNN-NN block to a terminal status in one commit, releases the
-# owner and pushes.
+# state clone. It flips the parent and every T-NNN-NN block to a terminal status in one commit and releases the
+# owner. It does not push: the push to the state root is state-push.sh's, run in the background by the monitor
+# pass and the CEO loop.
 #
 # There are two endings, decided by the parent's `archetype:` (T-186):
 #   * a task with an MR ends in `done`, and only after a human validated that MR, so a parent whose `mr_url` is
@@ -16,16 +17,20 @@
 # `--close "<reason>"` (T-228 A8) ends any task in `closed`, a block too, with no mr_url check: the reason goes
 # into the commit message and a `**closed** <reason>` line of the task's progress file.
 #
-# After the push the task's leftovers go (T-228 Q2, Q16): the worktree `$WORK_DIR/<key>/<id>` of the task and
+# After the commit the task's leftovers go (T-228 Q2, Q16): the worktree `$WORK_DIR/<key>/<id>` of the task and
 # of each block when `git status --porcelain` is empty, and the local branch (the parent's `branch:`,
 # `block/<id>` for a block) when a remote-tracking ref contains its tip, read without a fetch. Whatever stays
 # is one `skipped: <what> <reason>` line on stdout. Remote branches are never touched.
 #
+# Last, a parent (not a block) leaves the hot globs: state-archive.sh moves it with its blocks, progress and
+# verdicts to repos/<key>/archive/<YYYY-MM>/ when every block is terminal and no open task depends on it, and
+# otherwise leaves it live with the reason on stderr; either way the task is done and the exit is 0.
+#
 #   task-done.sh <T-NNN|T-NNN-NN> [--close "<reason>"] [--state <dir>]      cwd = the state clone unless --state
 #
-# Exit 1 with the reason when an MR archetype has no mr_url; nothing written. Exit 2 when the commit landed but
-# the push to the state root did not, the same meaning state-report.sh gives that code. A leftover is not an
-# error.
+# Exit 1 with the reason when an MR archetype has no mr_url; nothing written. Exit 2 when the terminal status
+# could not be committed (the state lock or git), the same meaning state-report.sh gives that code. A leftover
+# and a parent that stays live are not errors.
 set -eu
 
 id='' state='' reason=''
@@ -68,7 +73,7 @@ fi
 blocks=$(grep -HxE "id: $id-[0-9]{2,}" "$state"/repos/*/tasks/*.md 2>/dev/null \
   | sed 's/^\(.*\):id: \(.*\)$/\2 \1/' | sort_ids | cut -d' ' -f2- || :)
 
-# E3: the whole critical section, from the write to the push, under the one lock per state clone that
+# E3: the whole critical section, from the write to the commit, under the one lock per state clone that
 # state-report.sh takes, so a report running beside this one cannot ride in on its commit.
 state_lock "$state" && lrc=0 || lrc=$?
 case "$lrc" in
@@ -115,8 +120,6 @@ fi
 
 state_commit "$state" "$message" "$@" \
   || die2 "the $terminal of $id could not be committed in $state"
-
-state_push "$state" || die2 "the push to the state root failed 3 times: $id is $terminal in $state but not pushed"
 state_unlock
 
 cleanup() { # <task file>
@@ -151,4 +154,10 @@ cleanup() { # <task file>
 clone=$(yml_field "$key" path)
 if [ -n "${WORK_DIR:-}" ] && [ -n "$clone" ] && git -C "$clone" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   printf '%s\n%s\n' "$parent" "$blocks" | while IFS= read -r task; do [ -z "$task" ] || cleanup "$task"; done
+fi
+
+# the parent it just closed, archived when it may be (state-archive.sh takes the lock itself and prints the moves);
+# a parent that stays live is named with the reason on stderr and is no error
+if ! is_block_id "$id"; then
+  sh "$(dirname -- "$0")/state-archive.sh" "$id" --state "$state" || :
 fi
