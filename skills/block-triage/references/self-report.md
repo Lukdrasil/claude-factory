@@ -20,7 +20,7 @@ passed.
 |---|---|
 | `review` | the draft exists in the state repo and passed the validator, or already existed, both recorded under `## Evidence` |
 | `blocked` | the issue cannot be read, or the archetype cannot be decided from it: the question goes into the progress file as `## Question`, shaped per `<plugin-root>/skills/_shared/blocked-question.md` |
-| `failed` | the draft could not be written; `state-report.sh --attempts "attempt <N> - <model>, <what failed>"` |
+| `failed` | the draft could not be written; `state-report.sh --task <id> --attempts "attempt <N> - <model>, <what failed>"` |
 
 Never write `done`, `ready`, `in_progress` or `stalled`.
 
