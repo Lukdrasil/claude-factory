@@ -1,6 +1,6 @@
 ---
-name: factory-reviewer
-description: Independent review of a factory solve session's whole diff before the MR, from a fresh context and read-only — acceptance, correctness, security, test quality, docs, craft and scope. Returns a report with a verdict and evidenced findings, never an edit. Spawned by the coordinator per _shared/delegation.md; do not call it directly.
+name: code-reviewer
+description: Independent review of a factory solve session's whole diff before the MR, from a fresh context and read-only: acceptance, correctness, security, test quality, docs, craft and scope. Returns a report with a verdict and evidenced findings, never an edit. Spawned by the coordinator per _shared/delegation.md; do not call it directly.
 model: opus
 effort: high
 tools: Read, Grep, Glob

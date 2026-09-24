@@ -134,7 +134,7 @@ block T-007-03 tests_ready null implement src/c.ts
 out=$(sh "$bin/session-monitor.sh" --task T-007 --state "$state" --dry-run 2>/dev/null)
 check 'an armed implement block goes out'        '^T-007-02 printed '
 check 'every armed implement block goes out'     '^T-007-03 printed '
-check 'it goes out with the implement agent'     'You are factory-block-implement\.'
+check 'it goes out with the implement agent'     'You are implementer\.'
 nocheck 'a done block does not'                  '^T-007-01 '
 
 # a tests_ready block the monitor has not armed is still in the hands of its tests phase

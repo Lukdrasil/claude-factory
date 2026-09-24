@@ -1,8 +1,8 @@
 #!/bin/sh
 # The recon half of the triage investigation (T-153), so skills/_shared/investigate.md steps 1 to 3 cost one
 # command instead of prose: the sibling bin/investigate-inventory.sh over the repo, the toolset's `find-refs`
-# binding over the symbol when the toolset binds one, and the at most 8 `worker-explorer` questions the
-# procedure prescribes. One block on stdout, the brief material for a `factory-investigator`.
+# binding over the symbol when the toolset binds one, and the at most 8 `scout` questions the
+# procedure prescribes. One block on stdout, the brief material for a `triage-analyst`.
 #
 #   investigate.sh <repo-dir> <symbol> [--toolset <toolset.md>]
 #
@@ -102,5 +102,5 @@ else
   if [ -n "$refs" ]; then printf '%s\n\n' "$refs"; else printf 'no hits\n\n'; fi
 fi
 
-printf '## Questions (at most 8, one worker-explorer each)\n\n'
+printf '## Questions (at most 8, one scout each)\n\n'
 printf '%s\n' "$questions"

@@ -21,7 +21,7 @@ every code-writing agent runs on opus.
 Example: "Write the `## Components` section for project X from the extractor's JSON. Cite the file for every claim."
 
 ## opus
-Every agent that writes code (`factory-block-implement`, `worker-implementer`, `worker-test-author`) and
+Every agent that writes code (`implementer`, `step-implementer`, `test-writer`) and
 genuine judgment: tests-phase analysis, review, anything at `complexity: high` or a retry. Generated code
 never runs on a cheaper model; the implement phase takes effort `low`, judgment takes `high`. The brief
 states the problem and the constraints, not the steps, and expects opus to find the path itself, asking rather
@@ -32,12 +32,12 @@ Example: "Design the red tests for `T-091-01` from its `## Acceptance`. State wh
 currently fails for the right reason."
 Example: "Make the red tests in `block/T-091-01` green. Do not touch `## Acceptance`. Report the commands you ran."
 
-`model-for.sh --agent` picks the implement agent: `complexity: high` gets `factory-block-implement-medium`
-(effort medium), everything else `factory-block-implement` (effort low). Phase and complexity decide it; the
+`model-for.sh --agent` picks the implement agent: `complexity: high` gets `implementer-senior`
+(effort medium), everything else `implementer` (effort low). Phase and complexity decide it; the
 attempt ladder does not, since escalation moves the model and `--agent` the agent. The model of a code-writing
 agent is fixed in its definition and is opus; `model-for.sh` agrees with it at every tier.
 
 ## No `<model>-strong` twin
 `model-for.sh` prints `haiku|sonnet|opus` and nothing else, except under `--agent`, where it prints an agent
 name instead: `complexity: high` or `attempt>=1` escalates the **model** to opus, never effort. `effort:` in the agent file is fixed and cannot be passed per spawn, so a
-strong twin would need an agent of its own (`deep-research-*`).
+strong twin would need an agent of its own (`researcher-s0` to `researcher-s3`).

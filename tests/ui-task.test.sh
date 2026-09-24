@@ -109,7 +109,7 @@ cat > "$st/progress/T-020.md" <<'EOF'
 No candidates.
 
 ## Review
-`factory-reviewer` over the integrated diff at `abc1234`, verdict `changes needed`, 1 blocking, 2 suggestions.
+`code-reviewer` over the integrated diff at `abc1234`, verdict `changes needed`, 1 blocking, 2 suggestions.
 EOF
 printf '# T-020-01\n\n## Evidence\n- block-verify.sh T-020-01 -> green, tests: 3 run, 3 passed, 0 failed\n' > "$st/progress/T-020-01.md"
 printf '# T-020-02\n\n## Evidence\n- block-verify.sh T-020-02 -> green, tests: 5 run, 5 passed, 0 failed\n' > "$st/progress/T-020-02.md"

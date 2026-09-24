@@ -1,5 +1,5 @@
 ---
-name: mr-issue-linker
+name: issue-finder
 description: Reads the repo's open issues and reports which ones a finished change solves or touches, so the MR description can reference them. Cheap and read-only. Spawned per _shared/delegation.md before the MR is opened; do not call it directly.
 model: haiku
 tools: Read, Grep, Glob, Bash

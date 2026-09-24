@@ -30,11 +30,11 @@ interactive: the reviewer reports, the human decides.
 3. Run `sh ${CLAUDE_PLUGIN_ROOT}/bin/doc-facts.sh <product-repo>` and
    `sh ${CLAUDE_PLUGIN_ROOT}/bin/doc-cites.sh <product-repo>` and hand both outputs to the reviewer with the
    input; the agent has no Bash.
-4. Spawn the `architect-reviewer` agent with the invocation name and the absolute paths of the input, the
+4. Spawn the `plan-architect` agent with the invocation name and the absolute paths of the input, the
    product repo and `references/checks.md`. It runs on a fresh context and returns a report, never an edit.
 5. Match the input's scope against the `Load when` column of `architecture-docs/references/README.md`. One or
    two touched domains, or a plan whose every proposal is `green`: the reviewer loads those rubrics itself.
-   Three or more at `yellow`, or any `red` tier: spawn one `architect-specialist` per domain, in parallel,
+   Three or more at `yellow`, or any `red` tier: spawn one `domain-architect` per domain, in parallel,
    each carrying the same absolute paths plus that index.
 6. Check every finding carries its axis, a severity and evidence a human can open. Send an unevidenced
    finding back once; if it returns unevidenced, drop it.

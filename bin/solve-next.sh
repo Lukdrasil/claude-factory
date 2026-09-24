@@ -329,7 +329,7 @@ if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
-  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and its output stands verbatim under ## Duplication in $progress, judged by nobody yet: the factory-reviewer of step 13 answers every candidate. An empty candidate list is recorded as one line."
+  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and its output stands verbatim under ## Duplication in $progress, judged by nobody yet: the code-reviewer of step 13 answers every candidate. An empty candidate list is recorded as one line."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/dup-check.sh $harness/review.diff $worktree"
@@ -337,7 +337,7 @@ if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Review' "$progress" 2>/dev/null; then
-  emit "Step 13 of 16: integrated review of $id" "a verdict from factory-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
+  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"

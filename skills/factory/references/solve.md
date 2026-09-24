@@ -20,7 +20,7 @@ worktree means no spawn.
 
 ## The gates you own
 
-- **Triage.** `<plugin-root>/bin/investigate.sh <repo-dir> <symbol>` gathers the recon a `factory-investigator`
+- **Triage.** `<plugin-root>/bin/investigate.sh <repo-dir> <symbol>` gathers the recon a `triage-analyst`
   judges into the parent's `## Context`.
 - **Grill.** `<plugin-root>/bin/plan-lint.sh <plan-ready.md>` comes back clean before the cut.
 - **Cut.** `<plugin-root>/bin/dag-check.sh <parent-id>` exits 0 over the block drafts, bodies from
@@ -49,7 +49,7 @@ worktree means no spawn.
 - **Duplication.** `git diff origin/<base>...<branch> > <harness>/review.diff`, then
   `<plugin-root>/bin/dup-check.sh <harness>/review.diff <worktree>`, never a task id; its output verbatim under
   `## Duplication`; the reviewer judges the candidates, nobody is spawned per candidate.
-- **Review.** A `factory-reviewer` over the whole diff, its verdict in the progress file, then
+- **Review.** A `code-reviewer` over the whole diff, its verdict in the progress file, then
   `<plugin-root>/bin/mr-open.sh <T-NNN>` for the parent. `changes needed` gets one fix block and one more
   review.
 - **Knowledge review.** Once per session on the parent, never per block.
