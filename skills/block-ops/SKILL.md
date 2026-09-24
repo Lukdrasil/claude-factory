@@ -16,6 +16,7 @@ The task is the authorization: a human flipped it to `ready`, and that is their 
 - Only **non-destructive actions via glab/gh**: a comment, a label, an assignee, creating an issue with text
   from the task, closing or reopening an issue or MR. Deleting anything, changing project settings, pushing,
   or anything needing code is `blocked` with an explanation so a human can cut a task of the right archetype.
+- An issue is created through `${CLAUDE_PLUGIN_ROOT}/bin/issue-create.sh`, which adds the `ai-drafted` label.
 
 ## Procedure
 
@@ -50,7 +51,7 @@ controller, `ready` and `done` to the human (P5).
 |---|---|
 | `review` | the action is done and the evidence is under `## Evidence`; a human verifies it and flips `done` |
 | `blocked` | ambiguous, destructive, outside glab/gh, or impossible; question per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
-| `failed` | the action did not succeed; `state-report.sh --attempts "<N>, <model>, <why>"` |
+| `failed` | the action did not succeed; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
 The snapshot template and the report path are in
 `${CLAUDE_PLUGIN_ROOT}/skills/_shared/progress-and-push.md`: the state clone is read-only towards the state

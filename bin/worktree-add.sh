@@ -77,13 +77,18 @@ deps_of() { # <task file>
 # nothing when it did not.
 record_base() { # <progress file> <branch> <sha>
   mkdir -p "$(dirname -- "$1")"
-  [ -f "$1" ] || printf '# %s\n' "$id" > "$1"
+  rb_new=''
+  [ -f "$1" ] || { printf '# %s\n' "$id" > "$1"; rb_new=1; }
   if [ "$(sed -n 's/^base:[[:space:]]*//p' "$1" | head -n1)" = "$2" ] \
     && [ "$(sed -n 's/^base_sha:[[:space:]]*//p' "$1" | head -n1)" = "$3" ]; then return 0; fi
   awk -v b="$2" -v s="$3" '
     /^base_sha:[[:space:]]*/ { next }
     /^base:[[:space:]]*/ { if (!done) { print "base: " b; print "base_sha: " s; done = 1 } next }
     { print } END { if (!done) { print "base: " b; print "base_sha: " s } }' "$1" > "$1.tmp" && mv -f "$1.tmp" "$1"
+  if [ -n "$rb_new" ]; then
+    rb_cl=$(awk '/^## Checklist[ \t]*$/ { on = 1; next } on && /^## / { exit } on && NF { print }' "$task")
+    [ -z "$rb_cl" ] || printf '\n## Remaining\n%s\n' "$rb_cl" >> "$1"
+  fi
   printf '%s' "$1"
 }
 

@@ -201,7 +201,11 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
     ptitle[np] = title
     next
   }
+  sec == "Proposed tasks" && np > 0 && insteps && /^[ \t]+[-*][ \t]/ {
+    s = trim($0); sub(/^[-*][ \t]+/, "", s); pstep[np, ++nstep[np]] = s; next
+  }
   sec == "Proposed tasks" && np > 0 && /^[-*][ \t]/ {
+    insteps = 0
     line = trim($0)
     sub(/^[-*][ \t]+/, "", line)
     c = index(line, ":")
@@ -218,6 +222,7 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
     else if (key == "context") pctx[np] = value
     else if (key == "out of scope") poos[np] = value
     else if (key == "depends_on") pdep[np] = value
+    else if (key == "steps") insteps = 1
     next
   }
 
@@ -312,6 +317,11 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
         print "" > f
         print "Whole spec:" > f
         for (i = ostart; i <= no; i++) print oos[i] > f
+      }
+      if (nstep[p] > 0) {
+        print "" > f
+        print "## Checklist" > f
+        for (i = 1; i <= nstep[p]; i++) print "- [ ] " pstep[p, i] > f
       }
       if (forge != "") {
         print "" > f

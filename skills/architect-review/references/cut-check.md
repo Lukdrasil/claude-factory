@@ -13,7 +13,7 @@ answer sets its scope.
 The four items of the narrow scope. None is optional, and none is something plan-check could have done:
 
 1. **The mapping.** Every `## Proposed tasks` entry has exactly one task and every task has an entry;
-   `tier`, `archetype`, `complexity`, `docs` and `acceptance` are carried over unchanged. An "improved"
+   `tier`, `archetype`, `complexity`, `docs`, `acceptance` and `steps` are carried over unchanged. An "improved"
    acceptance or a downgraded tier is a blocking finding, because the grill made that decision and decompose
    does not remake it. `depends_on` ordinals are rewritten to real ids that resolve to tasks of this batch or
    to existing ones, with no cycles.

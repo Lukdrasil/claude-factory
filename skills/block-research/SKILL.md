@@ -63,7 +63,7 @@ Research pointing at work on the code does not do it: the follow-up belongs in
 |---|---|
 | `review` | acceptance is met, the report is in `repos/<key>/research/`, its path under `## Evidence` |
 | `blocked` | a human decision is needed; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
-| `failed` | acceptance is unreachable; `state-report.sh --attempts "<N>, <model>, <why>"` |
+| `failed` | acceptance is unreachable; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
 Never write `done`, `ready`, `in_progress` or `stalled`.
 Report per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/progress-and-push.md`: status and progress file through

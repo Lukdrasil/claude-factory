@@ -8,6 +8,8 @@
 #   a gap ledger row whose `state` is not `closed`
 #   a proposal whose `acceptance:` is not a backticked command
 #   a proposal with no `docs:` line
+#   a feature, bugfix or refactor proposal with no `steps:` line
+#   a `steps:` line that is neither empty with at least one indented sub-bullet nor `none` with none
 #   a `## Program design` member named in no proposal, or named in two
 #   a `tier`, `archetype` or `complexity` outside the allowed values, or missing
 #   a `red` proposal with no `## Quality scenarios` row
@@ -96,7 +98,9 @@ out=$(awk '
     next
   }
 
+  sec == "Proposed tasks" && np > 0 && insteps && /^[ \t]+[-*][ \t]/ { nsub[np]++; next }
   sec == "Proposed tasks" && np > 0 && /^[-*][ \t]/ {
+    insteps = 0
     line = trim($0)
     sub(/^[-*][ \t]+/, "", line)
     c = index(line, ":")
@@ -109,6 +113,7 @@ out=$(awk '
     else if (key == "acceptance") { pacc[np] = value; hasacc[np] = 1 }
     else if (key == "docs") hasdocs[np] = 1
     else if (key == "design") pdesign[np] = value
+    else if (key == "steps") { hassteps[np] = 1; psteps[np] = value; insteps = 1 }
     next
   }
 
@@ -142,6 +147,9 @@ out=$(awk '
       if (!hasacc[p]) bad("proposal " p " has no `acceptance:`")
       else if (pacc[p] !~ /^`[^`]+`/) bad("proposal " p " has an `acceptance:` that is not a backticked command: " pacc[p])
       if (!hasdocs[p]) bad("proposal " p " has no `docs:`")
+      if (!hassteps[p] && parch[p] != "research") bad("proposal " p " has no `steps:`")
+      else if (hassteps[p] && !((psteps[p] == "" && nsub[p] > 0) || (psteps[p] == "none" && nsub[p] == 0)))
+        bad("proposal " p " has a `steps:` that is neither sub-bullets nor `none`")
       if (ptier[p] == "red" && qsline < 2)
         bad("proposal " p " is red and the plan has no `## Quality scenarios` row")
     }

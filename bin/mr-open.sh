@@ -68,7 +68,7 @@ bullets() {
     $0 == h { f = 1; next }
     f && /^#/ { exit }
     !f { next }
-    /^-[[:space:]]/ || /^-$/ { if (cur != "") print cur; sub(/^-[[:space:]]*/, ""); cur = $0; next }
+    /^-[[:space:]]/ || /^-$/ { if (cur != "") print cur; sub(/^-[[:space:]]*/, ""); sub(/^\[[ x]\][[:space:]]*/, ""); cur = $0; next }
     (/^[ ][ ]/ || /^\t/) && cur != "" { sub(/^[[:space:]]+/, ""); cur = cur " " $0; next }
     { if (cur != "") { print cur; cur = "" } }
     END { if (cur != "") print cur }

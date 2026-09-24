@@ -76,6 +76,6 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
 |---|---|
 | `review` | acceptance is met and the report exists, **even on a `changes needed` verdict** |
 | `blocked` | you need a human decision; question per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
-| `failed` | acceptance unreachable; `state-report.sh --attempts "<N>, <model>, <why>"` |
+| `failed` | acceptance unreachable; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
 Never write `done`, `ready`, `in_progress` or `stalled`.
