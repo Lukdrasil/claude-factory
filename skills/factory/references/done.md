@@ -25,6 +25,8 @@ pushed to the state root.
 - **Confirm.** For an MR archetype, ask the user (if not already stated) that the MR named by the task's
   `mr_url` is the one they validated: this reference does not check a forge, it trusts the human's word. For a
   triage, ops or research task, confirm the output they asked for exists. Completion: a yes recorded.
+  With `ui: docker` the ask carries `flow: done`, and the browser shows it as a confirm in the done panel of
+  the task drawer.
 - **Done.** Run `<plugin-root>/bin/task-done.sh <id> --state <root>/state`. Exit 1 prints the reason (an MR
   archetype whose parent has no `mr_url`, so the task is not ready to close): nothing was written, show the
   reason and say what the user can do about it. Exit 2 means the commit landed but the push did not, so the
