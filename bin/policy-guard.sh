@@ -747,7 +747,7 @@ redirect_targets() { # <segment>
   printf '%s\n' "$1" | awk '
     { s = s (NR > 1 ? "\n" : "") $0 }
     END {
-      n = length(s); q = ""
+      n = length(s); q = ""; d = 0
       for (i = 1; i <= n; i++) {
         ch = substr(s, i, 1)
         if (q != "") {
@@ -755,8 +755,12 @@ redirect_targets() { # <segment>
           if (ch == substr(q, length(q), 1)) q = ""
           continue
         }
-        if (ch == "\\") { i++; continue }
-        if (ch == "$" && substr(s, i + 1, 1) == "\047") { q = "$\047"; i++; continue }
+        if (ch == "\\") { i++; d = 0; continue }
+        if (ch == "$") {
+          if (substr(s, i + 1, 1) == "\047" && d % 2 == 0) { q = "$\047"; i++; d = 0; continue }
+          d++; continue
+        }
+        d = 0
         if (ch == "\047" || ch == "\"") { q = ch; continue }
         if (ch != ">") continue
         pc = (i > 1 ? substr(s, i - 1, 1) : "")
@@ -767,7 +771,7 @@ redirect_targets() { # <segment>
         j = i + 1
         if (nc == "&") j++
         while (j <= n && substr(s, j, 1) ~ /[ \t]/) j++
-        w = ""; wq = ""; lead = ""
+        w = ""; wq = ""; lead = ""; wd = 0
         for (; j <= n; j++) {
           c = substr(s, j, 1)
           if (wq != "") {
@@ -776,8 +780,12 @@ redirect_targets() { # <segment>
             w = w c; continue
           }
           if (c ~ /[ \t\n;|&<>()]/) break
-          if (c == "\\") { w = w substr(s, ++j, 1); continue }
-          if (c == "$" && substr(s, j + 1, 1) == "\047") { if (w == "") lead = 1; wq = "$\047"; j++; continue }
+          if (c == "\\") { w = w substr(s, ++j, 1); wd = 0; continue }
+          if (c == "$") {
+            if (substr(s, j + 1, 1) == "\047" && wd % 2 == 0) { if (w == "") lead = 1; wq = "$\047"; j++; wd = 0; continue }
+            wd++; w = w c; continue
+          }
+          wd = 0
           if (c == "\047" || c == "\"") { if (w == "") lead = 1; wq = c; continue }
           w = w c
         }
@@ -1075,7 +1083,7 @@ guard_bash() {
     # tell a source operand from a destination, so `cp /…/FooTests.cs /tmp/b` over-denies — `blocked` is the way out.
     bash_write_target "$p"
   done
-  for p in $(printf '%s' "$sc" | grep -oE '>>?[[:space:]]*/[^[:space:]"'"'"';|&)]+' | sed 's/^>*[[:space:]]*//' || true); do
+  for p in $(printf '%s' "$sc" | grep -oE '>>?&?[[:space:]]*/[^[:space:]"'"'"';|&)]+' | sed 's/^>*&*[[:space:]]*//' || true); do
     check_path "$p"
   done
   # issue #358: a $WORK_DIR path quoted as data — a grep pattern, an echo, a commit message — is prose,
@@ -1118,8 +1126,9 @@ guard_bash() {
   # them was denied as a write into the cwd, the registered clone, on a read-only command. T-264-02:
   # redirect_targets reads the targets with split_segs's quote tracking, escapes included, so a quote in a grep
   # pattern no longer pairs with a later one and an escaped `\"` no longer hides a real redirect. T-264-07: an
-  # ANSI-C span `$'…'` closes only at an unescaped `'`, and `>&word` is a file unless the word is digits or `-`;
-  # split_segs keeps the `&` of `>&` in the segment. A target quoted
+  # ANSI-C span `$'…'` closes only at an unescaped `'`, and it opens only after an odd run of `$` (`$$'…'` is the
+  # PID and a plain quote). `>&word` is a file unless the word is digits or `-`, split_segs keeps the `&` of `>&`
+  # in the segment, and the absolute scan below reads `>&/abs` too. A target quoted
   # as a whole (`> "README.md"`) is read without its quotes, and a quoted `~` stays relative to the cwd. A bare
   # `~` or `~/x` is expanded through $HOME, and with HOME unset it is denied. A `$VAR/…` target is unknown here
   # and resolving it against the cwd is a guess, not a rule.
