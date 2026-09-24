@@ -1,8 +1,10 @@
 #!/bin/sh
-# Task ids past T-999 and block numbers past 99 (T-250): a task id is T- and three or more digits, a block id a
-# parent id plus - and two or more digits. The allocator, the lib-tasks.sh predicates and sort_ids, the
-# architect gate, spawn-plan, worktree-add and factory-list all take the wider ids, and no fixed-width id
-# pattern is left under bin/.
+# Task ids past T-999 and block numbers past 99 (T-250): a legacy task id is T- and three or more digits, a new
+# one T-<ALIAS>-<n> with a 2 to 4 letter uppercase alias from repos.yml, a block id a parent id plus - and two or
+# more digits. The allocator, the lib-tasks.sh predicates and sort_ids, the architect gate, spawn-plan,
+# worktree-add and factory-list all take the wider ids, and no fixed-width number pattern is left under bin/ or
+# in ui/wwwroot/*.js. The readers of the state (repo_alias, task_files, task_of, task_fields) and state_write
+# are checked here too.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -89,6 +91,30 @@ check 'is_block_of T-1000 T-1000-1' no "$(pred is_block_of T-1000 T-1000-1)"
 check 'is_block_of T-1000 T-1000-01-02' no "$(pred is_block_of T-1000 T-1000-01-02)"
 check 'is_block_of T-1000 T-1001-01' no "$(pred is_block_of T-1000 T-1001-01)"
 
+# the alias grammar, side by side with the legacy one
+for id in T-ECS-1 T-ECS-12 T-CF-1 T-ABCD-99 T-CF-12345 T-ECS-12-01 T-ECS-12-100 T-CF-1-00; do
+  check "is_task_id accepts $id" yes "$(pred is_task_id "$id")"
+done
+for id in T-E-1 T-ABCDE-1 T-ecs-12 T-Ecs-12 T-ECS- T-ECS-x T-ECS T-ECS-12-1 T-ECS-12-01-02 T-ECS-12-01x ECS-12 T-EC1-2 'T-ECS-1 '; do
+  check "is_task_id refuses '$id'" no "$(pred is_task_id "$id")"
+done
+for id in T-ECS-1 T-ECS-120 T-CF-12345 T-ABCD-7; do
+  check "is_parent_id accepts $id" yes "$(pred is_parent_id "$id")"
+done
+for id in T-ECS-12-01 T-E-1 T-ABCDE-1 T-ecs-1 T-ECS- T-ECS-1x; do
+  check "is_parent_id refuses '$id'" no "$(pred is_parent_id "$id")"
+done
+for id in T-ECS-12-01 T-CF-1-100 T-ABCD-7-99; do
+  check "is_block_id accepts $id" yes "$(pred is_block_id "$id")"
+done
+for id in T-ECS-12 T-ECS-01 T-ECS-12-1 T-E-1-01 T-ECS-12-01-02; do
+  check "is_block_id refuses '$id'" no "$(pred is_block_id "$id")"
+done
+check 'is_block_of T-ECS-12 T-ECS-12-01' yes "$(pred is_block_of T-ECS-12 T-ECS-12-01)"
+check 'is_block_of T-ECS-1 T-ECS-12-01, a prefix is not a parent' no "$(pred is_block_of T-ECS-1 T-ECS-12-01)"
+check 'is_block_of T-ECS-12 T-EXI-12-01, another alias' no "$(pred is_block_of T-ECS-12 T-EXI-12-01)"
+check 'is_block_of T-012 T-ECS-12-01, a legacy id is no alias parent' no "$(pred is_block_of T-012 T-ECS-12-01)"
+
 # --- sort_ids -----------------------------------------------------------------
 sorted=$(printf '%s\n' T-1000 T-246-100 T-999 T-247 T-246-99 T-2460 T-246 T-007 T-246-00 \
   | (. "$bin/lib-tasks.sh"; sort_ids) 2>/dev/null | tr '\n' ' ')
@@ -98,6 +124,109 @@ sorted=$(printf '%s\n' 'T-1000 b' 'T-999 z' 'T-1000 a' | (. "$bin/lib-tasks.sh";
 check 'sort_ids keys on the first word and breaks a tie on the whole line' 'T-999 z|T-1000 a|T-1000 b|' "$sorted"
 sorted=$(printf '%s\n' T-246 T-246-00 T-246 | (. "$bin/lib-tasks.sh"; sort_ids) 2>/dev/null | tr '\n' ' ')
 check 'sort_ids keeps duplicate lines, a caller wanting unique ones runs sort -u first' 'T-246 T-246 T-246-00 ' "$sorted"
+sorted=$(printf '%s\n' T-ECS-12-01 T-1000 T-CF-2 T-ECS-2 T-246 T-ECS-12 T-BFF-1 T-246-01 T-ECS-100 T-ECS-12-100 T-CFX-1 \
+  | (. "$bin/lib-tasks.sh"; sort_ids) 2>/dev/null | tr '\n' ' ')
+check 'sort_ids puts legacy ids first, then aliases bytewise, then the number, then the block' \
+  'T-246 T-246-01 T-1000 T-BFF-1 T-CF-2 T-CFX-1 T-ECS-2 T-ECS-12 T-ECS-12-01 T-ECS-12-100 T-ECS-100 ' "$sorted"
+
+# --- the readers: repo_alias, task_files, task_of, task_fields ------------------------
+rd="$tmp/readers/state"
+mkdir -p "$rd/repos/ecs/tasks" "$rd/repos/ecs/archive/2026-08/tasks" "$rd/repos/bff/tasks" "$rd/repos/demo/tasks"
+cat > "$rd/repos.yml" <<'EOF'
+ecs: {url: x, default_branch: main, path: /nowhere/ecs, alias: ECS}
+bff:
+  url: y
+  default_branch: main
+  alias: BFF  # the backend for frontend
+demo: {url: z, default_branch: main, path: /nowhere/demo}
+bad: {url: w, default_branch: main, alias: ecs1}
+EOF
+lib() { (state=$rd; . "$bin/lib-tasks.sh"; "$@") 2>/dev/null; }
+check 'repo_alias reads the flat spelling' ECS "$(lib repo_alias ecs)"
+check 'repo_alias reads the indented spelling and drops the comment' BFF "$(lib repo_alias bff)"
+check 'repo_alias prints nothing for a repo without an alias' '' "$(lib repo_alias demo)"
+check 'repo_alias returns 0 for a repo without an alias' 0 "$(lib repo_alias demo >/dev/null; printf '%s' $?)"
+check 'repo_alias prints nothing for an alias that is not 2 to 4 uppercase letters' '' "$(lib repo_alias bad)"
+check 'repo_alias returns 1 for that alias' 1 "$(lib repo_alias bad >/dev/null; printf '%s' $?)"
+check 'repo_alias prints nothing for an unknown key' '' "$(lib repo_alias nope)"
+
+printf -- '---\nid: T-ECS-5\nstatus: ready\n---\n' > "$rd/repos/ecs/tasks/T-ECS-5-z-parent.md"
+printf -- '---\nid: T-ECS-5-01\nstatus: ready\n---\n' > "$rd/repos/ecs/tasks/T-ECS-5-01-a-block.md"
+printf -- '---\nid: T-ECS-6\nstatus: draft\n---\n' > "$rd/repos/ecs/tasks/x-renamed-by-hand.md"
+printf -- '---\nid: T-ECS-2\nstatus: done\n---\n' > "$rd/repos/ecs/archive/2026-08/tasks/T-ECS-2-old.md"
+printf -- '---\nid: T-ECS-6\nstatus: done\n---\n' > "$rd/repos/ecs/archive/2026-08/tasks/T-ECS-6-stale-copy.md"
+printf -- '---\nid: T-BFF-1\nstatus: ready\n---\n' > "$rd/repos/bff/tasks/T-BFF-1-x.md"
+printf -- '---\nid: T-300\nstatus: ready\n---\n' > "$rd/repos/demo/tasks/T-300-y.md"
+rel() { sed "s|^$rd/||" | tr '\n' ' '; }
+check 'task_files prints every live task file' \
+  'repos/bff/tasks/T-BFF-1-x.md repos/demo/tasks/T-300-y.md repos/ecs/tasks/T-ECS-5-01-a-block.md repos/ecs/tasks/T-ECS-5-z-parent.md repos/ecs/tasks/x-renamed-by-hand.md ' \
+  "$(lib task_files | rel)"
+check 'task_files <key> prints the live files of that repo only' \
+  'repos/ecs/tasks/T-ECS-5-01-a-block.md repos/ecs/tasks/T-ECS-5-z-parent.md repos/ecs/tasks/x-renamed-by-hand.md ' \
+  "$(lib task_files ecs | rel)"
+check 'task_files --all <key> adds the archive' \
+  'repos/ecs/tasks/T-ECS-5-01-a-block.md repos/ecs/tasks/T-ECS-5-z-parent.md repos/ecs/tasks/x-renamed-by-hand.md repos/ecs/archive/2026-08/tasks/T-ECS-2-old.md repos/ecs/archive/2026-08/tasks/T-ECS-6-stale-copy.md ' \
+  "$(lib task_files --all ecs | rel)"
+check 'task_files --all covers every repo' 7 "$(lib task_files --all | wc -l | tr -d ' ')"
+check 'task_files of a repo with no tasks prints nothing and returns 0' ':0' "$(lib task_files nope; printf ':%s' $?)"
+
+check 'task_of finds a parent whose block sorts before it' repos/ecs/tasks/T-ECS-5-z-parent.md "$(lib task_of T-ECS-5 | rel | tr -d ' ')"
+check 'task_of finds the block' repos/ecs/tasks/T-ECS-5-01-a-block.md "$(lib task_of T-ECS-5-01 | rel | tr -d ' ')"
+check 'task_of finds a legacy id' repos/demo/tasks/T-300-y.md "$(lib task_of T-300 | rel | tr -d ' ')"
+check 'task_of prefers a live file over the archive, by the id line when no name matches' repos/ecs/tasks/x-renamed-by-hand.md \
+  "$(lib task_of T-ECS-6 | rel | tr -d ' ')"
+check 'task_of reads the archive when no live file holds the id' repos/ecs/archive/2026-08/tasks/T-ECS-2-old.md \
+  "$(lib task_of T-ECS-2 | rel | tr -d ' ')"
+check 'task_of prints nothing and returns 0 for an unknown id' ':0' "$(lib task_of T-ECS-9; printf ':%s' $?)"
+check 'task_of T-ECS-1 does not answer with T-ECS-5' '' "$(lib task_of T-ECS-1)"
+
+tf="$tmp/readers/fields.md"
+cat > "$tf" <<'EOF'
+---
+id: T-ECS-5  # the parent
+status: ready
+issue: https://forge.example/g/p/-/issues/7#note_12
+empty:
+priority: P1
+---
+
+status: a body line that is no field
+owner: in the body
+EOF
+check 'task_fields prints one value per line in the order asked, empty for a missing field' \
+  'ready|T-ECS-5|https://forge.example/g/p/-/issues/7#note_12||P1||' \
+  "$(lib task_fields "$tf" status id issue owner priority empty | tr '\n' '|')"
+check 'task_fields of a missing file prints one empty line per field' '||' \
+  "$(lib task_fields "$tmp/readers/none.md" id status | tr '\n' '|')"
+
+# --- state_write: lock, add, commit, unlock, no push ---------------------------------
+sw="$tmp/sw/state"
+new_state "$sw" demo
+git init -q --bare -b main "$sw.git"
+git -C "$sw" remote add origin "$sw.git"
+git -C "$sw" push -q -u origin main >/dev/null 2>&1
+printf 'mine\n' > "$sw/mine.md"
+printf 'theirs\n' > "$sw/theirs.md"
+swc() { (state=$sw; . "$bin/lib-tasks.sh"; state_write "$@") >/dev/null 2>&1; printf '%s' $?; }
+check 'state_write returns 0' 0 "$(swc "$sw" 'chore: mine' mine.md)"
+check 'state_write commits the path it is given with the message' 'chore: mine|mine.md' \
+  "$(git -C "$sw" log -1 --format=%s --name-only | grep . | tr '\n' '|' | sed 's/|$//')"
+check 'state_write leaves another file uncommitted' '?? theirs.md' "$(git -C "$sw" status --porcelain -- theirs.md)"
+check 'state_write does not push' "$(git -C "$sw" rev-parse HEAD~1)" "$(git -C "$sw.git" rev-parse main)"
+check 'state_write with nothing to commit returns 0' 0 "$(swc "$sw" 'chore: again' mine.md)"
+(. "$bin/lib-tasks.sh"; state_lock "$sw" && : > "$tmp/sw/held" && exec sleep 30) &
+swh=$!
+n=0
+until [ -e "$tmp/sw/held" ] || [ "$n" -ge 50 ]; do sleep 0.1; n=$((n + 1)); done
+printf 'mine, second\n' > "$sw/mine.md"
+check 'state_write returns 1 while another session holds the lock' 1 "$(STATE_LOCK_WAIT=1 swc "$sw" 'chore: blocked' mine.md)"
+kill "$swh" 2>/dev/null
+wait "$swh" 2>/dev/null
+check 'nothing is committed under a held lock' 'chore: mine' "$(git -C "$sw" log -1 --format=%s)"
+check 'state_write returns 2 outside a git clone' 2 "$(swc "$tmp/sw/nogit" 'chore: x' x.md)"
+check 'state_write inside a held lock commits and keeps the lock held' '0 held chore: nested' \
+  "$( (. "$bin/lib-tasks.sh"; state_lock "$sw"; state_write "$sw" 'chore: nested' mine.md; r=$?
+     printf '%s %s ' "$r" "${STATE_LOCK_HELD:+held}"; state_unlock) 2>/dev/null; git -C "$sw" log -1 --format=%s)"
 
 # --- the allocator ----------------------------------------------------------------
 st="$tmp/alloc/state"
@@ -257,21 +386,13 @@ check 'solve-next reaches T-246-99 before T-246-100 when neither is in the wave 
 watched=$(sh "$bin/herd-watch.sh" T-246 --once --no-mr --state "$sn" 2>&1 | awk '$2 == "status" { print $1 }' | tr '\n' ' ')
 check 'herd-watch lists T-246-99 before T-246-100' 'T-246 T-246-99 T-246-100 ' "$watched"
 
-# --- no fixed-width id pattern left under bin/ ---------------------------------------
-# An unquantified run of two or more [0-9] classes, or an exact {2} / {3} count, is a fixed-width id pattern.
-# lib-tasks.sh's predicate bodies are the one place allowed to spell the shape out. forge.sh, curate-apply.sh,
-# mr-watch.sh and ui-up.sh match numbers that are no task id with [0-9][0-9]*, which the allow-list strips before
-# the grep.
-fixed=$(for f in "$bin"/*.sh; do
-  n=${f##*/}
-  case "$n" in
-    lib-tasks.sh)
-      awk '/^(is_task_id|is_parent_id|is_block_id|is_block_of)[[:space:]]*\(\)/ { skip = 1; one = /}[[:space:]]*$/ }
-        skip { print ""; if (one || /^}/) skip = 0; next } { print }' "$f" ;;
-    forge.sh|curate-apply.sh|mr-watch.sh|ui-up.sh) sed 's/\[0-9\]\[0-9\]\*//g' "$f" ;;
-    *) cat "$f" ;;
-  esac | grep -nE '(\[0-9\]){2,}([^+[]|$)|\{[23]\}' | sed "s|^|$n:|"
+# --- no fixed-width number pattern under bin/ or in ui/wwwroot/*.js --------------------------
+# An unquantified run of two or more [0-9] classes, or an exact {2} / {3} count, is a fixed-width pattern. A number
+# is spelled [0-9][0-9]*, which is stripped from every file before the grep, so no file needs an allow-list.
+fixed=$(for f in "$bin"/*.sh "$root"/ui/wwwroot/*.js; do
+  [ -f "$f" ] || continue
+  sed 's/\[0-9\]\[0-9\]\*//g' "$f" | grep -nE '(\[0-9\]){2,}([^+[]|$)|\{[23]\}' | sed "s|^|${f#"$root"/}:|"
 done)
-check 'no fixed-width id pattern under bin/' '' "$fixed"
+check 'no fixed-width number pattern under bin/ or in ui/wwwroot/*.js' '' "$fixed"
 
 exit $fail
