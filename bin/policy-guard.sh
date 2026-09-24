@@ -47,10 +47,9 @@ un tool "$f_tool"
 un cwd "$f_cwd"
 un sid "$f_sid"
 
-# T-003: one layout rule, shared with the Stop hook and session-stats (ADR-0049). The cwd gives the task on the
-# worker — and the work dir of the RC clones, which are $WORK_DIR/<name> with no task file at all. In the
-# standalone posture the coordinator's cwd is the user's clone and carries no task, so there the task comes from
-# the write target instead (adopt_target below).
+# T-003: one layout rule, shared with the Stop hook and session-stats (ADR-0049). The cwd gives the task in a task
+# worktree. In the standalone posture the coordinator's cwd is the user's clone and carries no task, so there the
+# task comes from the write target instead (adopt_target below).
 . "$(dirname -- "$0")/lib-tasks.sh"
 
 # T-003: every path comparison below is between these two and a write target, so all three are spelled the one
@@ -82,15 +81,17 @@ abs_norm() { # <path>
 if resolve_layout "$cwd" "$WORK_DIR"; then
   task=$LO_TASK; own=$LO_OWN; state=$LO_STATE; stamp=$LO_STAMP; posture=$LO_POSTURE
 else
-  # ADR-0049: HARNESS_WORKER=1 is the worker container, where a cwd outside the work root stays fail-closed.
-  # Standalone posture — only the cwd rule is waived: every target-path rule below still runs with an empty
-  # own work dir, and the task is derived from the target path instead.
-  [ "${HARNESS_WORKER:-}" = 1 ] && deny "cwd '$cwd' is not inside $WORK_DIR/<task> (worker posture). Do not relocate the session with EnterWorktree or a 'cd' into a worktree: stay where the session started and reach the other tree by absolute path, 'git -C $WORK_DIR/<key>/T-NNN-NN ...'."
-  task=''; own=''; state=''; stamp=''; posture=standalone
+  case "$cwd" in
+    # a cwd under the work root that is no task worktree ($WORK_DIR/state, $WORK_DIR/<key>) stays confined to
+    # its top-level directory, and posture=workdir keeps coord_scope and read_scope closed to it.
+    "$WORK_DIR"/?*)
+      wd_rest=${cwd#"$WORK_DIR"/}
+      task=''; own="$WORK_DIR/${wd_rest%%/*}"; state="$WORK_DIR/state"; stamp=''; posture=workdir ;;
+    # Standalone posture: only the cwd rule is waived. Every target-path rule below still runs with an empty
+    # own work dir, and the task is derived from the target path instead.
+    *) task=''; own=''; state=''; stamp=''; posture=standalone ;;
+  esac
 fi
-# 2026-09-07 lesson D: the coordinator scope below opens only in the standalone layout on a developer machine —
-# the worker container (HARNESS_WORKER=1) and the worker layout keep exactly the reach they had.
-[ "${HARNESS_WORKER:-}" != 1 ] || posture=worker
 
 docs_carveout() { # <absolute path>
   rel=${1#"$cwd"/}
@@ -209,8 +210,8 @@ path_is_test() {
 # ADR-0030, block-tests `## Self-report`), the remaining lines are the test files that existed at that moment.
 # self-report-check.sh diffs exactly that inventory against exactly that SHA.
 # ponytail: no repo, no git, no stamp. The backstop is best-effort — the deny rules above are not.
-# T-003: the stamp directory is $stamp — the work dir itself on the worker, $WORK_DIR/<key>/.harness/<task-id>
-# in the standalone posture, where the work dir is a git worktree the rebase would carry the stamps through.
+# T-003: the stamp directory is $stamp, $WORK_DIR/<key>/.harness/<task-id>, outside the work dir because that is a
+# git worktree the rebase would carry the stamps through.
 stamp_test_base() {
   [ -n "$stamp" ] && [ -n "$TEST_GLOBS" ] || return 0
   base_mark="$stamp/.harness-test-base"
@@ -355,8 +356,8 @@ approval_gate() { # <the target that asked for it>
 }
 
 # T-003 rule (b), the other half: the standalone posture's cwd is the user's own clone and names no task, so the
-# task and its work dir come from the write *target*. The worker layout keeps working through the cwd, which
-# already gave `own` above, and is never re-derived here.
+# task and its work dir come from the write *target*. A cwd under the work root already gave `own` above and is
+# never re-derived here.
 adopt_target() { # <absolute target path>
   [ -z "$own" ] || return 0
   resolve_layout "$1" "$WORK_DIR" || return 0
@@ -451,7 +452,6 @@ check_path() {
   case "$p" in "$WORK_DIR"/*) ;; /tmp|/tmp/*) return 0 ;; esac
   # 2026-09-07 lesson A1: the standalone state clone is the coordinator's shared registry and its own write path
   # (state-report.sh writes there), and resolve_layout can never adopt it as a task — `state` is not a task id.
-  # The worker layout's clone is $WORK_DIR/<task>/state, which this does not name, so it stays foreign there.
   case "$p" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) return 0 ;; esac
   adopt_target "$p"
   if [ -z "$own" ]; then

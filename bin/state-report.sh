@@ -4,11 +4,11 @@
 # task file, not from the working copy the agent just wrote), committed into the state clone and pushed to the
 # state root; the local commit stays when the push fails.
 #
-#   state-report.sh [--task <id>] [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]
+#   state-report.sh --task <id> [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]
 #                   [--owner <owner>] [--set-status <status>] [--set-phase <tests|implement>] [--no-status]
 #                   [--branch <branch>] [--mr-url <url>]
 #
-# `--task` names the task instead of the `# Task <id>` line of CLAUDE.md (a session that owns several tasks).
+# `--task` names the task and is required.
 # `--no-status` leaves `status` out of the report — and with it the status and evidence checks: a caller that is
 # recording *why* the status is wrong (self-report-check.sh on an exhausted budget) or is not reporting a status
 # at all (pre-compact.sh, a reclaim) must not be refused for a status it is not claiming.
@@ -80,9 +80,7 @@ if [ -n "$set_status" ] && [ "$send_status" = 0 ]; then
   exit 1
 fi
 
-# the task is identified by the CLAUDE.md prepare_task generated into cwd ("# Task <id>"), same as the Stop hooks
-[ -n "$id" ] || id=$(sed -n '1s/^# Task //p' CLAUDE.md 2>/dev/null) || :
-[ -n "${id:-}" ] || die2 "no '# Task <id>' in a CLAUDE.md in $(pwd) and no --task — this is not a task session"
+[ -n "$id" ] || die2 "no --task: name the task with --task <id>"
 
 # the layout resolver is shared with the hooks that call this script (self-report-check.sh, session-stats.sh)
 . "$(dirname -- "$0")/lib-tasks.sh"

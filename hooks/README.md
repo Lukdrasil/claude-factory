@@ -2,13 +2,14 @@
 
 `hooks.json` carries no prose of its own: Claude Code validates the whole file, not only the `hooks`
 object, and warns `unknown key "//" ignored` for a comment key at the top level (2.1.234 refuses `//Stop`
-*inside* `hooks` outright, and the plugin then fails to load — seen on the worker 2026-09-04). Everything
+*inside* `hooks` outright, and the plugin then fails to load, seen 2026-09-04). Everything
 that used to sit in that key lives here instead.
 
 - The file is the policy layer for `bypassPermissions` — the deterministic twin of the rules the skills
   state in prose (v1: ADR-0009, BACKLOG E4.3/E4.4).
 - The guard hooks (`policy-guard.sh`, `architect-gate.sh`) waive only the cwd rule outside `WORK_DIR`
-  unless `HARNESS_WORKER=1` (ADR-0049). The session hooks — `SessionStart`, `PreCompact`, the PreToolUse
+  (ADR-0049). A cwd under `WORK_DIR` that is no task worktree, such as `WORK_DIR/state` or `WORK_DIR/<key>`,
+  may write only inside that top-level directory. The session hooks — `SessionStart`, `PreCompact`, the PreToolUse
   tripwire — run everywhere.
 - `attribution-gate.sh` runs on `Bash` as well as the write tools: a commit, a tag and a forge command
   carry their text in the command, an MR description and a progress file in a file. On `Bash` it also
@@ -48,8 +49,6 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
   command, keeps the hook cwd among the bases, and denies a relative write target: a redirect target, an
   in-place editor's operand containing a `/`, or the file operand of `sed -i`/`perl -i`. A command word is
   never one. An absolute target is judged as any absolute target.
-- **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
-  guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
   with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the

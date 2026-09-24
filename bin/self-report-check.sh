@@ -39,14 +39,10 @@ sid=$(printf '%s' "$stdin" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\
 # resolve_state_dir (lib-tasks.sh) is that one rule, shared with session-stats.sh and state-report.sh
 state=$(resolve_state_dir "$PWD")
 
-# ponytail: the task is identified by the CLAUDE.md prepare_task generated into cwd ("# Task <id>"). Without that
-# line (a standalone session that owns several tasks, ADR-0050) the tasks are the ones whose `owner:` ends in this
-# session's id — `factory@<host>:<session_id>`, the whole id after the last colon.
-ids=$(sed -n '1s/^# Task //p' CLAUDE.md 2>/dev/null) || :
-if [ -z "${ids:-}" ]; then
-  [ -n "${sid:-}" ] || exit 0
-  ids=$(owned_task_ids "$sid") || :
-fi
+# ponytail: the tasks are the ones whose `owner:` ends in this session's id (ADR-0050), `factory@<host>:<session_id>`,
+# the whole id after the last colon.
+[ -n "${sid:-}" ] || exit 0
+ids=$(owned_task_ids "$sid") || :
 [ -n "${ids:-}" ] || exit 0
 
 # the first task keeps the single-task shape of every message and record below: the parent (an id with no -NN
@@ -62,7 +58,7 @@ task=$(task_of "$id")
 # T-003: in the standalone layout ($WORK_DIR/<key>/<task-id>/, ADR-0049) the per-session stamps live in
 # $WORK_DIR/<key>/.harness/<task-id>/, not next to a work dir that is a git worktree. T-162: a coordinator
 # standing in the registered clone gets the same stamp directory for the task it reports for, resolved once the
-# owner lookup above named it. The worker layout resolves to exactly the relative path below, so nothing moves.
+# owner lookup above named it. Every other cwd keeps the relative path below.
 stamp=..
 if resolve_session_layout "$PWD" "$id" && [ "$LO_POSTURE" = standalone ]; then
   stamp=$LO_STAMP

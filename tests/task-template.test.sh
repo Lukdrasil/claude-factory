@@ -1,8 +1,8 @@
 #!/bin/sh
 # The skeletons task-template.sh prints go through task-new.sh as they are once the placeholders are filled
 # (T-249 F2, F5): a `task` draft is born `draft`, a `block` gets the exact `id:` line task_of looks up and a
-# `branch:` line with no comment. Every state-report.sh call in the prose passes `--task` (F4), since the
-# standalone layout has no `# Task <id>` CLAUDE.md to fall back on. T-252-02: both skeletons carry exactly the
+# `branch:` line with no comment. Every state-report.sh call in the prose passes `--task` (F4), the one way
+# state-report.sh learns its task. T-252-02: both skeletons carry exactly the
 # task keys, none the dashboard alone read.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
