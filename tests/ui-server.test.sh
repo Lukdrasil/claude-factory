@@ -87,6 +87,9 @@ ready "$port1" || bad "the server never answered / on $port1: $(docker logs "$na
 
 # --- the token guards /api/*, never / -----------------------------------------------------------------------------
 is '/ is served without the token'                            "$(http "$port1" /)" 200
+csp=$(curl -s -m 5 -o /dev/null -D - "http://127.0.0.1:$port1/" | tr -d '\r' | grep -i '^content-security-policy:')
+has '/ answers with a Content-Security-Policy of self and data images' \
+  "^[Cc]ontent-[Ss]ecurity-[Pp]olicy: default-src 'self'; img-src 'self' data:\$" "$csp"
 is 'GET /api/board without the token is 401'                  "$(http "$port1" /api/board)" 401
 is 'GET /api/board with a wrong token is 401'                 "$(http "$port1" /api/board -H 'X-Factory-Token: 0123456789abcdef')" 401
 is 'GET /api/board with an empty token is 401'                "$(http "$port1" /api/board -H 'X-Factory-Token:')" 401

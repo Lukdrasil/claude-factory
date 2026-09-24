@@ -220,6 +220,11 @@ async function stage(q, button, text) {
     ok(text === 'State repo found', `chip: ${JSON.stringify(text)}`);
   });
 
+  await check('the setup strip chip reads 1 to answer, the doctor notice d1', async () => {
+    const text = await until('the setup chip', async () => (await page.locator('.strip .chip.warn', { hasText: /^\d+ (waiting|to answer)$/ }).innerText()).trim());
+    ok(text === '1 to answer', `chip: ${JSON.stringify(text)}`);
+  });
+
   await check('the row of T-002 marks step 11 as current', async () => {
     const step = await currentStep(page, 'T-002');
     ok(step === '11', `current: ${step}`);
@@ -286,6 +291,16 @@ async function stage(q, button, text) {
     });
     const text = fs.readFileSync(path.join(UI, 'sessions/s4/answers', files[0]), 'utf8');
     ok(text === own, `file: ${JSON.stringify(text)}`);
+  });
+
+  await check('the held reason gone on the setup notice d1 names no solve command', async () => {
+    const seq = answers('s4').find((n) => /^\d+-d1\.txt$/.test(n)).split('-')[0];
+    writeAtomic(path.join(UI, 'sessions/s4/relay'), `${seq} gone\n`);
+    const text = await until('gone on d1', async () => {
+      const t = await card(page, 's4/d1').innerText();
+      return /Not delivered: the session has ended\./.test(t) && t;
+    }, 1500);
+    ok(!/solve/.test(text), `card: ${text}`);
   });
 
   await check('the drawer of T-001 holds its goal and its open asks q1 and q3, not the answered q2', async () => {
