@@ -35,7 +35,8 @@ calls AskUserQuestion:
    ```
 
 3. **End your turn.** The answer arrives as the next user turn in the grill shorthand (`Q3 A`, `Q3 ok`, free
-   text), typed in the terminal or relayed from the browser. Both are the human's input.
+   text), several answers in one message one per line, typed in the terminal or relayed from the browser. Both are
+   the human's input.
 4. **Close** the ask once that turn has settled every question in it:
    `sh <plugin-root>/bin/ui-ask.sh --session <session_id> --close <ask>`. `Qn more` or a partial round leaves
    it open: answer, and write the ask again under the same id when its questions changed.
