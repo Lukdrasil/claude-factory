@@ -1,9 +1,10 @@
 #!/bin/sh
 # The one write path for task state (ADR-0050). The session's own state clone is the writer, and the
 # report is validated right here (including the transition, which is measured from the *committed* status of the
-# task file, not from the working copy the agent just wrote), committed into the state clone and, when the clone
-# has an origin, pushed to the state root; the local commit stays when the push fails. A clone with no origin is
-# the state root itself (factory-init.sh --root), so its report stays local.
+# task file, not from the working copy the agent just wrote) and committed into the state clone under the state
+# lock. It does not push: the push to the state root is state-push.sh's, run in the background by the monitor pass
+# and the CEO loop, so no report waits on the network while it holds the lock. A clone with no origin is the
+# state root itself (factory-init.sh --root) and has nothing to push anyway.
 #
 #   state-report.sh --task <id> [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]
 #                   [--owner <owner>] [--set-status <status>] [--set-phase <tests|implement>] [--no-status]
@@ -32,9 +33,9 @@
 # is worked on is recorded by the script that made it instead of by hand. Combine it with `--no-status` when the
 # status is not changing.
 #
-# Exit 0 = the report is in, 1 = it was refused (the reason is on stderr, fix it and run again),
-# 2 = it never got there (no task, a push the root refuses,
-# another session holding the state clone's lock for longer than STATE_LOCK_WAIT seconds, default 30).
+# Exit 0 = the report is committed, 1 = it was refused (the reason is on stderr, fix it and run again),
+# 2 = the report could not be written or committed (no task, git refusing the commit, another session holding
+# the state clone's lock for longer than STATE_LOCK_WAIT seconds, default 30).
 set -eu
 
 attempts=''
@@ -116,7 +117,7 @@ if [ -f "$1" ]; then progress_file=$1; progress=$(cat "$1"); fi
 # ---------------------------------------------------------------------------
 # The session's own clone is the writer (ADR-0050).
 die1() { printf 'state-report: the report of %s was refused: %s\n' "$id" "$1" >&2; exit 1; }
-# E3: one report at a time per state clone, from the read of the committed status to the push, two sessions
+# E3: one report at a time per state clone, from the read of the committed status to the commit, two sessions
 # that both read `claimed` and both wrote `in_progress` is the race the lock closes (state_lock, lib-tasks.sh).
 # The trap releases it on every exit, a refusal included.
 state_lock "$state" && lrc=0 || lrc=$?
@@ -171,7 +172,7 @@ if [ "$send_status" = 1 ]; then
   esac
 elif [ -n "$committed" ] && [ "$committed" != "$current" ]; then
   # the commit below carries the whole task file, so a `--no-status` call whose task file *has* moved the status
-  # would push a transition nothing checked, the one hole a "no status is claimed" exemption must not open.
+  # would commit a transition nothing checked, the one hole a "no status is claimed" exemption must not open.
   die1 "--no-status reports no status, but the task file moved $id from $committed to $current. Drop --no-status and report the transition, or put the status back to $committed, the commit carries the whole task file either way."
 fi
 if [ -n "$mr_url" ]; then
@@ -232,8 +233,4 @@ fi
 set -- "$rel_task"
 if [ -n "$progress_file" ]; then set -- "$@" "${progress_file#"$state/"}"; fi
 state_commit "$state" "$message" "$@" || die2 "the report of $id could not be committed in $state"
-
-# the push recipe of ADR-0012 (state_push, lib-tasks.sh), three tries; a clone with no origin is the state root
-# itself and keeps the report local, a root that still refuses leaves the commit in the clone (exit 2)
-state_push "$state" || die2 "the push to the state root failed 3 times, the report of $id is committed in $state but not pushed"
 exit 0

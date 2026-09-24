@@ -96,9 +96,9 @@ check 'bugfix parent is done'       done "$(field T-003 status)"
 check 'bugfix parent owner released' null "$(field T-003 owner)"
 check 'the block is done'           done "$(field T-003-01 status)"
 check 'the block owner is released' null "$(field T-003-01 owner)"
-if git -C "$state" log -1 --format=%s | grep -q 'chore(T-003): review . done, blocks included'; then
+if git -C "$state" log -1 --format=%s HEAD~1 | grep -q 'chore(T-003): review . done, blocks included'; then
   printf 'PASS the commit names the transition\n'
-else printf 'FAIL the commit names the transition: %s\n' "$(git -C "$state" log -1 --format=%s)"; fail=1; fi
+else printf 'FAIL the commit names the transition: %s\n' "$(git -C "$state" log -1 --format=%s HEAD~1)"; fail=1; fi
 if [ -z "$(git -C "$state" status --porcelain -- repos/demo/tasks)" ]; then
   printf 'PASS the writes are committed\n'
 else printf 'FAIL the writes are committed\n'; fail=1; fi
@@ -134,11 +134,11 @@ check '--close parent is closed'            closed "$(field T-007 status)"
 check '--close parent owner released'       null   "$(field T-007 owner)"
 check '--close block is closed'             closed "$(field T-007-01 status)"
 check '--close block owner released'        null   "$(field T-007-01 owner)"
-if git -C "$state" log -1 --format=%B | grep -q 'superseded by T-009'; then
+if git -C "$state" log -1 --format=%B HEAD~1 | grep -q 'superseded by T-009'; then
   printf 'PASS the --close commit carries the reason\n'
-else printf 'FAIL the --close commit carries the reason: %s\n' "$(git -C "$state" log -1 --format=%B)"; fail=1; fi
-has_line 'the parent progress file has a **closed** <reason> line' \
-  '^\*\*closed\*\*.*superseded by T-009' "$state/repos/demo/progress/T-007.md"
+else printf 'FAIL the --close commit carries the reason: %s\n' "$(git -C "$state" log -1 --format=%B HEAD~1)"; fail=1; fi
+has_line 'the parent progress file has a **closed** <reason> line, archived with it' \
+  '^\*\*closed\*\*.*superseded by T-009' "$state/repos/demo/archive/$month/progress/T-007.md"
 if [ -z "$(git -C "$state" status --porcelain -- repos/demo)" ]; then
   printf 'PASS the --close writes are committed\n'
 else printf 'FAIL the --close writes are committed: %s\n' "$(git -C "$state" status --porcelain -- repos/demo)"; fail=1; fi
@@ -214,8 +214,10 @@ check 'the parent is archived' "$state/repos/demo/archive/$month/tasks/T-017.md"
 check 'the block is archived' "$state/repos/demo/archive/$month/tasks/T-017-01.md" "$(file_of T-017-01)"
 check 'the progress file is archived' yes \
   "$([ -f "$state/repos/demo/archive/$month/progress/T-017.md" ] && echo yes || echo no)"
-check 'the archive is its own commit after the done commit' 'archive chore(T-017)' \
-  "$(git -C "$state" log -2 --format=%s | sed 's/^\(chore([^)]*)\).*/\1/; s/^.*\(archive\).*$/\1/' | tr '\n' ' ' | sed 's/ $//')"
+check 'the archive is its own commit' yes \
+  "$(git -C "$state" log -1 --format=%s | grep -q '^chore(T-017): archive' && echo yes || echo no)"
+check 'right after the done commit' yes \
+  "$(git -C "$state" log -1 --format=%s HEAD~1 | grep -q '^chore(T-017): review . done' && echo yes || echo no)"
 check 'the tree is clean after the archive' '' "$(git -C "$state" status --porcelain -- repos)"
 
 # --- T-228 Q2/Q16: after the push, clean worktrees and pushed branches of the task and its blocks go ---

@@ -137,6 +137,7 @@ check 'a local commit exits 0' 0 "$rc"
 check 'the root has the local commit' "$(git -C "$st" rev-parse HEAD)" "$(git -C "$st.git" rev-parse main)"
 
 # --- a moved remote is rebased onto, no autostash needed for a clean tree ------------------
+git -C "$tmp/p/other" pull -q >/dev/null 2>&1
 printf 'foreign\n' > "$tmp/p/other/foreign.md"
 git -C "$tmp/p/other" add foreign.md
 git -C "$tmp/p/other" commit -q -m 'a foreign commit'
@@ -156,6 +157,7 @@ check 'the untracked file survives' yes "$([ -f "$st/scratch.md" ] && echo yes |
 rm -f "$st/scratch.md"
 
 # --- a moved remote with a foreign uncommitted edit: no autostash, exit 1, all kept ---------
+git -C "$tmp/p/other" pull -q >/dev/null 2>&1
 printf 'foreign 2\n' > "$tmp/p/other/foreign.md"
 git -C "$tmp/p/other" commit -q -m 'a second foreign commit' -- foreign.md
 git -C "$tmp/p/other" push -q >/dev/null 2>&1

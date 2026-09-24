@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stop hook (ADR-0009): a session must not end without a self-report a human can see:
-# status review|blocked|failed in the task, delivered through state-report.sh: a commit and a push from the
-# session's own state clone (ADR-0050).
+# status review|blocked|failed in the task, delivered through state-report.sh: a commit in the session's own
+# state clone (ADR-0050); the push to the state root happens in the background (state-push.sh).
 # The hook is the writer: it sends the report itself, so the agent cannot forget to.
 # A task that already carries a terminal status, `done` or `closed`, is finished and is skipped by every loop
 # below (T-186): it has no self-report left to make, and re-reporting it is a transition state-report.sh refuses,
@@ -105,6 +105,11 @@ block() {
   exit 2
 }
 
+# how a session's own state files get into the state repo, the tail of every message that asks for a rewrite:
+# the task and the progress file go in through the report this hook sends, anything else through state-commit.sh,
+# and nobody pushes by hand
+commit_how="then stop again: the Stop hook commits the task and progress files for you through state-report.sh, any other state file of yours goes in with sh $(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/state-commit.sh -m \"<message>\" -- <paths>, and the push to the state root happens in the background (state-push.sh from the monitor pass and the CEO loop)."
+
 # the rules run over every owned task and block once, naming each failing one: <msgs> is what the agent reads,
 # <labels> the short form the exhaustion record carries
 msgs=''
@@ -126,7 +131,7 @@ for i in $ids; do
     review|tests_ready)
       set -- "$state"/repos/*/progress/"$i".md
       grep -q '^## Evidence' "$1" 2>/dev/null \
-        || add "Stop blocked: task $i reports '$s' but $1 has no '## Evidence' section. A status is a claim; evidence makes it checkable, run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, then commit + push from the state clone." \
+        || add "Stop blocked: task $i reports '$s' but $1 has no '## Evidence' section. A status is a claim; evidence makes it checkable, run the proving command fresh (for review the acceptance command after the rebase, for tests_ready the red tests failing for the right reason), write it with its exit code and key output line under '## Evidence' in the progress file, $commit_how" \
            "status '$s' with no '## Evidence' in the progress file, the claim is not checkable" ;;
   esac
 
@@ -135,7 +140,7 @@ for i in $ids; do
   # reports a human can see, and none of them blocks the Stop.
   case "$s" in
     review|tests_ready|blocked|failed|changes_requested|done) ;;
-    *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md and commit + push from the state clone." \
+    *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md, $commit_how" \
          "no self-report, task $i still has status '$s', not review|tests_ready|blocked|failed (ADR-0009)" ;;
   esac
 done
@@ -186,13 +191,14 @@ if [ -s "$edits" ]; then
   set -- "$state"/repos/*/progress/"$id".md
   progress=$1
   grep -q '^## Test deviations' "$progress" 2>/dev/null \
-    || block "Stop blocked: this session changed test files ($(sort -u "$edits" | tr '\n' ' ')) but $progress has no '## Test deviations' section. The red tests from the tests phase are the contract (issue #290/#308), turn them green, do not bend them; a refactor may only follow a rename mechanically through (block-refactor step 4). Revert the change, or add a '## Test deviations' section to $progress listing each test file you touched and why and self-report 'blocked' so a human decides; then commit + push from the state clone." \
+    || block "Stop blocked: this session changed test files ($(sort -u "$edits" | tr '\n' ' ')) but $progress has no '## Test deviations' section. The red tests from the tests phase are the contract (issue #290/#308), turn them green, do not bend them; a refactor may only follow a rename mechanically through (block-refactor step 4). Revert the change, or add a '## Test deviations' section to $progress listing each test file you touched and why and self-report 'blocked' so a human decides; $commit_how" \
     "test files changed with no '## Test deviations' in the progress file (issues #290/#308): $(sort -u "$edits" | tr '\n' ' ')"
 fi
 
-# "is it committed and pushed" is not a question the agent answers: the hook delivers the report itself through
-# state-report.sh, which commits in the state clone and pushes it (ADR-0050). An undeliverable report therefore
-# blocks, and once the round budget is spent block() records the violation and lets the session go.
+# "is it committed" is not a question the agent answers: the hook delivers the report itself through
+# state-report.sh, which commits in the state clone (ADR-0050); the push is state-push.sh's, in the background.
+# A report that cannot be committed therefore blocks, and once the round budget is spent block() records the
+# violation and lets the session go.
 for i in $ids; do
   t=$(task_of "$i")
   [ -n "${t:-}" ] && [ -f "$t" ] || continue
@@ -207,8 +213,8 @@ for i in $ids; do
     0) ;;
     1) add "Stop blocked: state-report.sh refused the self-report of task $i. $report Fix what it names in $t or in $state/repos/*/progress/$i.md and stop again: the report is sent for you, you do not commit or push it." \
          "state-report.sh refused the self-report of $i: $report" ;;
-    *) add "Stop blocked: the self-report of task $i could not be pushed to the state root. $report There is no dashboard to send it to instead (ADR-0050), check \`<root>/state\` is reachable and carries receive.denyCurrentBranch=updateInstead (ADR-0040), note what happened in the progress file and stop again." \
-         "the self-report of $i could not be pushed to the state root: $report" ;;
+    *) add "Stop blocked: the self-report of task $i could not be written or committed in the state clone. $report There is no dashboard to send it to instead (ADR-0050), check that $state is a git clone and that no other session holds its state lock for long, note what happened in the progress file and stop again." \
+         "the self-report of $i could not be committed in the state clone: $report" ;;
   esac
 done
 [ -z "$msgs" ] || block "$msgs" "$labels"
