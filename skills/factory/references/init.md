@@ -14,7 +14,9 @@ question and the confirm per the `ui: docker` section of `_shared/ask.md`. A no 
 Then ask at most 6 questions, each with a default the user can accept as is:
 
 1. **Factory root**, default `~/factory`, never inside a product repo. Becomes `--root`.
-2. **State repo**: adopt an existing `<root>/state`, its `repos.yml` byte for byte, or create it.
+2. **State repo**: adopt an existing `<root>/state`, its `repos.yml` byte for byte, create it, or clone
+   the state repo another machine already pushes to (its url becomes `--from <url>`; question 3 is then
+   answered by that url).
 3. **State remote**, optional, default none. When given, `git -C <root>/state remote add origin <url>`
    after the apply step.
 4. **Git identity**, only when `git config user.email` prints nothing.
@@ -28,11 +30,13 @@ Completion: every answer recorded, from the user or the stated default.
 
 ## Steps
 
-- **Preview.** `<plugin-root>/bin/factory-init.sh --root <root>` without `--yes`, plus `--settings <file>`
-  when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with `nothing to do`: continue at
-  Register. Exit 3: the output is the diff over the state repo, `repos.yml`, `factory.yml` and the settings
-  file gaining `env.WORK_DIR`. An existing `factory.yml` keeps its keys and gains the `ui:` asked for and a
-  `ui_port:` when it has none.
+- **Preview.** `<plugin-root>/bin/factory-init.sh --root <root>` without `--yes`, plus `--from <url>` for a
+  clone and `--settings <file>` when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with
+  `nothing to do`: continue at Register. Exit 3: the output is the diff over the state repo (`git init`, or
+  `git clone <url>` whose `repos.yml` is adopted), `repos.yml`, `factory.yml` and the settings file gaining
+  `env.WORK_DIR`. A new `factory.yml` carries the `capacity:` defaults; an existing one keeps its keys and
+  gains the `ui:` asked for and a `ui_port:` when it has none. Every run, preview included, refreshes the
+  Setup tab's `doctor.json` (`references/doctor.md`).
 - **Confirm.** Ask whether to apply it with a confirm (`_shared/ask.md`) that carries the printed diff
   verbatim as a fenced block, without the `pending` line:
 
