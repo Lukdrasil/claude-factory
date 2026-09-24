@@ -11,7 +11,15 @@
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
 # `review` with an `mr_url` is waiting for the developer, so step 11 steps over it to the next block that still
 # needs work and only prints the reminder with the open MRs when every remaining block is one of those; a block
-# in `changes_requested` is a fix round.
+# in `changes_requested` is a fix round. That holds for a task already stacked (a block whose progress file
+# records `base: block/...`). Every other task cuts its blocks from the work branch, one wave at a time: a block
+# in `review` with an `mr_url` does not hold the blocks of its own wave, and before a block of a later wave is
+# cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
+# the human's yes). Step 14 is then the task MR the human reviews and merges.
+#
+# A parent with `request:` is charted first: while `map.sh clear <R-id>` does not exit 0 and no plan-ready file
+# exists, the step is 3b, the request map of skills/wayfinder; the grill of step 4 is then seeded by
+# `map.sh export <R-id> <key>`.
 #
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
 # beginning `Completion:`, and under `Commands:` the commands to run, two spaces in front of each. The work
@@ -20,7 +28,8 @@
 # directory of the run.
 #
 # The state a step is read off, in the order the steps are tried: no `tier` is step 3, no plan-ready file is
-# step 4 (the one whose frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
+# step 3b while the parent's request map is not clear, else step 4 (the plan-ready file is the one whose
+# frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
 # and a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
 # wave plan in the progress file is step 8, a parent that is not `in_progress` is step 9, no session worktree
 # is step 10, a block that is not `done` is step 11, every block done is step 12, no `## Duplication` in the
@@ -121,6 +130,7 @@ complexity=$(fm "$task" complexity)
 status=$(fm "$task" status)
 branch=$(fm "$task" branch)
 mr_url=$(fm "$task" mr_url)
+request=$(fm "$task" request)
 
 if [ -z "$tier" ] || [ -z "$archetype" ]; then
   emit "Step 3 of 16: triage $id" "tier and archetype are set on $id."
@@ -140,20 +150,30 @@ done
 plan="$state/repos/$key/plans/$slug-plan-ready.md"
 
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
-  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
+  # why: the request map is one per request and decides what every parent of it shares, so no grill starts on
+  # why: a parent while a ticket of the map is open or fog is left on it
+  if [ -n "$request" ] && ! sh "$bin/map.sh" clear "$request" --state "$state" >/dev/null 2>&1; then
+    emit "Step 3b of 16: chart $request" "$bin/map.sh clear $request exits 0: no ticket of $state/requests/$request/map.md is open or claimed and nothing is left under Not yet specified."
+    cmd "cat $plugin/skills/wayfinder/SKILL.md"
+    if [ -f "$state/requests/$request/map.md" ]; then
+      cmd "cat $state/requests/$request/map.md"
+      cmd "$bin/map.sh frontier $request --state $state"
+    else
+      cmd "$bin/map.sh new $request --destination '<the request in one or two lines>' --state $state"
+    fi
+    exit 0
+  fi
+  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id${request:+ and request: $request} in its frontmatter."
   cmd "cat $plugin/skills/grill/SKILL.md"
+  [ -z "$request" ] || cmd "$bin/map.sh export $request $key --state $state"
   cmd "cat $task"
   exit 0
 fi
 
-blocks=''
-for f in "$state"/repos/*/tasks/*.md; do
-  [ -f "$f" ] || continue
+blocks=$(task_files | while IFS= read -r f; do
   b=$(fm "$f" id)
-  if is_block_of "$id" "$b"; then blocks="$blocks$b
-"; fi
-done
-blocks=$(printf '%s' "$blocks" | sort_ids)
+  if is_block_of "$id" "$b"; then printf '%s\n' "$b"; fi
+done | sort_ids)
 
 product=$(clone_path "$key")
 verdict="$state/repos/$key/verdicts/$slug.md"
@@ -237,6 +257,22 @@ for b in $ordered; do
   break
 done
 
+# a task already stacked has a block cut from another block's branch; its block MRs stay the developer's to merge
+stacked=''
+for b in $blocks; do
+  case "$(sed -n 's/^base:[[:space:]]*//p' "$state/repos/$key/progress/$b.md" 2>/dev/null | head -n1)" in
+    block/*) stacked=1 ;;
+  esac
+done
+
+# why: every other task cuts a wave's blocks from the work branch once the wave before it is merged, so a block
+# why: of a later wave than a waiting MR is not started; the merges below come first
+if [ -n "$pending" ] && [ -n "$waiting" ] && [ -z "$stacked" ]; then
+  for b in $waiting; do
+    [ "$(wave_of "$b")" = "$(wave_of "$pending")" ] || { pending=''; break; }
+  done
+fi
+
 if [ -n "$pending" ]; then
   bf=$(task_of "$pending")
   bs=$(fm "$bf" status)
@@ -294,8 +330,16 @@ if [ -n "$pending" ]; then
   exit 0
 fi
 
+if [ -n "$waiting" ] && [ -z "$stacked" ]; then
+  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done; a block whose MR rates the risk high is merged only after the human's yes (_shared/ask.md), with --confirmed. The next wave is cut from the work branch once this one is merged."
+  for b in $waiting; do
+    cmd "$bin/block-mr-merge.sh $b"
+  done
+  exit 0
+fi
+
 if [ -n "$waiting" ]; then
-  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block with depends_on on that block: the template written to $harness/extra.md and filled in, an architect-review cut-check over that one block, task-new.sh --parent, and the verdict removed and pushed afterwards when the registered clone has docs/architecture/, as decompose does."
+  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block with depends_on on that block: the template written to $harness/extra.md and filled in, an architect-review cut-check over that one block, task-new.sh --parent, and the verdict removed and committed afterwards when the registered clone has docs/architecture/, as decompose does."
   for b in $waiting; do
     bf=$(task_of "$b" || :)
     [ -n "$bf" ] || continue
@@ -311,9 +355,8 @@ if [ -n "$waiting" ]; then
   cmd "cat $plugin/skills/architect-review/SKILL.md $plugin/skills/architect-review/references/cut-check.md"
   cmd "$bin/task-new.sh --repo $key --parent $id --file $harness/extra.md --state $state"
   if [ -n "$product" ] && [ -d "$product/docs/architecture" ]; then
-    cmd "git -C $state rm -q repos/$key/verdicts/$slug.md"
-    cmd "git -C $state commit -q -m 'chore($id): extra block written, verdict removed'"
-    cmd "git -C $state push -q"
+    cmd "rm $state/repos/$key/verdicts/$slug.md"
+    cmd "$bin/state-commit.sh -m 'chore($id): extra block written, verdict removed' --state $state -- repos/$key/verdicts/$slug.md"
   fi
   exit 0
 fi
@@ -346,11 +389,12 @@ if ! grep -q '^## Review' "$progress" 2>/dev/null; then
 fi
 
 if [ -z "$mr_url" ]; then
-  emit "Step 14 of 16: open the MR for $id" "the MR exists with no conflicts against $base, or the branch is merge-ready without a forge."
+  emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, or the branch is merge-ready without a forge, and the human has been asked to review and merge it; done follows the merge."
   cmd "git -C $worktree fetch origin"
   cmd "git -C $worktree rebase origin/$base"
   cmd "git -C $worktree push --force-with-lease origin ${branch:-HEAD}"
   cmd "cat $plugin/skills/_shared/mr-description.md"
+  cmd "$bin/mr-open.sh $id --state $state"
   exit 0
 fi
 
