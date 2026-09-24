@@ -544,8 +544,10 @@ fwl_allowed() {
 }
 
 # T-228 Q4/Q17: a commit in the state clone names its paths. Without `--`, or with -a/--all, it also takes whatever
-# another session left staged or modified there.
-check_state_commit() { # <one command segment, quotes removed>
+# another session left staged or modified there. T-228-06: the flags are read with quoted spans removed, the `-C`
+# directory and the paths after `--` from the segment as written, so a quoted one still counts.
+check_state_commit() { # <one command segment, quotes removed> <the segment as written>
+  scraw=$(printf '%s' "${2:-}" | tr -d '\042\047')
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -554,16 +556,18 @@ check_state_commit() { # <one command segment, quotes removed>
   shift
   scd=$cwd
   if [ "${1:-}" = -C ]; then
-    [ -n "${2:-}" ] || return 0
-    scd=$(abs_norm "$2")
-    shift 2
+    shift
+    scop=$(printf '%s' "$scraw" | awk '{ for (i = 1; i < NF; i++) if ($i == "-C") { print $(i + 1); exit } }')
+    [ -n "$scop" ] || return 0
+    scd=$(abs_norm "$scop")
+    [ "${1:-}" != "$scop" ] || shift
   fi
   [ "${1:-}" = commit ] || return 0
   shift
   case "$scd" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) ;; *) return 0 ;; esac
   for a in "$@"; do
     case "$a" in
-      --) return 0 ;;
+      --) printf '%s' "$scraw" | grep -Eq '(^|[[:space:]])--[[:space:]]+[^[:space:]]' && return 0; break ;;
       --all|-[!-]*a*) deny "'git commit -a' in the state clone $WORK_DIR/state takes every modified file, including another session's: stage your own files and commit them by name, 'git commit -m <message> -- <path>…'" ;;
     esac
   done
@@ -665,25 +669,28 @@ heredoc_stripped() { # <command> — prints the command to scan
 }
 
 # T-228 Q23: a segment ends at `;`, `|`, `&` and a line break, but only outside quotes: a `&&` inside a printf
-# argument or a commit message is data. A quoted span that runs over several lines stays on one.
-split_segs() { # <command>
-  printf '%s\n' "$1" | awk '
+# argument or a commit message is data. A quoted span that runs over several lines stays on one. T-228-06: with
+# `lead`, each segment carries the separator before it, `a` for `&&`, `o` for any other and `-` for none.
+split_segs() { # <command> [lead]
+  printf '%s\n' "$1" | awk -v lead="${2:-}" '
+    function emit() { if (seg != "") print (lead != "" ? code " " : "") seg; seg = "" }
     { s = s (NR > 1 ? "\n" : "") $0 }
     END {
-      n = length(s); q = ""; out = ""
+      n = length(s); q = ""; seg = ""; sep = ""; code = "-"
       for (i = 1; i <= n; i++) {
         ch = substr(s, i, 1)
         if (q != "") {
-          if (ch == "\\" && q == "\"") { out = out ch substr(s, ++i, 1); continue }
+          if (ch == "\\" && q == "\"") { seg = seg ch substr(s, ++i, 1); continue }
           if (ch == q) q = ""
-          out = out (ch == "\n" ? " " : ch); continue
+          seg = seg (ch == "\n" ? " " : ch); continue
         }
-        if (ch == "\\") { out = out ch substr(s, ++i, 1); continue }
+        if (ch == ";" || ch == "|" || ch == "&" || ch == "\n") { sep = sep ch; continue }
+        if (sep != "") { emit(); code = (sep == "&&" ? "a" : "o"); sep = "" }
+        if (ch == "\\") { seg = seg ch substr(s, ++i, 1); continue }
         if (ch == "\047" || ch == "\"") q = ch
-        else if (ch == ";" || ch == "|" || ch == "&") ch = "\n"
-        out = out ch
+        seg = seg ch
       }
-      print out
+      emit()
     }'
 }
 
@@ -692,9 +699,13 @@ unquoted() { # <text>
 }
 
 # T-228 Q22: `cd <abs>`, and `cd`, `cd ~`, `cd ~/x` through $HOME, move the cwd the later segments are judged
-# against. A `cd` the guard cannot resolve (relative, `-`, a variable, `..`, a quoted path) leaves it unknown.
+# against. A `cd` the guard cannot resolve (relative, `-`, a variable, `..`, a quoted path, a `)`) leaves it unknown.
+# T-228-06: only `&&` makes the next segment wait for the cd. After `;`, `||` or `|` the cd may have failed or run in
+# a subshell, so cwd_alt keeps the cwd before it, and a relative target is judged against both.
 cwd_lost=''
-cd_track() { # <one command segment>
+cwd_alt=''
+cd_track() { # <one command segment> <separator code after it>
+  ct_sep=$2
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -710,14 +721,18 @@ cd_track() { # <one command segment>
     "~/"*) cd_to=${HOME:+$HOME/${cd_to#"~/"}} ;;
   esac
   case "$cd_to" in
-    *..*|*'$'*|*'`'*|*\"*|*\'*) cwd_lost=1 ;;
-    /*|[A-Za-z]:/*) norm_into cwd "$cd_to"; cwd_lost='' ;;
+    *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cwd_lost=1 ;;
+    /*|[A-Za-z]:/*)
+      if [ "$ct_sep" = a ]; then cwd_lost=''; cwd_alt=''; elif [ -z "$cwd_alt" ]; then cwd_alt=$cwd; fi
+      norm_into cwd "$cd_to" ;;
     *) cwd_lost=1 ;;
   esac
 }
 
-# T-228 D1: the reads a parent's owner may run in its blocks' worktrees, and a block on its own brief
+# T-228 D1: the reads a parent's owner may run in its blocks' worktrees, and a block on its own brief. T-228-06: a
+# command substitution or a process substitution runs a command of its own, so it is never a read.
 bash_read_only() { # <one command segment, quotes removed>
+  case "$1" in *'$('*|*'`'*|*'<('*|*'>('*) return 1 ;; esac
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -733,6 +748,17 @@ bash_read_only() { # <one command segment, quotes removed>
   esac
   return 1
 }
+
+# T-228-06: a check that reads $cwd runs again against cwd_alt when a cd may not have moved the shell
+with_alt() { # <command…>
+  "$@"
+  [ -n "$cwd_alt" ] || return 0
+  wa_cwd=$cwd; cwd=$cwd_alt
+  "$@"
+  cwd=$wa_cwd
+}
+inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; bash_write_target "$1"; }
+inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
 
 guard_bash() {
   c=$1
@@ -827,21 +853,25 @@ guard_bash() {
       || deny "--force-with-lease is only allowed as 'git push --force-with-lease[=<branch>:<sha>] [-u] origin <branch>' on your own task branch${branch:+ $branch}, or as 'git -C <worktree of a task you own> push' on that task's branch (ADR-0012)"
   fi
   # T-228 Q22: the loops below that judge a path against the cwd walk the segments in order, and a `cd <abs>` moves
-  # the cwd for the segments after it (cd_track); each loop starts again from the hook's cwd
+  # the cwd for the segments after it (cd_track, given the separator between them); each loop starts again from the
+  # hook's cwd
   cwd0=$cwd
+  ssegs=$(split_segs "$sc" lead)
   set -f
   oIFS=$IFS; IFS='
 '
   # shellcheck disable=SC2086
-  set -- $segs
+  set -- $ssegs
   IFS=$oIFS
   set +f
-  for seg in "$@"; do
+  prev=''
+  for line in "$@"; do
+    seg=${line#* }
+    cd_track "$prev" "${line%% *}"; prev=$seg
     check_state_push "$seg"
-    check_state_commit "$(unquoted "$seg")"
-    cd_track "$seg"
+    with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
-  cwd=$cwd0; cwd_lost=''
+  cwd=$cwd0; cwd_lost=''; cwd_alt=''
   # T-036: a `dotnet test` with no wall-clock cap hung a session until the watchdog stalled it — 20 minutes of
   # dead time and no trace of which test hung. The deterministic twin of _shared/test-budget.md: every command
   # segment that runs `dotnet test` carries a `timeout` in the same segment. A quoted mention is prose, not a run.
@@ -922,10 +952,13 @@ guard_bash() {
   oIFS=$IFS; IFS='
 '
   # shellcheck disable=SC2086
-  set -- $segs
+  set -- $ssegs
   IFS=$oIFS
   set +f
-  for seg in "$@"; do
+  prev=''
+  for line in "$@"; do
+    seg=${line#* }
+    cd_track "$prev" "${line%% *}"; prev=$seg
     case "$seg" in
       *'>'*)
         rtargets=$(unquoted "$seg" | grep -oE '(^|[^=<>-])>>?[[:space:]]*[^[:space:]"'"'"';|&<>()]+' | sed 's/^[^>]*>*[[:space:]]*//'
@@ -940,50 +973,62 @@ guard_bash() {
               *) deny "a relative write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$p'. Write to an absolute path, or 'cd' to an absolute one first (T-228)." ;;
             esac
           fi
-          bash_write_target "$p"
+          with_alt bash_write_target "$p"
         done
         set +f ;;
     esac
-    cd_track "$seg"
   done
-  cwd=$cwd0; cwd_lost=''
+  cwd=$cwd0; cwd_lost=''; cwd_alt=''
   # …and the in-place editors, per command segment so that a read in one segment is not blamed on a write in
   # another. Inside a write segment every path-like token is offered to the checks; an option (`-i`), a quoted
   # script (`'s|/tests/a|/tests/b|'`) or a backtick is skipped, and both checks ignore a path they have no rule for.
   # T-228 Q3: the tokens come from the segment with its quoted spans removed, so the pieces of a quoted script are
-  # never offered, and a `$` target is skipped as the redirect loop skips one. After a `cd` the guard cannot
-  # resolve, an in-place write is denied outright.
+  # never offered, and a `$` target is skipped as the redirect loop skips one. T-228-06: the script operand of a
+  # `sed -i`/`perl -i` without `-e` is skipped, quoted or not, and after a `cd` the guard cannot resolve, a relative
+  # token is denied while an absolute one is judged as usual.
   set -f
   oIFS=$IFS; IFS='
 '
   # shellcheck disable=SC2086
-  set -- $segs
+  set -- $ssegs
   IFS=$oIFS
   set +f
-  for seg in "$@"; do
-    if ! bash_in_place_write "$seg"; then cd_track "$seg"; continue; fi
-    [ -z "$cwd_lost" ] \
-      || deny "an in-place write after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): $seg. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."
+  prev=''
+  for line in "$@"; do
+    seg=${line#* }
+    cd_track "$prev" "${line%% *}"; prev=$seg
+    bash_in_place_write "$seg" || continue
     useg=$(unquoted "$seg")
+    pseg=$(printf '%s' "$seg" | sed -E "s/'[^']*'|\"[^\"]*\"/ @Q /g")
+    script=1
+    case " $pseg " in *" -e "*|*" --expression"*|*" -f "*) script='' ;; esac
+    cmdseen=''
     set -f
     # shellcheck disable=SC2086
-    for t in $useg; do
-      case "$t" in -*|\$*|\`*|''|.) continue ;; esac
+    for t in $pseg; do
+      case "$t" in sed|perl) cmdseen=1; continue ;; -*) continue ;; esac
+      if [ -n "$cmdseen" ] && [ -n "$script" ]; then script=''; continue; fi
+      case "$t" in @Q|\$*|\`*|'') continue ;; esac
+      if [ -n "$cwd_lost" ]; then
+        case "$t" in
+          /*|[A-Za-z]:/*|"~"*) ;;
+          *) deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$t'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)." ;;
+        esac
+      fi
+      [ "$t" != . ] || continue
       case "$t" in *tasks/*) status_write=1 ;; esac
       # 2026-09-07 lesson A2: a bare word is a file only when it names one — `git restore --staged .` from the
       # registered clone was denied as a write into `<clone>/git`. A token with a `/` is a path; one without is
       # offered only when it exists in the cwd. `.` is the directory itself, and a `cd` earlier in the command may
       # have moved it — it is not judged here (the clone rule already denies every explicit spelling of the clone).
-      case "$t" in */*) ;; *) [ -e "$cwd/$t" ] || continue ;; esac
-      bash_write_target "$t"
+      with_alt inplace_tok "$t"
     done
     set +f
     # the last operand of `sed -i` or `perl -i` is its file, whether it exists yet or not
     lw=$(printf '%s' "$useg" | awk '/(^|[ \t])(sed|perl)[ \t]/ && NF > 1 { print $NF }')
-    case "$lw" in -*|\$*|\`*|''|.|*/*) ;; *) [ -e "$cwd/$lw" ] || bash_write_target "$lw" ;; esac
-    cd_track "$seg"
+    case "$lw" in -*|\$*|\`*|''|.|*/*) ;; *) with_alt inplace_last "$lw" ;; esac
   done
-  cwd=$cwd0; cwd_lost=''
+  cwd=$cwd0; cwd_lost=''; cwd_alt=''
   [ -z "$status_write" ] || check_status "$c"
 }
 

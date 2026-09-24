@@ -34,21 +34,25 @@ together with every deny they keep.
 - **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
   break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
   dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
-- **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that later segments of
-  the same command are judged against. After a `cd` the guard cannot resolve (a relative path, `-`, a
-  variable, `..`, a quoted path), a relative write target and an in-place write are denied. An absolute
-  target still passes.
+- **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that the segments
+  joined to it by `&&` are judged against. After `;`, `||` or `|` the `cd` may have failed or run in a
+  subshell, so a relative target is judged against the cwd before the `cd` as well. After a `cd` the guard
+  cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`), a relative
+  write target is denied, whether a redirect or an in-place editor's operand. An absolute target is judged as
+  any absolute target.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
-  with `$` is skipped, as for a redirect. The last operand of `sed -i` and `perl -i` is judged as a file even
-  when it does not exist yet.
+  with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
+  script, quoted or not, and is skipped. The last operand is judged as a file even when it does not exist yet.
 - **Reads into blocks.** The session that owns a parent task (its `owner:`) may run `git -C <block worktree>
   log|diff|status|show`, `cat` and `ls` in the worktrees of that parent's blocks. A block session may `cat`
-  its own brief, `.harness/<parent>/brief-<block>.md`. Nothing else changes: a write into a block, a read by
-  any other session and a read of a sibling's brief stay denied.
+  its own brief, `.harness/<parent>/brief-<block>.md`. A segment holding `$(`, a backtick, `<(` or `>(` runs a
+  command of its own and is never a read. Nothing else changes: a write into a block, a read by any other
+  session and a read of a sibling's brief stay denied.
 - **Pinned lease.** `git push --force-with-lease[=<branch>[:<sha>]] [-u] origin <branch>` is allowed on the
   session's own task branch. The parent's owner pushes the parent branch as `git -C <parent worktree> push
   --force-with-lease=<branch>:<sha> origin <branch>`, where `<branch>` is that task's `branch:`. A lease on
   the default branch or on any other branch is denied.
 - **State-clone commits.** In `$WORK_DIR/state`, reached by the cwd, a `cd` or `-C`, `git commit` must name
-  its paths after `--`, and `-a`/`--all` is denied. `git add` stays allowed.
+  at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts. `git add` stays
+  allowed.
