@@ -34,7 +34,7 @@ quick_verdict() { # <verdict file>
   return 1
 }
 
-# T-249 F1: the architect rule for a task write in $state, shared by architect-gate.sh's Write branch and every
+# the architect rule for a task write in $state, shared by architect-gate.sh's Write branch and every
 # block write of task-new.sh. The product is the registered clone at the repos.yml `path:` of <key>; without
 # docs/architecture/ there it passes (plan, decision 6). A valid verdict is `aligned` or `overridden-by-human`
 # whose plan_hash is the current hash of its plan file, a mismatch counting as no verdict; only the verdict of the

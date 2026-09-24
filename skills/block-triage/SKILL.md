@@ -1,6 +1,6 @@
 ---
 name: block-triage
-description: Triaging one forge issue into a draft os-task in the state repo, deciding archetype, tier and complexity and writing the draft with status triaged. Started by the controller after dispatching a triage task; can also be run by hand with an issue URL.
+description: Triaging one forge issue into a draft os-task in the state repo, deciding archetype, tier and complexity and writing a new draft with status draft (a roadmap-edited draft with status triaged). Started by the controller after dispatching a triage task; can also be run by hand with an issue URL.
 ---
 
 # block-triage

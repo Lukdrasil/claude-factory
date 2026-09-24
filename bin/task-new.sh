@@ -49,7 +49,7 @@ case "$status" in
   *) die "--status may only be claimed (with --owner); a new task is draft otherwise" ;;
 esac
 
-# T-249 F1: a block write is held to the architect verdict of the plan it names, before anything is synced or
+# a block write is held to the architect verdict of the plan it names, before anything is synced or
 # committed; the block id is not allocated yet, so the quick-verdict lookup by id stays the Write branch's alone.
 # Top-level writes are not checked (Q7).
 if [ -n "$parent" ]; then
