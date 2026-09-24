@@ -46,10 +46,14 @@ The server is the one reader of an ask. `view` is `AskParser`'s reading of the b
 question, `confirm` for one question whose options are exactly yes and no, `round` otherwise. `preamble` is the
 rendered text before the first `❓`, the whole body for a notice. Each question has `q`, `title`, `after`, `html`
 (its text without the header, option and `➡️` lines), `options` (`key` and inline `html`), `rec` and `recKey`.
-Options inside a fenced block are never read. `body` stays, the text the terminal shows.
+Options inside a fenced block are never read. A `❓` segment without a question header is rendered after the previous
+question's `html` and adds no option and no say in `kind`, or joins the preamble when no question precedes it. `body`
+stays, the text the terminal shows.
 
-Markdown is rendered by Markdig with the advanced extensions and raw HTML escaped. A link whose URL is not http,
-https, relative or a fragment keeps its text and loses its `href`, autolinks included.
+Markdown is rendered by Markdig with the advanced extensions except generic attributes and media links, so no markdown
+attaches an event attribute or an iframe, and raw HTML escaped. A link whose URL is not http, https, relative or a
+fragment keeps its text and loses its `href`, autolinks included. `/`, its static files and the API are sent with
+`Content-Security-Policy: default-src 'self'; img-src 'self' data:`, and `/visual` replaces it with its own.
 
 `sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw` or `Q<n> more`, so an ask
 rewritten under the same id reads open again. `held` is the reason in `sessions/<sid>/relay` while the relay
