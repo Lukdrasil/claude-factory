@@ -28,7 +28,8 @@ one task instead.
    relay when its tab lives without `ui-relay.sh` in it) and give the human the URL it prints. Register as
    the unit `ceo`: `sh <plugin-root>/bin/ui-session.sh --session <session_id> --pane "$HERDR_PANE_ID" --flow
    ceo --task ceo`, with the session_id of your identity line, so the Memory tab's start button reaches you.
-4. `sh <plugin-root>/bin/herd-list.sh`: one `<request> <priority> <T-id> <repo> <status>` line per herd.
+4. `sh <plugin-root>/bin/herd-list.sh --state <state>`: one `<request> <priority> <T-id> <repo> <status>` line
+   per herd.
    For every T-id in it, `sh <plugin-root>/bin/herdr-tabs.sh reattach <T-id>`, which renames the recorded
    panes back after a herdr restart.
 5. Arm one watcher per herd through the Monitor tool, command `sh <plugin-root>/bin/herd-watch.sh <T-id>
@@ -74,7 +75,7 @@ A request comes from the human in the terminal or through the UI's intake ask, w
    `request: <R-id>`, `priority: <P>` and, when the request orders the repositories, `depends_on:` on the
    parent that goes first; then `sh <plugin-root>/bin/task-new.sh --repo <key> --file <draft> --state
    <state>`, once per repository. A priority changes later only through `sh <plugin-root>/bin/task-priority.sh
-   <T-id> <P0-P3>`, which carries it to the blocks in one commit.
+   <T-id> <P0-P3>`, on the parent only, which carries it to the blocks in one commit.
 4. Dispatch triage for each parent (Chain), arm its watcher, tell the human the request id and the parents.
 
 ## Chain
@@ -112,22 +113,24 @@ approve`: the destination, the decisions, out of scope, then per repository the 
 acceptance, and spec-critic's line per red block; the UI's Plan checklist shows the same, read-only. The
 answer is the human's, never yours.
 
-On yes: `sh <plugin-root>/bin/task-approve.sh <ids...>`, the parents and their blocks in depends_on order, in
-one lock and one commit (it stops at the first failure and warns per unfinished depends_on); `sh
-<plugin-root>/bin/worktree-add.sh <T-id>` per parent; `sh <plugin-root>/bin/map.sh status <R-id> queued`;
-then `session-monitor.sh --queue`. On no: the request stays `planned` and the human says what changes.
+On yes: one call `sh <plugin-root>/bin/task-approve.sh <ids...>`, the parents and their blocks in depends_on
+order, in one lock and one commit. Show the human every `<id> ready <plan_hash>` line and every warning it
+prints (one per unfinished depends_on). Exit 1 approved nothing: show the reason and stop there. On exit 0:
+`sh <plugin-root>/bin/map.sh status <R-id> queued`, then `session-monitor.sh --queue`. On no: the request
+stays `planned` and the human says what changes.
 
 ## Queue and leads
 
-`sh <plugin-root>/bin/queue-next.sh` prints `<T-id> <key> <priority> <request>` in dispatch order: ready
-parents of a request, unowned, no open lead, every depends_on done; a parent inherits the best priority of its
-dependents. `session-monitor.sh --queue [--max N]` takes those lines from the top while `capacity.sh count
-sessions` leaves two slots free and `capacity.sh count repo-lead` one, and starts each as `--step lead`: its
-own workspace `<T-id> <key>`, cwd the parent worktree, herdr name `lead_<unit>`, prompt `Read
-<state>/repos/<key>/agents/repo-lead/playbook.md first. /claude-factory:factory herd <T-id>`. The lead claims
-its parent itself (`references/lead.md`). A parent printed `skipped` for a missing worktree gets
-`worktree-add.sh <T-id>` and the next `--queue`. The first lead of a request: `sh <plugin-root>/bin/map.sh
-status <R-id> running`.
+`sh <plugin-root>/bin/queue-next.sh [--max N]` prints `<T-id> <key> <effective priority> <request>` in
+dispatch order, nothing when no parent is ready: ready parents of a request, unowned, no open lead, every
+depends_on done; a parent inherits the best priority of its dependents. `session-monitor.sh --queue [--max N]`
+takes those lines from the top while `capacity.sh count sessions` leaves two slots free and `capacity.sh count
+repo-lead` one, cuts a missing parent worktree with `worktree-add.sh <T-id>` first, and starts each as `--step
+lead`: its own workspace `<T-id> <key>`, cwd the parent worktree, herdr name `lead_<unit>`, prompt `Read
+<state>/repos/<key>/agents/repo-lead/playbook.md first. /claude-factory:factory herd <T-id>`. A lead that gets
+no slot is printed `skipped` (`capacity: sessions full`) and goes out on a later `--queue`. The lead claims its
+parent itself (`references/lead.md`). The first lead of a request: `sh <plugin-root>/bin/map.sh status <R-id>
+running`.
 
 Arm a herd-watch for every lead you start, like for any herd. Several leads may work in one repository at once.
 

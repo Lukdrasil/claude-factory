@@ -68,15 +68,18 @@ records `base:` as that branch; every block of a wave is merged before the next 
 another block's branch and nothing is stacked.
 
 1. After the tests and the implement phase, `<plugin-root>/bin/block-verify.sh <block-id>`, then a
-   `code-reviewer` and an `architecture-auditor` on the block diff: `.harness/<block-id>/review.md` and
-   `.harness/<block-id>/arch.md` (the auditor answers `skipped` without `docs/architecture/`).
+   `code-reviewer` and an `architecture-auditor` on the block diff: you save the reviewer's final message as
+   `.harness/<block-id>/review.md` (it has no Write tool), the auditor writes `.harness/<block-id>/arch.md` or
+   answers `skipped` without `docs/architecture/`.
 2. `<plugin-root>/bin/block-mr.sh <block-id>` builds the description from the two reports (what changed, the
    risk with its reasons, the verification that ran, the review verdict), opens the MR into the work branch with
    the pipeline skipped by the repo's MR class, and records it with `state-report.sh --task <block-id>
    --mr-url`.
 3. `<plugin-root>/bin/block-mr-merge.sh <block-id>` merges it, pulls the parent worktree `--ff-only`, removes
-   the block's worktree and sets the block done: step 11's automatic merges. A block rated high risk is not
-   merged: ask the human first (`_shared/ask.md`) and rerun with `--confirmed` only after the yes.
+   the block's worktree and sets the block done: step 11's automatic merges. It needs the block in `review` and
+   refuses a `changes needed` verdict (exit 1). Exit 3 is a block rated high risk, not merged: ask the human
+   first (`_shared/ask.md`) and rerun with `--confirmed` only after the yes. Class C prints `<block> auto-merge
+   <url>`; rerun it once the forge merged.
 
 `<plugin-root>/bin/block-merge.sh <block-id> --verify` still proves a merge without committing. A task whose
 blocks were stacked before this flow keeps its stack: each MR into the block it depends on, a conflict a cut

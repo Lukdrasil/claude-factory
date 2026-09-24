@@ -42,17 +42,20 @@ answer with `herdr agent send-keys <name> <keys>`, never `herdr agent prompt`.
 
 1. Tests and implement as herd.md: the red rerun at the handoff commit, `phase: implement` armed by you.
 2. `sh <plugin-root>/bin/block-verify.sh <block>` green, `## Evidence` written by you.
-3. The `code-reviewer` and the `architecture-auditor` on the block diff, in parallel, as your subagents: they
-   write `.harness/<block>/review.md` and `.harness/<block>/arch.md` (the auditor answers `skipped` in a
-   repository without `docs/architecture/`). `changes needed` is one fix round in the block's session and one
-   more review.
+3. The `code-reviewer` and the `architecture-auditor` on the block diff, in parallel, as your subagents. The
+   reviewer has no Write tool: you save its final message as `<root>/<key>/.harness/<block>/review.md`. The
+   auditor writes `.harness/<block>/arch.md` itself, or answers `skipped` in a repository without
+   `docs/architecture/`. `changes needed` is one fix round in the block's session and one more review.
 4. `sh <plugin-root>/bin/block-mr.sh <block>` opens the block MR into the work branch with the pipeline skipped
    and the description built from the two reports: what changed, the risk with its reasons, the verification
-   that ran, the review verdict.
+   that ran, the review verdict. The block reads `review` from here on.
 5. `sh <plugin-root>/bin/block-mr-merge.sh <block>` merges it, pulls the parent worktree `--ff-only`, removes
-   the block's worktree and sets the block done. A block rated high risk is not merged: ask the human with one
-   confirm ask naming the MR and the reasons, and only on a yes run `block-mr-merge.sh <block> --confirmed`. A
-   no leaves the block in review; the human's answer is a fix round or a blocked question.
+   the block's worktree and sets the block done. It refuses a block that is not in `review` and a `changes
+   needed` verdict (exit 1: the fix round of step 3). Exit 3 is a block rated high risk, not merged: ask the
+   human with one confirm ask naming the MR and the reasons, and only on a yes run `block-mr-merge.sh <block>
+   --confirmed`; a no leaves the block in review, and the human's answer is a fix round or a blocked question.
+   A repository of MR class C prints `<block> auto-merge <url>`: the forge merges once the pipeline is green,
+   and a rerun of `block-mr-merge.sh <block>` after that finishes the job.
 
 ## The task MR
 
