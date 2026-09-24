@@ -548,8 +548,8 @@ fwl_allowed() {
 # directory and the paths after `--` from the segment as written, so a quoted one still counts. T-228-07: the paths
 # are the words after the first bare `--`, a quoted span one word, so a `--` inside the message is not one.
 check_state_commit() { # <one command segment, quotes removed> <the segment as written>
+  scseg=${2:-}
   scraw=$(printf '%s' "${2:-}" | tr -d '\042\047')
-  scq=$(printf '%s' "${2:-}" | sed -E "s/'[^']*'|\"[^\"]*\"/ @Q /g")
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -561,15 +561,46 @@ check_state_commit() { # <one command segment, quotes removed> <the segment as w
     shift
     scop=$(printf '%s' "$scraw" | awk '{ for (i = 1; i < NF; i++) if ($i == "-C") { print $(i + 1); exit } }')
     [ -n "$scop" ] || return 0
-    scd=$(abs_norm "$scop")
     [ "${1:-}" != "$scop" ] || shift
+    case "$scop" in
+      "~") scop=${HOME:-} ;;
+      "~/"*) scop=${HOME:+$HOME/${scop#"~/"}} ;;
+    esac
+    scd=$(abs_norm "$scop")
   fi
   [ "${1:-}" = commit ] || return 0
   shift
   case "$scd" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) ;; *) return 0 ;; esac
   for a in "$@"; do
     case "$a" in
-      --) printf '%s' "$scq" | awk '{ for (i = 1; i <= NF; i++) if ($i == "--") exit (i == NF); exit 1 }' && return 0; break ;;
+      --)
+        scpaths=$(printf '%s' "$scseg" | awk '{
+          n = length($0); w = ""; q = ""; qd = 0; seen = 0
+          for (i = 1; i <= n + 1; i++) {
+            ch = i <= n ? substr($0, i, 1) : " "
+            if (q != "") { if (ch == q) q = ""; else w = w ch; continue }
+            if (ch == "\"" || ch == "\047") { q = ch; qd = 1; continue }
+            if (ch == " " || ch == "\t") {
+              if (seen && (w != "" || qd)) print w
+              else if (w == "--" && !qd) seen = 1
+              w = ""; qd = 0; continue
+            }
+            w = w ch
+          }
+        }')
+        [ -n "$scpaths" ] || break
+        set -f
+        oIFS=$IFS; IFS=$NL
+        for p in $scpaths; do
+          case "$p" in
+            :/|*/) sc_dir=1 ;;
+            *) sc_dir=''; [ ! -d "$scd/$p" ] || sc_dir=1 ;;
+          esac
+          [ -z "$sc_dir" ] || deny "a commit in the state clone $WORK_DIR/state names files, not '$p': a directory, '.' or ':/' sweeps up another session's changes. 'git commit -m <message> -- <file>…'"
+        done
+        IFS=$oIFS
+        set +f
+        return 0 ;;
       --all|-[!-]*a*) deny "'git commit -a' in the state clone $WORK_DIR/state takes every modified file, including another session's: stage your own files and commit them by name, 'git commit -m <message> -- <path>…'" ;;
     esac
   done
@@ -602,6 +633,15 @@ check_state_push() { # <one command segment>
   # the cwd that pushes it names no task at all
   if [ -z "$sroot" ]; then
     case "$sdir" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) sroot="$WORK_DIR/state" ;; esac
+  fi
+  # T-228-08: after a cd the guard cannot resolve, the push may run in the state clone, so it is judged as one
+  # whenever that clone holds a commit to push
+  if [ -z "$sroot" ] && [ -n "$cwd_lost" ]; then
+    for sr in "$state" "$WORK_DIR/state"; do
+      [ -n "$sr" ] && [ -d "$sr" ] || continue
+      git -C "$sr" diff --quiet '@{upstream}..HEAD' 2>/dev/null && continue
+      sroot=$sr; break
+    done
   fi
   [ -n "$sroot" ] || return 0
   # ADR-0050: with no dashboard configured there is no other pusher — the state clone is the write path itself,
@@ -701,42 +741,63 @@ unquoted() { # <text>
   printf '%s' "$1" | sed -E "s/'[^']*'|\"[^\"]*\"//g"
 }
 
-# T-228 Q22: `cd <abs>`, and `cd`, `cd ~`, `cd ~/x` through $HOME, move the cwd the later segments are judged
+# T-228 Q22: `cd <abs>`, and `cd`, `cd ~`, `cd ~/x` through $HOME, name the cwd the later segments are judged
 # against. A `cd` the guard cannot resolve (relative, `-`, a variable, `..`, a quoted path, a `)`) leaves it unknown.
-# T-228-06: only `&&` makes the next segment wait for the cd. After `;`, `||` or `|` the cd may have failed or run in
-# a subshell, so cwd_alt keeps the cwd before it, and a relative target is judged against both. A cd entered through
-# `|` runs in a subshell and never moves the cwd.
-# T-228-07: a cd holds only while its && chain holds. At the next `;`, `||` or `&` every cwd from before a cd of the
-# chain joins cwd_alt, a list, and an unresolvable cd of the chain makes the cwd lost again. A cd led by `||` or
-# inside an unclosed unquoted `(` or `$(` may not run or may be undone, so it adds to cwd_alt as a `;` cd does.
+# T-228-08: an allowlist, not a denylist. Only in the shape chain_shape accepts does a cd replace the cwd. In every
+# other shape the cwd stays the hook's, every cd target joins cwd_alt, and a relative target is judged against all
+# of them. An unresolvable cd turns the shape off for the rest of the command and keeps the hook cwd among the bases.
 NL='
 '
 cwd_lost=''
 cwd_alt=''
-cd_chain=''
-cd_chain_lost=''
-cd_depth=0
-cd_reset() { cwd=$cwd0; cwd_lost=''; cwd_alt=''; cd_chain=''; cd_chain_lost=''; cd_depth=0; }
+cd_plain=''
+cd_reset() { cwd=$cwd0; cwd_lost=''; cwd_alt=''; cd_plain=$cd_plain0; }
 alt_add() { [ -z "$1" ] || cwd_alt=${cwd_alt:+$cwd_alt$NL}$1; }
-cd_track() { # <one command segment> <separator code after it> <separator code before it>
-  ct_sep=$2 ct_lead=${3:-}
-  case "$ct_sep" in
-    o|r)
-      alt_add "$cd_chain"
-      [ -z "$cd_chain_lost" ] || cwd_lost=1
-      cd_chain=''; cd_chain_lost='' ;;
-  esac
-  ct_depth=$cd_depth
-  case "$1" in
-    *[\(\)]*)
-      cd_depth=$(unquoted "$1" | awk -v d="$cd_depth" '{ d += gsub(/\(/, ""); d -= gsub(/\)/, "") } END { print (d > 0 ? d : 0) }') ;;
-  esac
-  [ "$ct_lead" != p ] || return 0
+
+# the allowlisted shape: one or more leading `cd <path>` segments, then simple commands, every separator `&&` and a
+# `|` only inside a later segment; no unquoted `(`, `)`, backtick, `;`, `||`, background `&` or line break, no word
+# that moves the shell unseen, and no assignment prefixed to a cd
+chain_shape() { # <the command, heredoc bodies removed> <its segments, each led by its separator code>
+  cs=$(unquoted "$1")
+  case "$cs" in *[\(\)\;\`]*|*'||'*|*"$NL"*) return 1 ;; esac
+  case "$(printf '%s' "$cs" | sed 's/&&//g; s/[<>]&//g; s/&>//g')" in *'&'*) return 1 ;; esac
+  printf '%s\n' "$2" | {
+    lead=1 after=''
+    while IFS= read -r line; do
+      [ -z "$after" ] || [ "${line%% *}" = a ] || exit 1
+      set -f
+      # shellcheck disable=SC2046
+      set -- $(unquoted "${line#* }")
+      set +f
+      for w in "$@"; do
+        case "$w" in pushd|popd|builtin|command|eval|source|exec|CDPATH=*) exit 1 ;; esac
+      done
+      [ "${1:-}" != . ] || exit 1
+      asg=''
+      while [ $# -gt 0 ]; do case "$1" in *=*) asg=1; shift ;; *) break ;; esac; done
+      after=''
+      if [ "${1:-}" = cd ]; then
+        [ -n "$lead" ] && [ -z "$asg" ] && [ $# -le 2 ] || exit 1
+        after=1
+      else
+        lead=''
+      fi
+    done
+  }
+}
+
+cd_track() { # <one command segment>
   set -f
   # shellcheck disable=SC2086
   set -- $1
   set +f
-  [ "${1:-}" = cd ] || return 0
+  while [ $# -gt 0 ]; do case "$1" in *=*|builtin|command|eval|exec) shift ;; *) break ;; esac; done
+  case "${1:-}" in
+    cd) ;;
+    pushd) [ $# -gt 1 ] || { cd_lose; return 0; } ;;
+    popd) cd_lose; return 0 ;;
+    *) return 0 ;;
+  esac
   shift
   while [ $# -gt 0 ]; do
     case "$1" in -L|-P|-e|-@) shift ;; --) shift; break ;; *) break ;; esac
@@ -747,18 +808,22 @@ cd_track() { # <one command segment> <separator code after it> <separator code b
     "~/"*) cd_to=${HOME:+$HOME/${cd_to#"~/"}} ;;
   esac
   case "$cd_to" in
-    *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cwd_lost=1 ;;
+    *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cd_lose ;;
     /*|[A-Za-z]:/*)
-      if [ "$ct_sep" = a ] && [ "$ct_depth" = 0 ] && [ "$ct_lead" != r ]; then
-        cd_chain=${cd_chain:+$cd_chain$NL}$cwd${cwd_alt:+$NL$cwd_alt}
-        [ -z "$cwd_lost" ] || cd_chain_lost=1
-        cwd_lost=''; cwd_alt=''
+      if [ -n "$cd_plain" ]; then
+        norm_into cwd "$cd_to"
       else
-        alt_add "$cwd"
-      fi
-      norm_into cwd "$cd_to" ;;
-    *) cwd_lost=1 ;;
+        norm_into ct_to "$cd_to"
+        alt_add "$ct_to"
+      fi ;;
+    *) cd_lose ;;
   esac
+}
+cd_lose() {
+  cwd_lost=1
+  [ -n "$cd_plain" ] || return 0
+  cd_plain=''
+  [ "$cwd" = "$cwd0" ] || alt_add "$cwd0"
 }
 
 # T-228 D1: the reads a parent's owner may run in its blocks' worktrees, and a block on its own brief. T-228-06: a
@@ -890,10 +955,13 @@ guard_bash() {
       || deny "--force-with-lease is only allowed as 'git push --force-with-lease[=<branch>:<sha>] [-u] origin <branch>' on your own task branch${branch:+ $branch}, or as 'git -C <worktree of a task you own> push' on that task's branch (ADR-0012)"
   fi
   # T-228 Q22: the loops below that judge a path against the cwd walk the segments in order, and a `cd <abs>` moves
-  # the cwd for the segments after it (cd_track, given the separator between them); each loop starts again from the
+  # the cwd for the segments after it (cd_track, in the shape chain_shape accepts); each loop starts again from the
   # hook's cwd
   cwd0=$cwd
   ssegs=$(split_segs "$sc" lead)
+  cd_plain0=''
+  if chain_shape "$sc" "$ssegs"; then cd_plain0=1; fi
+  cd_plain=$cd_plain0
   set -f
   oIFS=$IFS; IFS='
 '
@@ -901,11 +969,11 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''; plead=''
+  prev=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
-    check_state_push "$seg"
+    cd_track "$prev"; prev=$seg
+    with_alt check_state_push "$seg"
     with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
   cd_reset
@@ -992,10 +1060,10 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''; plead=''
+  prev=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
+    cd_track "$prev"; prev=$seg
     case "$seg" in
       *'>'*)
         rtargets=$(unquoted "$seg" | grep -oE '(^|[^=<>-])>>?[[:space:]]*[^[:space:]"'"'"';|&<>()]+' | sed 's/^[^>]*>*[[:space:]]*//'
@@ -1031,10 +1099,10 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''; plead=''
+  prev=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
+    cd_track "$prev"; prev=$seg
     bash_in_place_write "$seg" || continue
     useg=$(unquoted "$seg")
     pseg=$(printf '%s' "$seg" | sed -E "s/'[^']*'|\"[^\"]*\"/ @Q /g")
