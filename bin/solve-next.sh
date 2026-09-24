@@ -150,7 +150,7 @@ for f in "$state"/repos/*/tasks/*.md; do
   if is_block_of "$id" "$b"; then blocks="$blocks$b
 "; fi
 done
-blocks=$(printf '%s' "$blocks" | sort)
+blocks=$(printf '%s' "$blocks" | sort_ids)
 
 product=$(clone_path "$key")
 verdict="$state/repos/$key/verdicts/$slug.md"

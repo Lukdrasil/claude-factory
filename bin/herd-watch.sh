@@ -112,7 +112,8 @@ pass() {
     [ "$a" != gone ] || [ -n "$(prior "$u" 4)" ] || continue
     printf '%s none none %s none\n' "$u" "$a" >> "$now"
   done
-  sort -o "$now" "$now"
+  sort_ids < "$now" > "$now.sorted"
+  mv -f "$now.sorted" "$now"
 
   while read -r u s p a m; do
     for col in 2:status 3:phase 4:agent 5:mr; do
