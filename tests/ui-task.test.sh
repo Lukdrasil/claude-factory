@@ -216,6 +216,14 @@ goal 'feat(fx): the blocked block of T-025' | task T-025-01 blocked
 question "$st/progress/T-025-01.md" 'Which fixture cache should T-025-01 keep?' 'the warm cache' 'the cold cache' \
   '1, it is filled.'
 
+# --- T-026 at step 3: its session registered by solve-next.sh --ui alone, no hand-written session.md -------------
+printf -- '---\nid: T-026\nrepo: claude-factory\nstatus: ready\n---\n\n# Goal\nfeat(fx): the fixture task solve-next registered\n' \
+  > "$st/tasks/T-026-fixture.md"
+sh "$bin/solve-next.sh" T-026 --state "$state1" --ui s26 > "$tmp/next26.out" 2>&1 || bad "solve-next.sh T-026 --ui s26: $(cat "$tmp/next26.out")"
+has 'solve-next.sh puts T-026 at step 3'                      '^## Step 3 of 16' "$(cat "$tmp/next26.out")"
+has 'solve-next.sh --ui records the task in session.md'       '^task: T-026$' "$(cat "$ui/sessions/s26/session.md" 2>/dev/null)"
+has 'solve-next.sh --ui records the flow in session.md'       '^flow: solve$' "$(cat "$ui/sessions/s26/session.md" 2>/dev/null)"
+
 # --- the server, then the browser --------------------------------------------------------------------------------
 up --state "$state1"; rc=$?
 is 'ui-up.sh exits 0'                                         "$rc" 0

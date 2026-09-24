@@ -232,6 +232,26 @@ async function confirmYes(page, name, key) {
     ok(await panel(page, 'blocked').locator('code', { hasText: /factory solve T-025\b/ }).count(), 'no solve command in a code element');
   });
 
+  // --- T-026: registered through solve-next.sh --ui only, so its task and step come from what production writes ---
+  await check('the grid row of T-026 marks step 3, the step solve-next.sh recorded, with its session s26', async () => {
+    await fresh(page);
+    const row = page.locator('table tr', { hasText: 'T-026' }).first();
+    await until('the row of T-026', () => row.isVisible());
+    const at = await until('the current cell of T-026', async () => {
+      const i = await row.locator('td').evaluateAll((tds) => tds.findIndex((td) => td.getAttribute('aria-current') === 'step'));
+      return i > 0 && i;
+    });
+    const head = await page.locator('table thead th').nth(at).innerText();
+    ok(/^3\b/.test(head.trim()), `current under the column ${JSON.stringify(head)}`);
+    ok(/\bs26\b/.test(await row.locator('td[aria-current="step"]').innerText()), 'no s26 chip in the current cell');
+  });
+
+  await openTask(page, 'T-026');
+
+  await check('the rail of T-026 marks step 3, triage, as current', async () => {
+    holds(await current(page), [/(^|\D)3(\D|$)/, /triage/i]);
+  });
+
   await browser.close();
   process.exit(failed);
 })().catch((e) => {
