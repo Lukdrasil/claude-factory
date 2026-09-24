@@ -31,7 +31,7 @@ round, numbered, each with lettered options and your recommendation, then wait.
 
 Two to four options; a question with no sensible options has none and the recommendation is a sentence. The
 `(after ...)` names the questions it depends on and becomes the row's `deps` in the ledger; a root question
-has none. The human answers in shorthand, several in one message: `Q3 A`, `Q3 ok` (the recommendation),
+has none. The human answers in shorthand, several in one message one per line: `Q3 A`, `Q3 ok` (the recommendation),
 free text, `Q4 defer`, `Q2 reopen`. `explore Q3` asks you for a table, one row per option, two to four pros
 and cons each, specific to this repo and as honest about the recommended option's cons; if writing it changes
 your mind, say so and give the new recommendation. `Q3 more` asks for more detail before the human decides:

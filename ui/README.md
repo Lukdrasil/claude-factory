@@ -66,7 +66,7 @@ no task.
 |---|---|
 | `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the waiting-on-you counter |
 | `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its open asks, its sessions' visuals and its context |
-| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a round, a confirm or a notice, and `compose`, the shorthand Send posts |
+| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view, and `compose(view, items)`, the answer Send posts |
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream and the clicks |
 
@@ -74,11 +74,17 @@ The counter counts the open asks nobody has sent an answer for, of sessions in h
 one, oldest first by mtime, in its drawer. A drawer keeps an ask it opened with even after its session closes
 it, so the card shows answered.
 
-An ask with no `❓ **Qn**` is a notice, whose Send posts `ok`. One question with the options yes and no is a
-confirm. Anything else is a round. A card stages one item per question until Send: an option (`Q1 B`), More
-detail (`Q2 more`), Explore (`explore Q3`), Own answer (`Q4 <text>`), Discuss (`Q5 ? <text>`) or Defer
-(`Q6 defer`). The `<output>` shows the joined shorthand exactly as the answer file will hold it. A card is open,
-sent or answered, with the relay's held reason. The card of a session outside herdr shows no answer box.
+The card renders the ask view of `/api/sessions`, the server's reading of the ask, and parses no markdown. An ask
+with no `❓ **Qn**` is a notice. One question with the options yes and no is a confirm. Anything else is a round.
+The header shows the ask's step and its question count, the session id sits in a small line at the bottom. Each
+option is a full-width button holding its rendered label, and the recommendation reads `Why B: ...`. A card
+stages one item per question until Send: an option (`Q1 B`), Explain more (`Q2 more`), Compare options
+(`explore Q3`), Write my answer (`Q4 <text>`), Ask a question (`Q5 ? <text>`) or Decide later (`Q6 defer`).
+Every card, a notice included, has Write my answer: a notice posts that text verbatim, or `ok` without one.
+Send posts the staged items one answer per line in question order, since free text may hold commas, and the
+`<output>` under Will be sent: shows them exactly as the answer file will hold them. A card needs your answer,
+is sent and waiting for the session, or is answered, and shows the relay's held reason whenever the ask is held.
+The card of a session outside herdr shows no answer box.
 
 On a narrow screen the grid scrolls sideways inside its container and the drawer takes the full width.
 
