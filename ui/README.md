@@ -51,9 +51,9 @@ Options inside a fenced block are never read. `body` stays, the text the termina
 Markdown is rendered by Markdig with the advanced extensions and raw HTML escaped. A link whose URL is not http,
 https, relative or a fragment keeps its text and loses its `href`, autolinks included.
 
-`sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw`, so an ask
+`sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw` or `Q<n> more`, so an ask
 rewritten under the same id reads open again. `held` is the reason in `sessions/<sid>/relay` while the relay
-holds one of the ask's answers, otherwise null.
+holds any answer file of the ask newer than the ask, a `Q<n> redraw` or `Q<n> more` included, otherwise null.
 
 ## The page
 
@@ -70,7 +70,8 @@ no task.
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream and the clicks |
 
-The counter counts the open asks nobody has sent an answer for, of sessions in herdr. Each click opens the next
+The counter counts the open asks nobody has sent an answer for, of sessions in herdr whose `agent` is not
+`gone`; a gone session's asks still show in their drawer, since the relay queues answers. Each click opens the next
 one, oldest first by mtime, in its drawer. A drawer keeps an ask it opened with even after its session closes
 it, so the card shows answered.
 
