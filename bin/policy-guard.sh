@@ -79,7 +79,8 @@ abs_norm() { # <path>
   esac
 }
 
-if resolve_layout "$cwd" "$WORK_DIR"; then
+# T-264: a registered clone under the work root is a coordinator, not the catch-all's task, so it takes the else branch
+if resolve_layout "$cwd" "$WORK_DIR" && { [ "$LO_POSTURE" = standalone ] || ! is_registered_top "$cwd"; }; then
   task=$LO_TASK; own=$LO_OWN; state=$LO_STATE; stamp=$LO_STAMP; posture=$LO_POSTURE
 else
   # ADR-0049: HARNESS_WORKER=1 is the worker container, where a cwd outside the work root stays fail-closed.

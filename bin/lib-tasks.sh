@@ -284,6 +284,16 @@ repo_key_of_cwd() { # <cwd>
   done
 }
 
+# true when the cwd's own toplevel is a `path:` in $WORK_DIR/state/repos.yml: repo_key_of_cwd without its
+# git-common-dir match, so a worktree made from a registered clone is not one.
+is_registered_top() { # <cwd>
+  irt_top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 1
+  irt_top=$(norm_path "$irt_top")
+  repo_clone_paths | while IFS="$(printf '\t')" read -r irt_key irt_p; do
+    [ "$(norm_path "$irt_p")" = "$irt_top" ] && printf '%s\n' "$irt_key"
+  done | grep -q .
+}
+
 # the state clone whose repos.yml the title cap is read from: an explicit $STATE_DIR, the caller's own `$state`
 # (every task script resolves one before it reads a task), the standalone $WORK_DIR/state, and the cwd's layout
 # last - the same order and the same resolver solve-next.sh and decompose.sh use for their own --state default.
