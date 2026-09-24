@@ -13,8 +13,9 @@
 #
 # Exit 0: the manifest on stdout, nothing else.
 # Exit 1: the reason on stderr and nothing written: no plan, an unreadable plan, no --out, a plan-lint.sh
-# refusal (passed through), a proposal missing goal, acceptance, tier, archetype or complexity, or a
-# `design:` naming a member no `## Program design` heading owns.
+# refusal (passed through), a proposal missing goal, acceptance, tier, archetype or complexity, a
+# `design:` naming a member no `## Program design` heading owns, or a proposal other than a research one with
+# `design: none` whose `design:` names no member, which would be a block with no ``### `path` `` heading.
 set -eu
 . "$(dirname -- "$0")/lib-tasks.sh"
 
@@ -230,6 +231,10 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
       if (parch[p] == "") bad("proposal " pn[p] " has no `archetype:`")
       if (pcomp[p] == "") bad("proposal " pn[p] " has no `complexity:`")
       check_design(p)
+      if (parch[p] == "research" && tolower(pdesign[p]) == "none") continue
+      owned = 0
+      for (m = 1; m <= nm && !owned; m++) if (named(pdesign[p], mname[m])) owned = 1
+      if (!owned) bad("proposal " pn[p] " (" ptitle[p] ") names no `## Program design` member, so its block would have no ``### `path` `` heading")
     }
     if (nv > 0) {
       for (i = 1; i <= nv; i++) print "E " viol[i]
