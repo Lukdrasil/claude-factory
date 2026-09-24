@@ -945,6 +945,11 @@ guard_bash() {
   # split into segments is split_segs, which ends a segment only outside quotes.
   sc=$(heredoc_stripped "$c")
   segs=$(split_segs "$sc")
+  # T-254: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, quoted or
+  # bare. bin/issue-create.sh adds it; a direct create is held to the same rule, segment by segment.
+  printf '%s\n' "$segs" | grep -E '(^|[[:space:]])(gh|glab)[[:space:]]+issue[[:space:]]+create([[:space:]]|$)' \
+    | grep -vqE "[[:space:]](--label|-l)[ =][\"']?([^[:space:],\"']+,)*ai-drafted([,\"'[:space:]]|\$)" \
+    && deny "an issue is created with the ai-drafted label, '--label ai-drafted': create it through bin/issue-create.sh <repo-key> --title <t> --body-file <f>, which adds the label"
   if printf '%s' "$sc" | grep -Eq 'git([[:space:]]+[^|;&]*)?[[:space:]]push([[:space:]][^|;&]*)?([[:space:]](-f|--force)([[:space:]]|$)|[[:space:]]\+)'; then
     deny "force push is forbidden (block-* skills, ADR-0012)"
   fi
