@@ -36,7 +36,7 @@ rel=${task#"$state/"}
 
 from=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
 case "$from" in
-  draft|triaged|ready|claimed|tests_ready|review|blocked|stalled|failed|done|closed) ;;
+  draft|triaged|ready|claimed|tests_ready|review|blocked|failed|done|closed) ;;
   *) die "task $id is '$from' — in_progress cannot be approved to ready (TaskTransitions.Allowed)" ;;
 esac
 

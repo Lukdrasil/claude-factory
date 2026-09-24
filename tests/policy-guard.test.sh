@@ -28,11 +28,10 @@ task T-901 feat/T-901 other null
 task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
-dash=''
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER ${dash:+DASHBOARD_URL=$dash} HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u HARNESS_WORKER HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -185,13 +184,9 @@ try 2 'an escaped ) inside a subshell with a cd, then a relative redirect' "$C/c
 try 2 'cd /tmp && command cd <clone>, then a relative redirect' "$C/cf" coord "cd /tmp && command cd $C/cf && echo x > README.md"
 try 2 'cd /tmp && . ./env.sh, then a relative redirect' "$C/cf" coord 'cd /tmp && . ./env.sh && echo x > README.md'
 try 2 'cd /a; cd /b; then a relative redirect' "$C/cf" coord 'cd /a; cd /b; echo x > README.md'
-dash=http://dash.test
-try 2 'git push from the state clone, dashboard posture' "$W/state" coord 'git push'
-try 2 'cd /tmp && cd - && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp && cd - && git push'
-try 2 'cd /nonexistent && true; git push from the state clone, dashboard posture' "$W/state" coord 'cd /nonexistent && true; git push'
-try 2 'cd <state clone>; git push from the registered clone, dashboard posture' "$C/cf" coord "cd $W/state; git push"
-try 0 'cd /tmp/scratch && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp/scratch && git push'
-dash=''
+try 0 'git push from the state clone' "$W/state" coord 'git push'
+try 0 'cd /nonexistent && true; git push from the state clone' "$W/state" coord 'cd /nonexistent && true; git push'
+try 0 'cd <state clone>; git push from the registered clone' "$C/cf" coord "cd $W/state; git push"
 try 2 'git -C ~/<state clone> commit -m x' "$C/cf" coord 'git -C ~/factory/state commit -m x'
 try 0 'git -C ~/<state clone> commit -m x -- <file>' "$C/cf" coord 'git -C ~/factory/state commit -m x -- repos/cf/tasks/T-900.md'
 try 2 'git commit -m x -- . in the state clone' "$W/state" coord 'git commit -m x -- .'

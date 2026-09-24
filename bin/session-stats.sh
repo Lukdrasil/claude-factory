@@ -77,25 +77,12 @@ for id in $ids; do
   task=$(task_of "$id")
   [ -n "${task:-}" ] && [ -f "$task" ] || continue
 
-  # T-003: the standalone layout ($WORK_DIR/<key>/<task-id>/, ADR-0049) keeps its per-session marker in
-  # $WORK_DIR/<key>/.harness/<task-id>/: one level up from the cwd is $WORK_DIR/<key>/, which every task under
-  # that key shares. T-162: a coordinator standing in the registered clone gets that same per-task marker
-  # directory. The worker layout resolves to the relative path below.
-  stamp=..
-  if resolve_session_layout "$PWD" "$id" && [ "$LO_POSTURE" = standalone ]; then
-    stamp=$LO_STAMP
-    mkdir -p "$stamp" 2>/dev/null || :
-  fi
-  sent="$stamp/.harness-stats-sent"
-
   # stats belong with the final self-report; a stop without a terminal status is bounced by self-report-check
   status=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
   case "$status" in review|blocked|failed|tests_ready) ;; *) continue ;; esac
 
-  # the line is written by the dashboard, so the local clone only carries it once it has been pulled again: the
-  # marker in the line still catches that, a marker file in the work dir catches a repeated Stop of this session.
+  # the line lands in the task file itself, so its sid marker catches a repeated Stop of this session
   grep -q "sid:$sid" "$task" 2>/dev/null && continue
-  if [ -f "$sent" ] && grep -qFx "$sid $id" "$sent" 2>/dev/null; then continue; fi
 
   [ -n "$stats" ] || parse_transcript || exit 0
 
@@ -115,6 +102,5 @@ for id in $ids; do
   # the stats are a commit on top of it, never part of it. A failure is simply dropped — worst case one stats line
   # is missing, which must not bring the task down.
   sh "$(dirname -- "$0")/state-report.sh" "$@" --message "stats: $id $status" >/dev/null 2>&1 || continue
-  printf '%s %s\n' "$sid" "$id" >> "$sent" 2>/dev/null || :
 done
 exit 0

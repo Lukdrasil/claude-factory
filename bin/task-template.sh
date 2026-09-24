@@ -30,11 +30,8 @@ status: draft
 tier: <green|yellow|red>
 archetype: <feature|bugfix|refactor|research|ops>
 complexity: <low|medium|high>
-runtime: default
 depends_on: []
-parallel_group: null
 attempt: 0
-max_attempts: 3
 plan_hash: null
 owner: null
 mr_url: null
@@ -91,11 +88,8 @@ status: draft
 tier: green
 archetype: feature
 complexity: low
-runtime: default
 depends_on: []
-parallel_group: null
 attempt: 0
-max_attempts: 3
 plan_hash: null
 owner: null
 mr_url: null

@@ -7,8 +7,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=$tmp
-DASHBOARD_URL=
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 state="$tmp/state"
 mkdir -p "$state/repos/demo/tasks" "$state/repos/demo/progress"

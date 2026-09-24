@@ -262,11 +262,8 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
       print "tier: " ptier[p] > f
       print "archetype: " parch[p] > f
       print "complexity: " pcomp[p] > f
-      print "runtime: default" > f
       print "depends_on: []" > f
-      print "parallel_group: null" > f
       print "attempt: 0" > f
-      print "max_attempts: 3" > f
       print "plan_hash: null" > f
       print "owner: null" > f
       print "mr_url: null" > f
