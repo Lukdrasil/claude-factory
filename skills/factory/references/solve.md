@@ -42,7 +42,8 @@ worktree means no spawn.
   through `_shared/blocked-question.md`.
 - **Acceptance.** The parent's `## Acceptance` rerun verbatim over the session branch, then `crap`, `format`
   and `arch-build`.
-- **Duplication.** `<plugin-root>/bin/dup-check.sh` over the whole diff, its output verbatim under
+- **Duplication.** `git diff origin/<base>...<branch> > <harness>/review.diff`, then
+  `<plugin-root>/bin/dup-check.sh <harness>/review.diff <worktree>`, never a task id; its output verbatim under
   `## Duplication`; the reviewer judges the candidates, nobody is spawned per candidate.
 - **Review.** A `factory-reviewer` over the whole diff, its verdict in the progress file, then
   `<plugin-root>/bin/mr-open.sh <T-NNN>` for the parent. `changes needed` gets one fix block and one more
