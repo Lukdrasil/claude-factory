@@ -2,10 +2,11 @@
 # Starts the Factory UI: builds the image claude-factory-ui:<plugin version> when missing, starts or reuses the
 # one container as the host uid:gid with the state dir at /state read-only and the UI home at /ui read-write,
 # published on 127.0.0.1:<ui_port> or a random free port when that is taken, opens the relay in the herdr tab
-# factory-ui-relay when none is open, and prints the URL with the token. A state dir is one with a repos.yml. With
-# no --state and none to resolve from the cwd, as before factory init, it starts with /ui only on port 7171. A
-# running container whose cf.version or cf.state label differs is recreated. Exits 3 when Docker is not running,
-# 4 outside herdr.
+# factory-ui-relay when none is open, runs it again in that tab's pane when `herdr pane process-info` shows no
+# ui-relay.sh there (a herdr restart restores the tab as a bare shell), and prints the URL with the token. A
+# state dir is one with a repos.yml. With no --state and none to resolve from the cwd, as before factory init,
+# it starts with /ui only on port 7171. A running container whose cf.version or cf.state label differs is
+# recreated. Exits 3 when Docker is not running, 4 outside herdr.
 #
 #   ui-up.sh [--state <dir>]
 set -eu
@@ -93,12 +94,25 @@ port=$(docker port "$name" 8080/tcp | sed -n 's/^127\.0\.0\.1://p' | head -n1)
 [ -n "$port" ] || die "the container $name publishes no port on 127.0.0.1"
 put "$ui/port" "$port"
 
-if ! herdr tab list 2>/dev/null | tr '{' '\n' | grep -Eq '"label":"factory-ui-relay"[,}]'; then
+relay_tab=$(herdr tab list 2>/dev/null | tr '{' '\n' | grep -E '"label":"factory-ui-relay"[,}]' \
+  | grep -o '"tab_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$relay_tab" ]; then
   set -- tab create --label factory-ui-relay --no-focus
   [ -z "${HERDR_WORKSPACE_ID:-}" ] || set -- "$@" --workspace "$HERDR_WORKSPACE_ID"
   pane=$(herdr "$@" | grep -o '"pane_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
   [ -n "$pane" ] || die "herdr tab create gave no pane for the relay"
   herdr pane run "$pane" "sh '$bin/ui-relay.sh' --home '$ui'" >/dev/null || die "herdr pane run failed in $pane"
+else
+  # the tab outlives its relay across a herdr restart, which brings the pane back as a bare shell: a pane whose
+  # foreground processes hold no ui-relay.sh gets the relay again; a pane herdr cannot name is left alone
+  pane=$(herdr pane list 2>/dev/null | RELAY_TAB=$relay_tab node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    let p=[];try{p=JSON.parse(s).result.panes||[]}catch(e){}
+    const m=p.find(x=>x.tab_id===process.env.RELAY_TAB);if(m&&m.pane_id)process.stdout.write(m.pane_id)})') || pane=''
+  if [ -n "$pane" ] && info=$(herdr pane process-info --pane "$pane" 2>/dev/null) \
+    && ! printf '%s' "$info" | grep -q 'ui-relay\.sh'; then
+    herdr pane run "$pane" "sh '$bin/ui-relay.sh' --home '$ui'" >/dev/null || die "herdr pane run failed in $pane"
+    printf 'ui-up: the relay in %s had stopped; it runs again\n' "$pane" >&2
+  fi
 fi
 
 printf 'http://127.0.0.1:%s/#token=%s\n' "$port" "$token"
