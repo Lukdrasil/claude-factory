@@ -49,6 +49,19 @@ case "$status" in
   *) die "--status may only be claimed (with --owner); a new task is draft otherwise" ;;
 esac
 
+# a block write is held to the architect verdict of the plan it names, before anything is synced or
+# committed; the block id is not allocated yet, so the quick-verdict lookup by id stays the Write branch's alone.
+# Top-level writes are not checked (Q7).
+if [ -n "$parent" ]; then
+  av_rc=0
+  av_msg=$(architect_verdict "$repo" "$(plan_slug < "$file")" '') || av_rc=$?
+  case "$av_rc" in
+    0) ;;
+    2) printf 'task-new: %s\n' "$av_msg" >&2 ;;
+    *) die "$av_msg" ;;
+  esac
+fi
+
 has_origin=0
 git -C "$state" remote get-url origin >/dev/null 2>&1 && has_origin=1
 # the ids other machines already took, before this one picks the next; never fatal, an unreachable remote
@@ -78,7 +91,7 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
     return f};
   const set=(t,k,v)=>{const L=t.split("\n"),end=fence(L);if(end<0)return t;
     for(let i=1;i<end;i++){const c=L[i].indexOf(":");if(c<0||/^\s/.test(L[i]))continue;const n=L[i].slice(0,c);if(n.trim()!==k)continue;
-      const cm=L[i].slice(c+1).split(" #");L[i]=cm.length>1?`${n}: ${v} #${cm.slice(1).join(" #")}`:`${n}: ${v}`;return L.join("\n")}
+      L[i]=`${n}: ${v}`;return L.join("\n")}
     L.splice(end,0,`${k}: ${v}`);return L.join("\n")};
   const body=t=>{const L=t.split("\n"),end=fence(L);return end<0?t:L.slice(end+1).join("\n").replace(/^[-\n]+/,"")};
   const section=(t,h)=>{const L=t.split("\n");const st=L.findIndex(l=>l.trim()===h);if(st<0)return "";const o=[];
