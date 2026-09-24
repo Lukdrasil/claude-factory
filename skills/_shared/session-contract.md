@@ -43,8 +43,9 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
    `../state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
    you cannot reconcile inside the task's scope is `blocked`.
 2. Run acceptance again: a rebase can break what was green.
-3. `git push --force-with-lease origin <branch>`, the only rewrite permitted and only on your own branch;
-   the policy guard refuses it on any other.
+3. `git push --force-with-lease=<branch>:<sha> origin <branch>`, the only rewrite permitted and only on a
+   working branch: a block's own branch, and the parent's `branch:` for the parent's owner, pushed as
+   `git -C <parent worktree> push …`. Never the default branch or any other; the policy guard refuses those.
 4. `sh <plugin-root>/bin/mr-open.sh <id>` builds the description and opens the MR idempotently; what it says
    and never says is `<plugin-root>/skills/_shared/mr-description.md`.
 5. Write the web URL it printed into `mr_url`, then report. No forge means the output is the pushed,

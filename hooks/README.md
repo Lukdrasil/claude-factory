@@ -25,3 +25,30 @@ that used to sit in that key lives here instead.
   cache sat at 0.12.0). Bump the version in `.claude-plugin/plugin.json` with any change to the hooks.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
   name. `tests/hooks-wiring.test.sh` enforces both.
+
+## policy-guard rules
+
+The Bash rules of `bin/policy-guard.sh` that T-228 changed. `tests/policy-guard.test.sh` replays each one,
+together with every deny they keep.
+
+- **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
+  break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
+  dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
+- **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that later segments of
+  the same command are judged against. After a `cd` the guard cannot resolve (a relative path, `-`, a
+  variable, `..`, a quoted path), a relative write target and an in-place write are denied. An absolute
+  target still passes.
+- **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
+  with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
+  with `$` is skipped, as for a redirect. The last operand of `sed -i` and `perl -i` is judged as a file even
+  when it does not exist yet.
+- **Reads into blocks.** The session that owns a parent task (its `owner:`) may run `git -C <block worktree>
+  log|diff|status|show`, `cat` and `ls` in the worktrees of that parent's blocks. A block session may `cat`
+  its own brief, `.harness/<parent>/brief-<block>.md`. Nothing else changes: a write into a block, a read by
+  any other session and a read of a sibling's brief stay denied.
+- **Pinned lease.** `git push --force-with-lease[=<branch>[:<sha>]] [-u] origin <branch>` is allowed on the
+  session's own task branch. The parent's owner pushes the parent branch as `git -C <parent worktree> push
+  --force-with-lease=<branch>:<sha> origin <branch>`, where `<branch>` is that task's `branch:`. A lease on
+  the default branch or on any other branch is denied.
+- **State-clone commits.** In `$WORK_DIR/state`, reached by the cwd, a `cd` or `-C`, `git commit` must name
+  its paths after `--`, and `-a`/`--all` is denied. `git add` stays allowed.
