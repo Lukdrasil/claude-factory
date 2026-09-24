@@ -97,7 +97,14 @@ is 'GET /api/board with the token is 200'                     "$(http "$port1" /
 has 'the board lists the fixture task'                        'T-001' "$(cat "$tmp/body")"
 is 'GET /api/tasks/T-001 with the token is 200'               "$(http "$port1" /api/tasks/T-001 -H "X-Factory-Token: $token")" 200
 has 'the task detail carries its body'                        'The fixture sentence of state one\.' "$(cat "$tmp/body")"
-hasnt 'the task detail carries no rendered html field'      '"html":' "$(cat "$tmp/body")"
+has 'the task detail carries html.body, its body rendered'  '"html":\{"body":".*(<|\\u003[Cc])p(>|\\u003[Ee])The fixture sentence of state one\.' "$(cat "$tmp/body")"
+is 'GET /api/sessions with the token is 200'                  "$(http "$port1" /api/sessions -H "X-Factory-Token: $token")" 200
+view=$(grep -o '"ask":"q1".*' "$tmp/body" | head -c 3000)
+has 'an ask of /api/sessions carries its view, a round'       '"view":\{"kind":"round","preamble":"[^"]*","questions":\[\{"q":"Q1","title":"Which fixture\?"' "$view"
+has 'the view carries the rendered question text'             '"html":"(<|\\u003[Cc])p(>|\\u003[Ee])the question of the fixture\.' "$view"
+has 'the view carries the options with their labels'          '"options":\[\{"key":"A","html":"the first"\},\{"key":"B","html":"the second"\}\]' "$view"
+has 'the view carries the recommendation and its key'         '"rec":"(<|\\u003[Cc])strong(>|\\u003[Ee])A(<|\\u003[Cc])/strong(>|\\u003[Ee]): the first is the fixture\.","recKey":"A"' "$view"
+has 'the ask keeps its terminal-equal body'                   '"body":"\\n.*Which fixture' "$view"
 is 'GET /api/setup with the token is 200'                     "$(http "$port1" /api/setup -H "X-Factory-Token: $token")" 200
 has 'the setup carries repos.yml'                             'claude-factory' "$(cat "$tmp/body")"
 
@@ -263,10 +270,11 @@ is 'ui-down.sh with nothing running closes nothing'           "$(closes)" "$n"
 # --- the server's own tests in the SDK image, as the host uid so an unreadable folder is unreadable there too ------
 timeout 15m docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e DOTNET_CLI_TELEMETRY_OPTOUT=1 -e DOTNET_NOLOGO=1 \
   -v "$repo:/src:ro" mcr.microsoft.com/dotnet/sdk:10.0-alpine sh -c \
-  'mkdir -p /tmp/w/tests && cp -r /src/ui /tmp/w/ui && cp -r /src/tests/ui /tmp/w/tests/ui && cd /tmp/w && timeout 900 dotnet test tests/ui/FactoryUi.Tests.csproj' \
+  'mkdir -p /tmp/w/tests && cp -r /src/ui /tmp/w/ui && cp -r /src/tests/ui /tmp/w/tests/ui && cd /tmp/w && timeout 900 dotnet test tests/ui/FactoryUi.Tests.csproj --logger "console;verbosity=normal"' \
   > "$tmp/dotnet.out" 2>&1; rc=$?
 is 'the SDK-image dotnet test passes'                         "$rc" 0
 [ "$rc" = 0 ] || tail -n 40 "$tmp/dotnet.out" | sed 's/^/  dotnet: /'
-has 'the SDK-image dotnet test ran tests'                     'Total: +[1-9]' "$(cat "$tmp/dotnet.out")"
+has 'the SDK-image dotnet test ran tests'                     'Total tests: +[1-9]' "$(cat "$tmp/dotnet.out")"
+has 'the SDK-image dotnet test ran AskParserTests'           'Passed AskParserTests\.' "$(cat "$tmp/dotnet.out")"
 
 exit $fail
