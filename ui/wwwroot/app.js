@@ -91,11 +91,13 @@ function render() {
   const at = typing && [typing.closest('[data-ask]').dataset.ask, typing.closest('[data-q]').dataset.q, typing.selectionStart];
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
+  const details = app.querySelector('aside .details')?.open;
   app.replaceChildren(renderPipeline(S.board, S.sessions));
   app.querySelector('.strip').append(renderSetupStrip(S.setup));
   app.querySelector('.grid-wrap').scrollLeft = left;
   if (S.drawer) {
     app.append(renderDrawer(group(S.drawer)));
+    if (details) app.querySelector('aside .details')?.setAttribute('open', '');
     app.querySelector('aside').scrollTop = top;
   }
   const box = at && app.querySelector(`[data-ask="${at[0]}"] [data-q="${at[1]}"] textarea`);

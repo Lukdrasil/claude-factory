@@ -1,14 +1,16 @@
 import { esc } from './ask-card.js';
 
+const AGENT = { idle: 'Idle', working: 'Working', done: 'Finished its turn', gone: 'Session ended' };
 const sidOf = (owner) => (owner.match(/:([A-Za-z0-9-]+)$/) || [])[1];
 
 function worker(block, sessions) {
+  if (!sidOf(block.task.owner)) return '<span class="muted">Not started</span>';
   const s = sessions.find((x) => x.sid === sidOf(block.task.owner));
   if (!s) return '<span class="muted">no worker session</span>';
   const agent = s.agent || 'unknown';
   return `<span class="id">${esc(s.sid)}</span> ${agent === 'blocked'
-    ? `<span class="chip warn">at a dialog</span> answer it in herdr pane <span class="id">${esc(s.pane)}</span>`
-    : `<span class="chip${agent === 'gone' ? ' bad' : ''}">${esc(agent)}</span>`}`;
+    ? `<span class="chip warn">Waiting at a dialog</span> answer it in herdr pane <span class="id">${esc(s.pane)}</span>`
+    : `<span class="chip${agent === 'gone' ? ' bad' : ''}">${esc(AGENT[agent] || agent)}</span>`}`;
 }
 
 function row(block, sessions) {

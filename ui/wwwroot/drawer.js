@@ -16,34 +16,36 @@ function context(group) {
   }
   h += `<h3>Sessions</h3>${group.sessions.length
     ? `<ul>${group.sessions.map((s) => `<li><span class="id">${esc(s.sid)}</span> ${esc(s.flow)} · ${esc(s.step)} · ${s.pane ? `pane ${esc(s.pane)}` : 'outside herdr'}</li>`).join('')}</ul>`
-    : '<p class="muted">No session.</p>'}`;
+    : '<p class="muted">No session is working on this task.</p>'}`;
   return h;
 }
 
-/** The drawer of one task or of setup: its open asks first, then a task's blocked question, wave and solve panels, then its context. */
+/**
+ * The drawer of one task or of setup. With an open ask it is in decision mode: the asks first, then the blocked
+ * question, wave, panels, visuals and context in one collapsed "Task details". Without one, all of it in a column.
+ */
 export function renderDrawer(group) {
   const setup = group.id === 'setup';
+  const decide = group.asks.some((a) => a.status === 'open');
   const el = document.createElement('aside');
-  el.setAttribute('aria-label', setup ? 'Machine setup' : group.id);
-  el.innerHTML = `<header class="drawer-h"><h2>${setup ? 'Machine setup' : `${esc(group.id)}${group.task ? ` · ${esc(group.task.goal)}` : ''}`}</h2>`
+  el.setAttribute('aria-label', setup ? 'Setup' : group.id);
+  if (decide) el.className = 'decide';
+  el.innerHTML = `<header class="drawer-h"><h2>${setup ? 'Setup' : `${esc(group.id)}${group.task ? ` · ${esc(group.task.goal)}` : ''}`}</h2>`
     + '<button class="btn sm" data-act="close">Close</button></header><div class="asks"></div>'
-    + `<div class="context">${context(group)}</div>`;
+    + `${decide ? '<details class="details"><summary>Task details</summary>' : ''}<div class="context">${context(group)}</div>${decide ? '</details>' : ''}`;
   const asks = el.querySelector('.asks');
-  const inPanels = new Set();
+  const ctx = el.querySelector('.context');
   if (group.detail) {
-    const task = { ...group.detail, sessions: group.sessions, asks: group.asks, staged: group.staged };
-    const panels = renderTaskPanels(task);
-    panels.querySelectorAll('[data-ask]').forEach((a) => inPanels.add(a.dataset.ask));
-    asks.after(...[renderBlockedQuestion(task, group.sessions), renderWave(task, group.allSessions), panels].filter(Boolean));
+    const task = { ...group.detail, sessions: group.sessions };
+    ctx.before(...[renderBlockedQuestion(task, group.sessions), renderWave(task, group.allSessions), renderTaskPanels(task)].filter(Boolean));
   }
-  el.querySelector('.context').before(...group.sessions.filter((s) => s.visual).map((s) => renderVisual({
+  ctx.before(...group.sessions.filter((s) => s.visual).map((s) => renderVisual({
     ...s.visual,
     sid: s.sid,
     token: group.token,
     ask: s.asks.filter((a) => a.status === 'open').sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))[0]?.ask,
   })));
-  const top = group.asks.filter((a) => !inPanels.has(`${a.sid}/${a.ask}`));
-  asks.append(...top.map((a) => renderAsk(a, group.staged[`${a.sid}/${a.ask}`] || EMPTY)));
-  if (!top.length) asks.innerHTML = '<p class="muted">Nothing waits on you here.</p>';
+  asks.append(...group.asks.map((a) => renderAsk(a, group.staged[`${a.sid}/${a.ask}`] || EMPTY)));
+  if (!group.asks.length) asks.innerHTML = '<p class="muted">No open questions for this task.</p>';
   return el;
 }
