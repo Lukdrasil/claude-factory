@@ -59,8 +59,6 @@ printf '{}\n' > "$settings"
 sh "$bin/factory-init.sh" --root "$root" --settings "$settings" --spawn herdr --ui docker > "$tmp/init.out" 2>&1
 is 'factory-init.sh without --yes exits 3 with its diff'     "$?" 3
 
-sh "$bin/ui-session.sh" --session s-init --pane w1:p9 --flow init --task none --step 'init: confirm the diff' \
-  || bad 'ui-session.sh s-init'
 sh "$bin/ui-session.sh" --session s-doctor --pane w1:p8 --flow doctor --task none --step 'doctor: offer the fixes' \
   || bad 'ui-session.sh s-doctor'
 {
@@ -68,8 +66,9 @@ sh "$bin/ui-session.sh" --session s-doctor --pane w1:p8 --flow doctor --task non
   printf '%s\n\n```diff\n' '❓ **Q1** - **Apply the init diff?**: factory-init.sh printed it and wrote nothing.'
   sed '/^pending - rerun with --yes to apply$/d' "$tmp/init.out"
   printf '```\n\n  **A** yes\n  **B** no\n\n➡️ **A**: the state repo, factory.yml and the settings as shown.\n'
-} | sh "$bin/ui-ask.sh" --session s-init >/dev/null || bad 'ui-ask.sh s-init apply'
-sh "$bin/ui-ask.sh" --session s-doctor >/dev/null <<'EOF' || bad 'ui-ask.sh s-doctor tools'
+} | HERDR_PANE_ID=w1:p9 sh "$bin/ui-ask.sh" --session s-init >/dev/null || bad 'ui-ask.sh s-init apply'
+has 'ui-ask.sh registers the unregistered init session with its pane' '^pane: w1:p9$' "$(cat "$ui/sessions/s-init/session.md" 2>/dev/null)"
+HERDR_PANE_ID=w1:p7 sh "$bin/ui-ask.sh" --session s-doctor >/dev/null <<'EOF' || bad 'ui-ask.sh s-doctor tools'
 ---
 ask: tools
 task: none
@@ -92,6 +91,7 @@ status: open
 
 ➡️ **A**: dotnet tool install -g Crap4DotNet.
 EOF
+has 'ui-ask.sh leaves the pane of a registered session as it was' '^pane: w1:p8$' "$(cat "$ui/sessions/s-doctor/session.md" 2>/dev/null)"
 
 browse() { # <phase> <state dir or ''>: tests/ui-setup.test.js against the current server, its lines on stdout
   port=$(cat "$ui/port" 2>/dev/null)

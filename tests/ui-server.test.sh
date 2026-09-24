@@ -97,6 +97,7 @@ is 'GET /api/board with the token is 200'                     "$(http "$port1" /
 has 'the board lists the fixture task'                        'T-001' "$(cat "$tmp/body")"
 is 'GET /api/tasks/T-001 with the token is 200'               "$(http "$port1" /api/tasks/T-001 -H "X-Factory-Token: $token")" 200
 has 'the task detail carries its body'                        'The fixture sentence of state one\.' "$(cat "$tmp/body")"
+hasnt 'the task detail carries no rendered html field'      '"html":' "$(cat "$tmp/body")"
 is 'GET /api/setup with the token is 200'                     "$(http "$port1" /api/setup -H "X-Factory-Token: $token")" 200
 has 'the setup carries repos.yml'                             'claude-factory' "$(cat "$tmp/body")"
 
@@ -120,6 +121,35 @@ is 'a sid outside [A-Za-z0-9-]+ is 400'                       "$(post "$port1" '
 is 'an ask outside [A-Za-z0-9-]+ is 400'                      "$(post "$port1" s1 '{"ask":"q_1","text":"Q1 A"}')" 400
 is 'an ask with a path in it is 400'                          "$(post "$port1" s1 '{"ask":"../q1","text":"Q1 A"}')" 400
 is 'refused POSTs write no answer file and leave no temp file' "$(answers)" '1-q1.txt 2-q1.txt 3-q3.txt '
+
+# --- the Host header: 127.0.0.1 or localhost on the UI port, anything else 403 before the token is looked at -----
+is 'GET / with Host: evil.test is 403'                        "$(http "$port1" / -H 'Host: evil.test')" 403
+is 'GET /api/board with Host: evil.test and the token is 403' "$(http "$port1" /api/board -H 'Host: evil.test' -H "X-Factory-Token: $token")" 403
+is 'GET /api/board with Host: evil.test and no token is 403'  "$(http "$port1" /api/board -H 'Host: evil.test')" 403
+is 'GET /api/board with Host: evil.test:<port> is 403'        "$(http "$port1" /api/board -H "Host: evil.test:$port1" -H "X-Factory-Token: $token")" 403
+is 'GET /api/board with Host: 127.0.0.1 on another port is 403' "$(http "$port1" /api/board -H 'Host: 127.0.0.1:1' -H "X-Factory-Token: $token")" 403
+is 'POST /api/answers with Host: evil.test and the token is 403' \
+  "$(http "$port1" /api/answers/s1 -X POST -H 'Host: evil.test' -H 'Content-Type: application/json' -H "X-Factory-Token: $token" --data-binary '{"ask":"q1","text":"Q1 A"}')" 403
+is 'a POST refused for its Host writes no answer file'        "$(answers)" '1-q1.txt 2-q1.txt 3-q3.txt '
+is 'GET /api/board with Host: localhost:<port> is 200'        "$(http "$port1" /api/board -H "Host: localhost:$port1" -H "X-Factory-Token: $token")" 200
+
+# --- sent: only an answer file newer than the ask file counts, and never a `Q<n> redraw` ---------------------------
+sent() { # <ask>: the sent field of that ask of s1 in /api/sessions
+  http "$port1" /api/sessions -H "X-Factory-Token: $token" >/dev/null
+  grep -o "\"ask\":\"$1\"[^}]*" "$tmp/body" | sed -n 's/.*"sent":\(true\|false\).*/\1/p' | head -n1
+}
+is 'q1, named by an answer file, reads sent'                  "$(sent q1)" true
+sleep 1
+ask q1 open
+is 'q1 rewritten after its answer files reads open again'     "$(sent q1)" false
+has 'an answer to the rewritten q1 succeeds'                  '^20[01]$' "$(post "$port1" s1 '{"ask":"q1","text":"Q1 B"}')"
+is 'q1 with an answer newer than the rewrite reads sent'      "$(sent q1)" true
+printf -- '---\nask: q5\ntask: T-001\nflow: grill\nstep: round 3\nstatus: open\n---\n\nThe visual row of q5.\n' > "$ui/sessions/s1/asks/q5.md"
+sleep 1
+has 'a redraw of q5 succeeds'                                 '^20[01]$' "$(post "$port1" s1 '{"ask":"q5","text":"Q1 redraw"}')"
+is 'q5 with only a redraw answer is not sent'                 "$(sent q5)" false
+has 'an answer to q5 after the redraw succeeds'               '^20[01]$' "$(post "$port1" s1 '{"ask":"q5","text":"Q1 A"}')"
+is 'q5 with an answer after the redraw reads sent'            "$(sent q5)" true
 
 # --- the stream: a change under /state reaches it within 1 s, past a folder it cannot read ------------------------
 curl -sN -m 60 -H "X-Factory-Token: $token" "http://127.0.0.1:$port1/api/stream" > "$tmp/stream" 2>/dev/null &
