@@ -256,6 +256,14 @@ if cat "$state1/locked-late/inside.md" >/dev/null 2>&1; then bad 'the locked fol
 else pass 'the locked folders are unreadable to this uid'; fi
 sleep 1
 arrives 'with an unreadable folder at start and one made later, the scan still reports a change' after-lock.md
+printf -- '---\nask: q4\ntask: T-001\nflow: grill\nstep: round 2\nstatus: open\n---\n\n## Q1\nWhich?\n' > "$ui/sessions/s1/asks/q4.md"
+t0=$(now)
+while ! tr -d '\r' < "$tmp/stream" | grep -qxF 'data: /ui/sessions/s1/asks/q4.md'; do
+  [ $(( $(now) - t0 )) -lt 1000 ] || break
+  sleep 0.05
+done
+if tr -d '\r' < "$tmp/stream" | grep -qxF 'data: /ui/sessions/s1/asks/q4.md'; then pass "a new ask under the UI home reaches the stream within 1 s ($(( $(now) - t0 )) ms)"
+else bad "a new ask under the UI home reaches the stream within 1 s: no 'data: /ui/sessions/s1/asks/q4.md'; the stream so far: $(tr -d '\r' < "$tmp/stream" | tail -n 5 | tr '\n' '|')"; fi
 is 'the unreadable folders do not stop the container'         "$(running)" true
 is 'the container never restarted'                            "$(docker inspect -f '{{.RestartCount}}' "$name" 2>/dev/null)" 0
 if kill -0 "$stream" 2>/dev/null; then pass 'the stream stays open'; else bad 'the stream stays open'; fi
