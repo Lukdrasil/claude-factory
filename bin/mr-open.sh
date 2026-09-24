@@ -6,7 +6,7 @@
 #
 #   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
 #
-# The `Issues` file is what `mr-issue-linker` answered: its `closes #12` / `refs #30` lines become the `Issues`
+# The `Issues` file is what `issue-finder` answered: its `closes #12` / `refs #30` lines become the `Issues`
 # line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
 #
 # It is not create-only. When the MR or PR is already open, the freshly built description is compared with the

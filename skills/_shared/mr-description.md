@@ -27,7 +27,7 @@ bin/mr-open.sh or bin/block-mr.sh again: they update an existing MR. Never write
 verdict, the progress file, state-repo paths, attempt counts, subagent names. None of it means anything to a
 reviewer, the task file already records it, and `mr_url` is the link back.
 
-The `Issues` line comes from the `--issues` file. Spawn `mr-issue-linker`
+The `Issues` line comes from the `--issues` file. Spawn `issue-finder`
 (`<plugin-root>/skills/_shared/delegation.md`) to write it with the goal, the acceptance command and the
 changed files; keep only issues it printed a number and a title for, and downgrade a `closes` the issue text
 does not confirm to `refs`. Skip the spawn when the task names its source issue and the diff stays inside

@@ -19,7 +19,7 @@ it names (`rules.md`, `progress-and-push.md`, `knowledge-review.md`, `delegation
 frontmatter means `${CLAUDE_PLUGIN_ROOT}/skills/_shared/refinement.md` (ADR-0031) replaces the procedure.
 
 Deltas: Toolset commands (ADR-0039) here are `build`, `test`, `test-filter <expr>`, `format`,
-`find-refs <symbol>`, `hotspots`, `arch-build`. `worker-explorer` fans out for references and hotspots;
+`find-refs <symbol>`, `hotspots`, `arch-build`. `scout` fans out for references and hotspots;
 never delegate a test-file edit.
 
 **Do not edit the tests.** Behaviour does not change, so the unchanged suite is the only thing proving it.

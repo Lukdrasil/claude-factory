@@ -34,10 +34,10 @@ Four dimensions, each **0 to 3**, scored by the assignment.
 
 | S | tier | agent | model × effort |
 |---|---|---|---|
-| 0 to 3 | **S0** | `deep-research-haiku` | haiku |
-| 4 to 6 | **S1** | `deep-research-sonnet-high` | sonnet × high |
-| 7 to 9 | **S2** | `deep-research-opus-medium` | opus × medium |
-| 10 to 12 | **S3** | `deep-research-opus-high` | opus × high |
+| 0 to 3 | **S0** | `researcher-s0` | haiku |
+| 4 to 6 | **S1** | `researcher-s1` | sonnet × high |
+| 7 to 9 | **S2** | `researcher-s2` | opus × medium |
+| 10 to 12 | **S3** | `researcher-s3` | opus × high |
 
 **Escalation**, after the sum and only ever upward: `K = 3` gives at least **S2** (opus × medium); `K = 3`
 with `B >= 2` gives **S3**; `C >= 2` gives at least **S1**. Haiku cannot carry the context batching.

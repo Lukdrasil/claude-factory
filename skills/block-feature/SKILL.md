@@ -21,7 +21,7 @@ the frontmatter, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/refinement.md` (ADR-0031)
 MR exists and your assignment is its review comments.
 
 Deltas: Toolset commands (ADR-0039) you will use are `build`, `test`, `test-filter <expr>`, `coverage`,
-`crap <scope>`, `format`, `arch-build`. `worker-explorer` fans out for the bearings, `worker-implementer`
+`crap <scope>`, `format`, `arch-build`. `scout` fans out for the bearings, `step-implementer`
 takes a large well-scoped step; the red-green rhythm itself is serial.
 
 ## Procedure

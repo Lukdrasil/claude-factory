@@ -36,7 +36,14 @@ state=${p%%/repos/*}
 rest=${p#*/repos/}
 key=${rest%%/*}
 slug=$(node_json tool_input.content | plan_slug)
-task_id=$(basename "$p" .md | grep -oE '^T-[0-9]{3,}(-[0-9]{2,})?' || :)
+# the task id the file name starts with, `<id>-<slug>.md`: its longest dash-joined prefix that lib-tasks.sh's
+# is_task_id takes, so `T-246-01-x` is the block and `T-ECS-12-fix` the alias parent
+task_id='' pre='' name=$(basename "$p" .md)
+while [ -n "$name" ]; do
+  pre=${pre:+$pre-}${name%%-*}
+  case "$name" in *-*) name=${name#*-} ;; *) name='' ;; esac
+  if is_task_id "$pre"; then task_id=$pre; fi
+done
 
 rc=0
 reason=$(architect_verdict "$key" "$slug" "$task_id") || rc=$?

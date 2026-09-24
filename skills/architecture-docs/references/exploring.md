@@ -19,14 +19,14 @@ different search. A claim still ungrounded after the second becomes a `TODO(ques
 searched. There is never a third round: the cost of one more sweep is unbounded and the question is cheap.
 `evidence_rounds` in the delivery receipt is the maximum over all claims, not an average.
 
-Fan independent sweeps out to `worker-explorer` per `<plugin-root>/skills/_shared/delegation.md`, and verify
+Fan independent sweeps out to `scout` per `<plugin-root>/skills/_shared/delegation.md`, and verify
 every citation that comes back before it enters a draft.
 
 ## The panel
 
 Both modes take the full panel. Match the stack and the systems the exploration found against the
 `Load when` column of `<plugin-root>/skills/architecture-docs/references/README.md`, and spawn one
-`architect-specialist` per domain that hits, in parallel. Each prompt carries the domain name, the absolute
+`domain-architect` per domain that hits, in parallel. Each prompt carries the domain name, the absolute
 product repo path, and the absolute paths of `architect-review/references/checks.md` and this directory's
 `README.md`: a specialist preloads no skill, so those paths are how it finds the rubric and the domain index.
 

@@ -1,5 +1,5 @@
 ---
-name: factory-block-tests
+name: test-designer
 description: The tests phase of one block inside a factory solve session, blast radius, red tests and a ## Handoff for the implement subagent that follows it. Spawned by the coordinator per _shared/delegation.md; do not call it directly.
 model: opus
 effort: high

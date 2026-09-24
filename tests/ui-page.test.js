@@ -143,6 +143,16 @@ async function stage(q, button, text) {
     ok(kinds === 'function function function undefined function', `typeof: ${kinds}`);
   });
 
+  await check('groupOf puts a legacy id, an alias id and a block or step of each under its parent', async () => {
+    const got = await page.evaluate(async () => {
+      const { groupOf } = await import('/pipeline.js');
+      return ['T-264', 'T-264-03', 'T-1000', 'T-1000-01', 'T-ECS-12', 'T-ECS-12-03', 'T-ECS-12-chart', 'none', '']
+        .map((id) => `${id}=${groupOf(id)}`).join(' ');
+    });
+    ok(got === 'T-264=T-264 T-264-03=T-264 T-1000=T-1000 T-1000-01=T-1000 T-ECS-12=T-ECS-12 T-ECS-12-03=T-ECS-12 '
+      + 'T-ECS-12-chart=T-ECS-12 none=setup =setup', `groupOf: ${got}`);
+  });
+
   await check('without the token in the fragment no task is shown', async () => {
     await fresh(page, `${BASE}/`);
     await page.waitForTimeout(1500);

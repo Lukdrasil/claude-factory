@@ -3,8 +3,9 @@ import { esc } from './ask-card.js';
 const STEPS = [[3, 'triage'], [4, 'grill'], [5, 'plan-check'], [6, 'decompose'], [8, 'cut'], [9, 'approve'],
   [10, 'worktree'], [11, 'blocks'], [12, 'acceptance'], [13, 'review'], [14, 'MR'], [15, 'report'], [16, 'knowledge']];
 
-/** The drawer a task id or an ask's task belongs to: the parent task of a block, or setup for none. */
-export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-\d{3}/) || [task])[0]);
+/** The drawer a task id or an ask's task belongs to: the parent task (`T-<n>` or `T-<ALIAS>-<n>`) of a block or
+ * step, or setup for none. */
+export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-(?:[A-Z]{2,4}-)?\d+/) || [task])[0]);
 
 /** The open, unsent asks of live sessions in herdr, oldest first: what the counter counts and walks. */
 export function waiting(sessions) {

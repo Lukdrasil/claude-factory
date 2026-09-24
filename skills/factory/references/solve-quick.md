@@ -30,11 +30,11 @@ Nothing done so far is lost: the task, the worktree and the branch carry over.
 4. Edit in that worktree yourself. A bugfix starts with the failing test.
 5. The repo's `build` binding, then its `test-filter` binding scoped to the touched tests, then `format`.
 6. `## Evidence` in the progress file: the commands and their exit codes.
-7. `<plugin-root>/bin/mr-open.sh <id>`, with `mr-issue-linker` on haiku for the issue lines.
+7. `<plugin-root>/bin/mr-open.sh <id>`, with `issue-finder` on haiku for the issue lines.
 8. `<plugin-root>/bin/state-report.sh --task <id> --set-status review`.
 
 ## Skipped
 
 The investigation, the grill, the architect plan-check and cut-check, the decompose, `dag-check.sh`, the
 block worktrees and their subagents, `block-verify.sh`, `block-merge.sh`, the full suite, `crap`,
-`arch-build` and the `factory-reviewer` pass. The human reviews the MR instead.
+`arch-build` and the `code-reviewer` pass. The human reviews the MR instead.
