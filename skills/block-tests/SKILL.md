@@ -57,7 +57,7 @@ handoff note; an ambiguity is `blocked`. No MR and no knowledge review here.
 |---|---|
 | `tests_ready` | the branch is pushed, `## Handoff` is written, the red run is under `## Evidence` |
 | `blocked` | a human decision is needed; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
-| `failed` | the contract could not be built; `state-report.sh --attempts "<N>, <model>, <why>"` |
+| `failed` | the contract could not be built; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
 Never `review`; `## Remaining` lists what the handoff still misses.
 

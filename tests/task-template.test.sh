@@ -53,7 +53,7 @@ check "2b task-new.sh --parent T-001 accepts the filled block template" 0 "$rc"
 bf="$state/repos/demo/tasks/T-001-01-fix-demo-a-block.md"
 check "2b the block carries the exact line 'id: T-001-01'" 'id: T-001-01' "$(grep -x 'id: T-001-01' "$bf" 2>/dev/null)"
 check "2b task_of T-001-01 finds the block" "$bf" "$(. "$bin/lib-tasks.sh"; task_of T-001-01)"
-check "2b the branch line holds no '#'" 'branch: feat/T-001-01-slug' "$(grep '^branch:' "$bf" 2>/dev/null)"
+check "2b the branch line holds no '#'" 'branch: feat/T-001-01-<slug>' "$(grep '^branch:' "$bf" 2>/dev/null)"
 
 # --- 2c: every state-report.sh call in the prose names its task --------------------
 check "2c every state-report.sh call passes --task" '' \

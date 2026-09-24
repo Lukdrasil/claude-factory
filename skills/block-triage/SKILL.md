@@ -7,9 +7,9 @@ description: Triaging one forge issue into a draft os-task in the state repo, de
 
 Plugin root: `${CLAUDE_PLUGIN_ROOT}`; this skill's directory is `<plugin-root>/skills/block-triage`.
 
-Turn one source into **one draft os-task** with `status: triaged`. You implement nothing and approve nothing:
-`triaged` to `ready` is a human action. A large issue is **one** draft, not five; a suggested split is a
-sentence under `## Internal`, never more tasks.
+Turn one source into **one draft os-task**: a new draft with `status: draft`, a roadmap draft edited to
+`status: triaged`. You implement nothing and approve nothing: either to `ready` is a human action. A large
+issue is **one** draft, not five; a suggested split is a sentence under `## Internal`, never more tasks.
 
 ## Sources
 
@@ -61,5 +61,6 @@ first. The rest is the worker procedure.
    is not fatal.
 8. Commit the progress file and self-report `review` per `references/self-report.md`; `mr_url` stays `null`.
 
-**Done when** the draft exists with `status: triaged`, `plan_hash`, `owner` and `mr_url` `null`, its path and
-validator run under `## Evidence`, and the triage task reports `review`, `blocked` or `failed`.
+**Done when** the draft exists with `status: draft` (a roadmap draft `status: triaged`), `plan_hash`, `owner`
+and `mr_url` `null`, its path and validator run under `## Evidence`, and the triage task reports `review`,
+`blocked` or `failed`.
