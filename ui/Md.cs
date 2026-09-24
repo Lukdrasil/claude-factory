@@ -1,14 +1,23 @@
 using Markdig;
+using Markdig.Extensions.GenericAttributes;
+using Markdig.Extensions.MediaLinks;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 
 /// <summary>
-/// Markdig with the advanced extensions and raw HTML escaped. A link whose URL is not http, https, relative or a
+/// Markdig with the advanced extensions but no generic attributes or media links, and raw HTML escaped. A link whose URL is not http, https, relative or a
 /// fragment keeps its text and loses its href.
 /// </summary>
 public static class Md
 {
-    static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml().Build();
+    static readonly MarkdownPipeline Pipeline = BuildPipeline();
+
+    static MarkdownPipeline BuildPipeline()
+    {
+        var builder = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml();
+        builder.Extensions.RemoveAll(e => e is GenericAttributesExtension or MediaLinkExtension);
+        return builder.Build();
+    }
 
     public static string ToHtml(string markdown)
     {
