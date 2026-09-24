@@ -47,7 +47,7 @@ public sealed partial class StateReader(string root)
             Markdown.ToHtml(body),
             Tasks().Where(t => t.Id.StartsWith(id + "-", StringComparison.Ordinal)).ToList(),
             slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md"),
-            slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md"),
+            (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id),
             slug is null ? null : ReadOrNull(repoDir, "verdicts", $"{slug}.md"),
             ReadOrNull(repoDir, "progress", $"{id}.md"),
             Timeline(Path.GetRelativePath(root, file)));
@@ -95,6 +95,17 @@ public sealed partial class StateReader(string root)
             .SkipWhile(l => !l.StartsWith('#'))
             .Skip(1)
             .FirstOrDefault(l => !string.IsNullOrWhiteSpace(l))?.TrimEnd('\r') ?? "";
+
+    static string? GrillOf(string repoDir, string id)
+    {
+        var plans = Path.Combine(repoDir, "plans");
+        var file = Directory.Exists(plans)
+            ? Directory.EnumerateFiles(plans, "*-grill.md")
+                .Order(StringComparer.Ordinal)
+                .FirstOrDefault(f => Frontmatter.Read(f).GetValueOrDefault("task") == id)
+            : null;
+        return file is null ? null : File.ReadAllText(file);
+    }
 
     static string? ReadOrNull(params string[] parts)
     {

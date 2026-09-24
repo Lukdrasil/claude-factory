@@ -2,7 +2,8 @@
 # The fixture of the Factory UI suites, sourced by tests/ui-server.test.sh and tests/ui-page.test.sh once Docker
 # is known to run, with $repo, $bin, $tmp and $name set: the check helpers, a stub `herdr` on PATH, two state
 # repos on an ephemeral ui_port, and a UI home with session s1 (pane w1:p1, task T-001) and its asks q1 and q3
-# open and q2 answered, each one grill round. It exports FACTORY_UI_HOME and FACTORY_UI_CONTAINER.
+# open and q2 answered, each one grill round. It exports FACTORY_UI_HOME and FACTORY_UI_CONTAINER. `browser` is
+# the Playwright harness of the page suites.
 
 fail=0
 pass() { printf 'PASS %s\n' "$1"; }
@@ -120,4 +121,18 @@ ready() { # <port>: the server answers / within 20 s
     sleep 0.1; i=$((i + 1))
   done
   return 1
+}
+
+browser() { # <test.js>: node runs it in a Playwright container on the host network as the host uid against the
+  # server on $port with $token, the UI home mounted at its own path; its output lands in $tmp/browser.out
+  pw_version=1.63.0
+  pw="cf-ui-playwright:$pw_version"
+  if ! docker image inspect "$pw" >/dev/null 2>&1; then
+    printf 'FROM mcr.microsoft.com/playwright:v%s-noble\nRUN npm install -g playwright-core@%s\nENV NODE_PATH=/usr/lib/node_modules\n' \
+      "$pw_version" "$pw_version" | timeout 15m docker build -q -t "$pw" - >/dev/null \
+      || { bad "the Playwright image $pw could not be built"; return 1; }
+  fi
+  timeout 15m docker run --rm --network host --user "$(id -u):$(id -g)" -e HOME=/tmp \
+    -e BASE="http://127.0.0.1:$port" -e TOKEN="$token" -e UI="$ui" \
+    -v "$ui:$ui" -v "$1:/t/${1##*/}:ro" "$pw" node "/t/${1##*/}" > "$tmp/browser.out" 2>&1
 }

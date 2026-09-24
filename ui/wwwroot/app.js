@@ -5,7 +5,7 @@ import { renderSetupStrip } from './setup.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
-const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null };
+const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null };
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
 const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane })));
@@ -17,13 +17,28 @@ async function api(path, init = {}) {
   return r;
 }
 
+async function loadDetail(id) {
+  if (!id || id === 'setup') return null;
+  const r = await fetch(`/api/tasks/${id}`, { headers: { 'X-Factory-Token': token } });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`GET /api/tasks/${id} answered ${r.status}`);
+  const detail = await r.json();
+  detail.blockDetails = (await Promise.all(detail.blocks.map((b) => loadDetail(b.id)))).filter(Boolean);
+  return detail;
+}
+
 async function load() {
-  const [board, sessions, setup] = await Promise.all(['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())));
-  if (board + sessions + setup === S.raw) return;
-  S.raw = board + sessions + setup;
+  const id = S.drawer;
+  const [board, sessions, setup, detail] = await Promise.all([
+    ...['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())),
+    loadDetail(id).then((d) => d && JSON.stringify(d)),
+  ]);
+  if (board + sessions + setup + detail === S.raw) return;
+  S.raw = board + sessions + setup + detail;
   S.board = JSON.parse(board);
   S.sessions = JSON.parse(sessions);
   S.setup = JSON.parse(setup);
+  S.detail = detail && JSON.parse(detail);
   render();
 }
 
@@ -61,6 +76,7 @@ function group(id) {
       .filter((a) => groupOf(a.task) === id && (a.status === 'open' || S.shown.has(keyOf(a))))
       .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified)),
     staged: S.staged,
+    detail: S.detail?.task.id === id ? S.detail : null,
   };
 }
 
@@ -86,6 +102,7 @@ function open(id) {
   S.shown = new Set(allAsks().filter((a) => groupOf(a.task) === id && a.status === 'open').map(keyOf));
   app.querySelector('aside')?.remove();
   render();
+  refresh();
 }
 
 function next() {

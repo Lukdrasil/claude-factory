@@ -9,7 +9,8 @@ Run `<plugin-root>/bin/solve-next.sh <T-NNN>`, do what it prints, verify its `Co
 repeat until step 16. It reads the state, so its step is the one the state asks for. With `ui: docker` in
 `<state>/factory.yml` and `HERDR_ENV=1`, run `<plugin-root>/bin/solve-next.sh <T-NNN> --ui <session_id>`
 with the session_id of your identity line, so the step also lands in the session's `session.md`, and ask
-every question through `_shared/ask.md`.
+every question through `_shared/ask.md`. The task drawer of the browser marks that step on its rail and shows
+each step's state beside it; a blocked task or block shows its `## Question` there too, answered in your pane.
 
 ## The worktree rule
 
