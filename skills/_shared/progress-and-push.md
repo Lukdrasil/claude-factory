@@ -8,8 +8,8 @@ Read mid-flight: **under 200 words**, one line per bullet, the state in the firs
 `path/file.ext:line` or a SHA instead of retelling; what you considered and declined stays out.
 
 ```markdown
-# <id> — <task title>
-**<on track|blocked|acceptance green>** — the one thing a reader needs now.
+# <id>: <task title>
+**<on track|blocked|acceptance green>**: the one thing a reader needs now.
 
 ## Done
 - what is genuinely finished and verified

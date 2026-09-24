@@ -36,9 +36,9 @@ CRAP over the methods changed by this task (threshold 8):
 | method | CRAP | note |
 |---|---|---|
 | `OrderParser.Parse` | 2.0 | |
-| `OrderParser.Apply` | 6.8 | was 19.4 — extracted `ApplyDiscount` |
+| `OrderParser.Apply` | 6.8 | was 19.4, extracted `ApplyDiscount` |
 | `Program.Main` | skipped | exempt: composition root |
-| `Dispatcher.Route` | 11.0 | over 8 — the switch is the task's contract; splitting it changes the public API |
+| `Dispatcher.Route` | 11.0 | over 8: the switch is the task's contract; splitting it changes the public API |
 ```
 
 No `crap` in the toolset: the section is one line — `no crap tooling for this repo` — and the session moves on

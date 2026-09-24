@@ -43,7 +43,7 @@ further. The body is the lesson itself, **under 80 words**: a curator decides fr
 # <the merged lesson in one sentence>
 
 Why: why it holds and what happens when it is forgotten.
-Evidence: <id> — `path/file.ext:line`, a commit SHA or command output.
+Evidence: <id>, `path/file.ext:line`, a commit SHA or command output.
 Replaces: <path to source 1>, <path to source 2>
 ```
 
