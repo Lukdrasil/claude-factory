@@ -3,7 +3,9 @@
 # proposal's own values, each design section carries exactly the members the proposal names, the manifest
 # repeats the plan's ordinals, the source task's forge issue is copied over, and a plan with an open gap
 # ledger row is refused without writing anything. The terms and the locked tag are carried into the context, and
-# the ledger's `deps` column does not move the `state` plan-lint reads.
+# the ledger's `deps` column does not move the `state` plan-lint reads. T-253: the sub-bullet `steps:` of a
+# proposal become the block's `## Checklist`, plan-lint refuses a missing or malformed `steps:`, and
+# block-brief.sh carries the checklist outside the design.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -82,6 +84,9 @@ def run_export(args)
 - acceptance: `pytest tests/test_exporter.py`
 - docs: docs/export.md
 - design: `src/export/exporter.py` export_rows, `src/export/cli.py` run_export
+- steps:
+  - a
+  - b
 - out of scope: the column header
 
 ### 3. Fix the header writer
@@ -94,6 +99,7 @@ def run_export(args)
 - acceptance: `pytest tests/test_header.py`
 - docs: none
 - design: `src/export/exporter.py` write_header
+- steps: none
 - out of scope: the cli
 
 ## Out of scope
@@ -205,6 +211,7 @@ headless() { # <label> <design value>
       print "- acceptance: `sh tests/eol.sh`"
       print "- docs: none"
       print "- design: " design
+      print "- steps: none"
       print "- out of scope: the exporter code"
       print ""
     }
@@ -219,5 +226,92 @@ headless() { # <label> <design value>
 headless none-with-prose 'none, a config file and a test with no code surface'
 headless file-only '`src/export/cli.py`'
 headless bare-none-on-a-feature 'none'
+
+# --- T-253: the steps of a proposal become the block's `## Checklist` --------------------------------
+section() { # <file> <heading>: the non-blank lines under the heading, up to the next `## `
+  awk -v h="$2" '$0 == h { on = 1; next } on && /^## / { exit } on && NF { print }' "$1"
+}
+lineof() { # <file> <exact line>: the number of its first occurrence, empty when absent
+  grep -nxF -- "$2" "$1" | head -n1 | cut -d: -f1
+}
+
+[ "$(section "$f2" '## Checklist')" = "$(printf '%s\n%s' '- [ ] a' '- [ ] b')" ]
+check 'the sub-bullet steps a, b become - [ ] a and - [ ] b under ## Checklist' $?
+oos=$(lineof "$f2" '## Out of scope'); cl=$(lineof "$f2" '## Checklist')
+int=$(lineof "$f2" '## Internal'); att=$(lineof "$f2" '## Attempts')
+[ -n "$cl" ] && [ "$oos" -lt "$cl" ] && [ "$cl" -lt "$int" ] && [ "$cl" -lt "$att" ]
+check '## Checklist sits after ## Out of scope and before ## Internal and ## Attempts' $?
+[ "$(grep -cxF -- '- [ ] a' "$f2")" = 1 ]; check 'a step is written once' $?
+grep -qxF '## Checklist' "$f3"; [ $? -ne 0 ]; check 'steps: none yields no ## Checklist' $?
+grep -qxF '## Checklist' "$f1"; [ $? -ne 0 ]; check 'a research proposal without steps: yields no ## Checklist' $?
+
+# a step is copied whole: a `*` bullet, a colon that could read as a proposal key, a `;` inside a command
+tricky='docs: regenerate the table, then run `sh bin/x.sh; echo ok`'
+tp="$state/repos/demo/plans/tricky-plan-ready.md"
+awk -v t="$tricky" '$0 == "  - b" { print "  * " t; next } { print }' "$plan" > "$tp"
+tout="$tmp/tricky"
+sh "$bin/decompose.sh" "$tp" --out "$tout" --state "$state" >/dev/null 2>"$tmp/terr"
+check 'tricky steps: decompose exits 0' $?
+tf2="$tout/02-write-the-exporter-core.md"
+if [ -f "$tf2" ]; then
+  [ "$(section "$tf2" '## Checklist')" = "$(printf '%s\n%s' '- [ ] a' "- [ ] $tricky")" ]
+  check 'a * step with a colon and a ; is one checklist line, verbatim' $?
+  [ "$(section "$tf2" '## Docs')" = 'docs/export.md' ]
+  check 'a step reading like a key does not overwrite the proposal docs:' $?
+else
+  cat "$tmp/terr"; printf 'FAIL tricky steps: no block 2 written\n'; fail=1
+fi
+
+# --- T-253: plan-lint and the `steps:` rule --------------------------------------------------------
+sh "$bin/plan-lint.sh" "$plan" >/dev/null 2>"$tmp/lerr"; rc=$?
+check 'plan-lint accepts the plan, a research proposal without steps: included' $rc
+[ "$rc" -eq 0 ] || cat "$tmp/lerr"
+
+refused() { # <label> <proposal number> <awk program turning the good plan into the bad one>
+  rp="$state/repos/demo/plans/steps-$1-plan-ready.md"
+  awk "$3" "$plan" > "$rp"
+  sh "$bin/plan-lint.sh" "$rp" >/dev/null 2>"$tmp/rerr"
+  [ $? -eq 1 ]; check "plan-lint refuses $1" $?
+  grep -q 'steps' "$tmp/rerr" && grep -q "proposal $2" "$tmp/rerr"
+  check "$1: the refusal names steps and proposal $2" $?
+}
+refused 'a feature proposal with no steps' 2 '/^- steps:$/ || /^  - [ab]$/ { next } { print }'
+refused 'an empty - steps: with no sub-bullet' 2 '/^  - [ab]$/ { next } { print }'
+refused 'inline step text' 2 '/^- steps:$/ { print "- steps: wire the exporter into the cli"; next } /^  - [ab]$/ { next } { print }'
+refused 'none followed by sub-bullets' 2 '/^- steps:$/ { print "- steps: none"; next } { print }'
+refused 'a bugfix proposal with no steps' 3 '/^- steps: none$/ { next } { print }'
+refused 'a refactor proposal with no steps' 3 '/^- archetype: bugfix$/ { print "- archetype: refactor"; next } /^- steps: none$/ { next } { print }'
+refused 'inline step text on a research proposal' 1 '{ print } /^- design: none$/ { print "- steps: read the docs" }'
+
+# --- T-253: block-brief.sh carries the checklist, outside the design ------------------------------
+brieftask() { # <id> <with checklist: 1 or 0>
+  {
+    printf -- '---\nid: %s\nrepo: demo\nbranch: null\nstatus: ready\ntier: yellow\narchetype: feature\n' "$1"
+    printf 'complexity: medium\ndepends_on: []\n---\n\n# Goal\nfeat(export): %s\n\n## Context\nctx\n\n' "$1"
+    printf 'Design (approved in the grill):\n### `src/export/exporter.py` (new)\ndef export_rows(rows, fh)\n'
+    printf '  Writes every row of the stream into the open handle.\n\n'
+    printf '## Acceptance\n`pytest tests/test_exporter.py`\n\n## Docs\nnone\n\n## Out of scope\nthe header line\n'
+    if [ "$2" = 1 ]; then printf '\n## Checklist\n- [ ] a\n- [ ] b\n'; fi
+    printf '\n## Attempts\n'
+  } > "$state/repos/demo/tasks/$1.md"
+}
+brieftask T-006-01 1
+brieftask T-006-02 0
+for ph in tests implement; do
+  bf="$tmp/brief-$ph.md"
+  sh "$bin/block-brief.sh" T-006-01 --state "$state" --phase "$ph" > "$bf" 2>/dev/null
+  check "$ph: block-brief.sh exits 0" $?
+  [ "$(section "$bf" '## Checklist')" = "$(printf '%s\n%s' '- [ ] a' '- [ ] b')" ]
+  check "$ph: the brief prints the task's ## Checklist verbatim" $?
+  [ "$(grep -cxF -- '- [ ] a' "$bf")" = 1 ]; check "$ph: the brief prints the checklist once" $?
+  dl=$(lineof "$bf" '  Writes every row of the stream into the open handle.')
+  cl=$(lineof "$bf" '## Checklist'); al=$(lineof "$bf" '## Acceptance')
+  [ -n "$dl" ] && [ -n "$cl" ] && [ -n "$al" ] && [ "$dl" -lt "$cl" ] && [ "$cl" -lt "$al" ]
+  check "$ph: the checklist sits after the design and before ## Acceptance" $?
+  grep -qxF 'the header line' "$bf"; [ $? -ne 0 ]; check "$ph: the out of scope stays out of the brief" $?
+done
+sh "$bin/block-brief.sh" T-006-02 --state "$state" --phase tests > "$tmp/brief-none.md" 2>/dev/null
+check 'a task with no checklist still briefs with exit 0' $?
+grep -qxF '## Checklist' "$tmp/brief-none.md"; [ $? -ne 0 ]; check 'a task with no checklist briefs none' $?
 
 exit $fail
