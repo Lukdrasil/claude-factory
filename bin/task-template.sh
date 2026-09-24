@@ -26,7 +26,7 @@ case "$1" in
 id: <new-id>
 repo: <key>
 branch: feat/<new-id>-<slug>
-status: triaged
+status: draft
 tier: <green|yellow|red>
 archetype: <feature|bugfix|refactor|research|ops>
 complexity: <low|medium|high>
@@ -84,9 +84,9 @@ TEMPLATE
   block)
     cat <<'TEMPLATE'
 ---
-id: T-001                    # a placeholder, the server overwrites it with the id it assigns
+id: T-001
 repo: <repo-key>
-branch: feat/<slug>          # the server inserts the assigned id: feat/T-005-01-<slug>
+branch: feat/<slug>
 status: draft
 tier: green
 archetype: feature

@@ -91,7 +91,7 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
     return f};
   const set=(t,k,v)=>{const L=t.split("\n"),end=fence(L);if(end<0)return t;
     for(let i=1;i<end;i++){const c=L[i].indexOf(":");if(c<0||/^\s/.test(L[i]))continue;const n=L[i].slice(0,c);if(n.trim()!==k)continue;
-      const cm=L[i].slice(c+1).split(" #");L[i]=cm.length>1?`${n}: ${v} #${cm.slice(1).join(" #")}`:`${n}: ${v}`;return L.join("\n")}
+      L[i]=`${n}: ${v}`;return L.join("\n")}
     L.splice(end,0,`${k}: ${v}`);return L.join("\n")};
   const body=t=>{const L=t.split("\n"),end=fence(L);return end<0?t:L.slice(end+1).join("\n").replace(/^[-\n]+/,"")};
   const section=(t,h)=>{const L=t.split("\n");const st=L.findIndex(l=>l.trim()===h);if(st<0)return "";const o=[];

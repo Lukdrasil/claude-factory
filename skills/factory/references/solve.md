@@ -11,7 +11,7 @@ repeat until step 16. It reads the state, so its step is the one the state asks 
 ## The worktree rule
 
 `<plugin-root>/bin/worktree-add.sh <task-id>` creates the worktree and branch for the parent and every block
-and writes `branch:` through `state-report.sh --branch`. No product command runs in the user's clone, and no
+and writes `branch:` through `state-report.sh --task <id> --branch`. No product command runs in the user's clone, and no
 worktree means no spawn.
 
 ## The gates you own
@@ -36,7 +36,7 @@ worktree means no spawn.
   read them with `<plugin-root>/bin/factory-list.sh` and rerun every proving command yourself.
 - **Tests.** Rerun the red tests yourself with the toolset's `test-filter` over the files the handoff names,
   each failing for the reason it states, paste the `## Handoff` into the block's progress file, then arm the
-  lock with `state-report.sh --set-phase implement`.
+  lock with `state-report.sh --task <block-id> --set-phase implement`.
 - **Verify.** `<plugin-root>/bin/block-verify.sh <block-id>` is green before the MR, and `## Evidence` is
   written by you, never by a subagent. A block red twice is `failed`: spawn nothing new and ask the human
   through `_shared/blocked-question.md`.
@@ -54,7 +54,7 @@ worktree means no spawn.
 
 Every block is one reviewable functionality with its own MR (ADR-0057), cut from the last block it depends on. `<plugin-root>/bin/block-merge.sh <block-id> --verify` proves the merge into the session branch
 and commits nothing; `<plugin-root>/bin/block-mr.sh <block-id>` opens the block MR into that base and records
-it with `state-report.sh --mr-url`. A conflict is a cut defect: rebase the later block and run it again.
+it with `state-report.sh --task <block-id> --mr-url`. A conflict is a cut defect: rebase the later block and run it again.
 
 `<plugin-root>/bin/mr-watch.sh <T-NNN>` prints one line per forge event, armed through the Monitor tool; on
 `merged` it retargets the children and sets the block done. On `changes-requested` set the block

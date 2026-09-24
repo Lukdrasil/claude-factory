@@ -57,7 +57,7 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 |---|---|
 | `review` | acceptance ran green, the fresh run recorded under `## Evidence`, and the output exists |
 | `blocked` | you need a human decision; question per `<plugin-root>/skills/_shared/blocked-question.md` |
-| `failed` | acceptance could not be met; `state-report.sh --attempts "<N>, <model>, <why>"` |
+| `failed` | acceptance could not be met; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
 You write `status:` and `mr_url:`, nothing else: `attempt` and `plan_hash` are the controller's, `ready` and
 `done` the human's (P5). Never write `done`, `ready` or `stalled`, and never a status or an `owner` on a task
