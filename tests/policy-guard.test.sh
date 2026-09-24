@@ -202,4 +202,32 @@ try 0 'cd /tmp && cd /tmp/scratch, then a relative write, from the registered cl
 try 0 'cd /tmp/scratch && a pipe into a relative redirect, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && make | sort > out.txt'
 try 0 'cd /tmp/scratch && a quoted ; and ( in a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && echo "a; b (c)" > y'
 
+# T-254-02: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, and the
+# deny names bin/issue-create.sh, which adds it
+try 2 'gh issue create without a label' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md'
+if grep -q 'issue-create\.sh' "$tmp/err"; then printf 'PASS the label deny names bin/issue-create.sh\n'
+else printf 'FAIL the label deny names bin/issue-create.sh: %s\n' "$(head -c 200 "$tmp/err")"; fail=1; fi
+try 2 'glab issue create without a label' "$C/cf" coord 'glab issue create --title "fix: x" --description-file /tmp/b.md'
+try 2 'gh issue create with another label' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label bug'
+try 2 'gh issue create with a label that only contains ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label not-ai-drafted'
+try 2 'gh issue create with a label that only starts with ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md -l ai-drafted-later'
+try 2 'glab issue create -l bug' "$C/cf" coord 'glab issue create --title "fix: x" --description-file /tmp/b.md -l bug'
+try 2 'an unlabelled create, then a labelled one in the next segment' "$C/cf" coord \
+  'gh issue create --title "fix: y" --body-file /tmp/b.md && gh issue create --title "fix: x" --body-file /tmp/b.md --label ai-drafted'
+try 0 'gh issue create --label ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label ai-drafted'
+try 0 'gh issue create --label=ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label=ai-drafted'
+try 0 'gh issue create -l ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md -l ai-drafted'
+try 0 'gh issue create -l=ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md -l=ai-drafted'
+try 0 'gh issue create -l bug,ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md -l bug,ai-drafted'
+try 0 'gh issue create --label ai-drafted,bug' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label ai-drafted,bug'
+try 0 'gh issue create --label "ai-drafted"' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label "ai-drafted"'
+try 0 "gh issue create --label 'bug,ai-drafted'" "$C/cf" coord "gh issue create --title \"fix: x\" --body-file /tmp/b.md --label ${q}bug,ai-drafted${q}"
+try 0 'gh issue create --label bug --label ai-drafted' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md --label bug --label ai-drafted'
+try 0 'gh issue create -R with the label before the title' "$C/cf" coord 'gh issue create -R github.com/acme/w --label ai-drafted --title "fix: x" --body-file /tmp/b.md'
+try 0 'glab issue create -l ai-drafted' "$C/cf" coord 'glab issue create --title "fix: x" --description-file /tmp/b.md -l ai-drafted'
+try 0 'glab issue create --label ai-drafted' "$C/cf" coord 'glab issue create -R gitlab.example.com/g/w --title "fix: x" --description-file /tmp/b.md --label ai-drafted'
+try 0 'bin/issue-create.sh is not a direct create' "$C/cf" coord 'sh bin/issue-create.sh cf --title "fix: x" --body-file /tmp/b.md'
+try 0 'gh issue list stays allowed' "$C/cf" coord 'gh issue list --state open --limit 100'
+try 0 'glab issue list stays allowed' "$C/cf" coord 'glab issue list --per-page 100'
+
 exit $fail
