@@ -670,7 +670,8 @@ heredoc_stripped() { # <command> — prints the command to scan
 
 # T-228 Q23: a segment ends at `;`, `|`, `&` and a line break, but only outside quotes: a `&&` inside a printf
 # argument or a commit message is data. A quoted span that runs over several lines stays on one. T-228-06: with
-# `lead`, each segment carries the separator before it, `a` for `&&`, `p` for `|`, `o` for any other and `-` for none.
+# `lead`, each segment carries the separator before it, `a` for `&&`, `p` for `|`, `r` for `||`, `o` for any other
+# and `-` for none.
 split_segs() { # <command> [lead]
   printf '%s\n' "$1" | awk -v lead="${2:-}" '
     function emit() { if (seg != "") print (lead != "" ? code " " : "") seg; seg = "" }
@@ -685,7 +686,7 @@ split_segs() { # <command> [lead]
           seg = seg (ch == "\n" ? " " : ch); continue
         }
         if (ch == ";" || ch == "|" || ch == "&" || ch == "\n") { sep = sep ch; continue }
-        if (sep != "") { emit(); code = (sep == "&&" ? "a" : (sep == "|" ? "p" : "o")); sep = "" }
+        if (sep != "") { emit(); code = (sep == "&&" ? "a" : (sep == "|" ? "p" : (sep == "||" ? "r" : "o"))); sep = "" }
         if (ch == "\\") { seg = seg ch substr(s, ++i, 1); continue }
         if (ch == "\047" || ch == "\"") q = ch
         seg = seg ch
@@ -703,10 +704,31 @@ unquoted() { # <text>
 # T-228-06: only `&&` makes the next segment wait for the cd. After `;`, `||` or `|` the cd may have failed or run in
 # a subshell, so cwd_alt keeps the cwd before it, and a relative target is judged against both. A cd entered through
 # `|` runs in a subshell and never moves the cwd.
+# T-228-07: a cd holds only while its && chain holds. At the next `;`, `||` or `&` every cwd from before a cd of the
+# chain joins cwd_alt, a list, and an unresolvable cd of the chain makes the cwd lost again. A cd led by `||` or
+# inside an unclosed unquoted `(` or `$(` may not run or may be undone, so it adds to cwd_alt as a `;` cd does.
+NL='
+'
 cwd_lost=''
 cwd_alt=''
+cd_chain=''
+cd_chain_lost=''
+cd_depth=0
+cd_reset() { cwd=$cwd0; cwd_lost=''; cwd_alt=''; cd_chain=''; cd_chain_lost=''; cd_depth=0; }
+alt_add() { [ -z "$1" ] || cwd_alt=${cwd_alt:+$cwd_alt$NL}$1; }
 cd_track() { # <one command segment> <separator code after it> <separator code before it>
   ct_sep=$2
+  case "$ct_sep" in
+    o|r)
+      alt_add "$cd_chain"
+      [ -z "$cd_chain_lost" ] || cwd_lost=1
+      cd_chain=''; cd_chain_lost='' ;;
+  esac
+  ct_depth=$cd_depth
+  case "$1" in
+    *[\(\)]*)
+      cd_depth=$(unquoted "$1" | awk -v d="$cd_depth" '{ d += gsub(/\(/, ""); d -= gsub(/\)/, "") } END { print (d > 0 ? d : 0) }') ;;
+  esac
   [ "${3:-}" != p ] || return 0
   set -f
   # shellcheck disable=SC2086
@@ -725,7 +747,13 @@ cd_track() { # <one command segment> <separator code after it> <separator code b
   case "$cd_to" in
     *..*|*'$'*|*'`'*|*\"*|*\'*|*')'*) cwd_lost=1 ;;
     /*|[A-Za-z]:/*)
-      if [ "$ct_sep" = a ]; then cwd_lost=''; cwd_alt=''; elif [ -z "$cwd_alt" ]; then cwd_alt=$cwd; fi
+      if [ "$ct_sep" = a ] && [ "$ct_depth" = 0 ] && [ "${3:-}" != r ]; then
+        cd_chain=${cd_chain:+$cd_chain$NL}$cwd${cwd_alt:+$NL$cwd_alt}
+        [ -z "$cwd_lost" ] || cd_chain_lost=1
+        cwd_lost=''; cwd_alt=''
+      else
+        alt_add "$cwd"
+      fi
       norm_into cwd "$cd_to" ;;
     *) cwd_lost=1 ;;
   esac
@@ -755,8 +783,12 @@ bash_read_only() { # <one command segment, quotes removed>
 with_alt() { # <command…>
   "$@"
   [ -n "$cwd_alt" ] || return 0
-  wa_cwd=$cwd; cwd=$cwd_alt
-  "$@"
+  wa_cwd=$cwd; wa_rest=$cwd_alt
+  while [ -n "$wa_rest" ]; do
+    cwd=${wa_rest%%"$NL"*}
+    case "$wa_rest" in *"$NL"*) wa_rest=${wa_rest#*"$NL"} ;; *) wa_rest='' ;; esac
+    "$@"
+  done
   cwd=$wa_cwd
 }
 inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; bash_write_target "$1"; }
@@ -873,7 +905,7 @@ guard_bash() {
     check_state_push "$seg"
     with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
-  cwd=$cwd0; cwd_lost=''; cwd_alt=''
+  cd_reset
   # T-036: a `dotnet test` with no wall-clock cap hung a session until the watchdog stalled it — 20 minutes of
   # dead time and no trace of which test hung. The deterministic twin of _shared/test-budget.md: every command
   # segment that runs `dotnet test` carries a `timeout` in the same segment. A quoted mention is prose, not a run.
@@ -980,7 +1012,7 @@ guard_bash() {
         set +f ;;
     esac
   done
-  cwd=$cwd0; cwd_lost=''; cwd_alt=''
+  cd_reset
   # …and the in-place editors, per command segment so that a read in one segment is not blamed on a write in
   # another. Inside a write segment every path-like token is offered to the checks; an option (`-i`), a quoted
   # script (`'s|/tests/a|/tests/b|'`) or a backtick is skipped, and both checks ignore a path they have no rule for.
@@ -1030,7 +1062,7 @@ guard_bash() {
     lw=$(printf '%s' "$useg" | awk '/(^|[ \t])(sed|perl)[ \t]/ && NF > 1 { print $NF }')
     case "$lw" in -*|\$*|\`*|''|.|*/*) ;; *) with_alt inplace_last "$lw" ;; esac
   done
-  cwd=$cwd0; cwd_lost=''; cwd_alt=''
+  cd_reset
   [ -z "$status_write" ] || check_status "$c"
 }
 
