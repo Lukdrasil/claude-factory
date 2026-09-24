@@ -2,18 +2,21 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
+using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateSlimBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.TypeInfoResolverChain.Insert(0, UiJson.Default));
 builder.Services.AddSingleton(new StateReader("/state"));
 builder.Services.AddSingleton(new UiHome("/ui"));
-builder.Services.AddSingleton(new MountScanner("/state", TimeSpan.FromMilliseconds(250)));
+builder.Services.AddSingleton<MountScanner[]>(
+    [new MountScanner("/state", TimeSpan.FromMilliseconds(250)), new MountScanner("/ui", TimeSpan.FromMilliseconds(250))]);
 
 var app = builder.Build();
 app.Use(Api.RequireToken);
 app.UseDefaultFiles();
 app.UseStaticFiles();
-app.MapGet("/api/stream", (HttpContext ctx, MountScanner scanner, CancellationToken ct) => Api.Stream(ctx, scanner, ct));
+app.MapGet("/api/stream", (HttpContext ctx, [FromServices] MountScanner[] scanners, CancellationToken ct) => Api.Stream(ctx, scanners, ct));
 app.MapGet("/api/board", (StateReader state) => Api.Board(state));
 app.MapGet("/api/tasks/{id}", (string id, StateReader state) => Api.TaskDetail(id, state));
 app.MapGet("/api/setup", (StateReader state, UiHome home) => Api.Setup(state, home));
@@ -27,18 +30,35 @@ public sealed record AnswerWritten(string File);
 
 static class Api
 {
-    public static async Task Stream(HttpContext ctx, MountScanner scanner, CancellationToken ct)
+    public static async Task Stream(HttpContext ctx, MountScanner[] scanners, CancellationToken ct)
     {
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers.CacheControl = "no-cache";
         await ctx.Response.StartAsync(ct);
         await ctx.Response.Body.FlushAsync(ct);
+        var changes = Channel.CreateUnbounded<string>();
+        var pumps = Task.WhenAll(scanners.Select(scanner => Pump(scanner, changes.Writer, ct)));
+        try
+        {
+            await foreach (var path in changes.Reader.ReadAllAsync(ct))
+            {
+                await ctx.Response.WriteAsync($"data: {path}\n\n", ct);
+                await ctx.Response.Body.FlushAsync(ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        await pumps;
+    }
+
+    static async Task Pump(MountScanner scanner, ChannelWriter<string> changes, CancellationToken ct)
+    {
         try
         {
             await foreach (var path in scanner.ChangesAsync(ct))
             {
-                await ctx.Response.WriteAsync($"data: {path}\n\n", ct);
-                await ctx.Response.Body.FlushAsync(ct);
+                await changes.WriteAsync(path, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
