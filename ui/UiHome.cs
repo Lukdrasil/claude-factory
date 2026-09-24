@@ -66,7 +66,7 @@ public sealed partial class UiHome(string root)
 
     /// <summary>
     /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file newer than the ask names it and is not a <c>Q&lt;n&gt; redraw</c> or <c>Q&lt;n&gt; more</c>, and held with the
-    /// reason of <c>relay</c> while the relay holds one of its answers. An unreadable session is skipped.
+    /// reason of <c>relay</c> while the relay holds any of its answers newer than the ask, a kept-open one included. An unreadable session is skipped.
     /// </summary>
     public List<SessionInfo> Sessions()
     {
@@ -164,7 +164,7 @@ public sealed partial class UiHome(string root)
         var fields = Frontmatter.Parse(text);
         var id = fields.GetValueOrDefault("ask", Path.GetFileNameWithoutExtension(file));
         var modified = File.GetLastWriteTimeUtc(file);
-        var sent = answers.Where(a => a.Ask == id && a.Modified > modified && !a.KeepsOpen).Select(a => a.Seq).ToList();
+        var mine = answers.Where(a => a.Ask == id && a.Modified > modified).ToList();
         return new AskInfo(
             id,
             fields.GetValueOrDefault("task", ""),
@@ -173,8 +173,8 @@ public sealed partial class UiHome(string root)
             fields.GetValueOrDefault("status", ""),
             modified,
             Frontmatter.Body(text),
-            sent.Count > 0,
-            held is [var seq, var reason] && sent.Contains(seq) ? reason : null,
+            mine.Any(a => !a.KeepsOpen),
+            held is [var seq, var reason] && mine.Any(a => a.Seq == seq) ? reason : null,
             AskParser.Parse(Frontmatter.Body(text)));
     }
 

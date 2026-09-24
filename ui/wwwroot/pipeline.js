@@ -6,9 +6,9 @@ const STEPS = [[3, 'triage'], [4, 'grill'], [5, 'plan-check'], [6, 'decompose'],
 /** The drawer a task id or an ask's task belongs to: the parent task of a block, or setup for none. */
 export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-\d{3}/) || [task])[0]);
 
-/** The open, unsent asks of sessions in herdr, oldest first: what the counter counts and walks. */
+/** The open, unsent asks of live sessions in herdr, oldest first: what the counter counts and walks. */
 export function waiting(sessions) {
-  return sessions.filter((s) => s.pane)
+  return sessions.filter((s) => s.pane && s.agent !== 'gone')
     .flatMap((s) => s.asks.filter((a) => a.status === 'open' && !a.sent).map((a) => ({ ...a, sid: s.sid, pane: s.pane })))
     .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified));
 }
