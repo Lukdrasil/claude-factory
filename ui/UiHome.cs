@@ -65,7 +65,7 @@ public sealed partial class UiHome(string root)
     }
 
     /// <summary>
-    /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file newer than the ask names it and is not a <c>Q&lt;n&gt; redraw</c>, and held with the
+    /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file newer than the ask names it and is not a <c>Q&lt;n&gt; redraw</c> or <c>Q&lt;n&gt; more</c>, and held with the
     /// reason of <c>relay</c> while the relay holds one of its answers. An unreadable session is skipped.
     /// </summary>
     public List<SessionInfo> Sessions()
@@ -145,7 +145,7 @@ public sealed partial class UiHome(string root)
 
     public static bool IsId(string? value) => value is not null && Id().IsMatch(value);
 
-    static List<(string Seq, string Ask, DateTime Modified, bool Redraw)> AnswerFiles(string answers) =>
+    static List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> AnswerFiles(string answers) =>
         Directory.Exists(answers)
             ? Directory.EnumerateFiles(answers, "*.txt")
                 .Select(f => (File: f, Match: Answer().Match(Path.GetFileName(f))))
@@ -154,17 +154,17 @@ public sealed partial class UiHome(string root)
                     a.Match.Groups[1].Value,
                     a.Match.Groups[2].Value,
                     File.GetLastWriteTimeUtc(a.File),
-                    Redraw().IsMatch(File.ReadAllText(a.File).Trim())))
+                    KeepsOpen().IsMatch(File.ReadAllText(a.File).Trim())))
                 .ToList()
             : [];
 
-    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool Redraw)> answers, string[] held)
+    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> answers, string[] held)
     {
         var text = File.ReadAllText(file);
         var fields = Frontmatter.Parse(text);
         var id = fields.GetValueOrDefault("ask", Path.GetFileNameWithoutExtension(file));
         var modified = File.GetLastWriteTimeUtc(file);
-        var sent = answers.Where(a => a.Ask == id && a.Modified > modified && !a.Redraw).Select(a => a.Seq).ToList();
+        var sent = answers.Where(a => a.Ask == id && a.Modified > modified && !a.KeepsOpen).Select(a => a.Seq).ToList();
         return new AskInfo(
             id,
             fields.GetValueOrDefault("task", ""),
@@ -210,6 +210,6 @@ public sealed partial class UiHome(string root)
     [GeneratedRegex(@"^([0-9]+)-([A-Za-z0-9-]+)\.txt\z")]
     private static partial Regex Answer();
 
-    [GeneratedRegex(@"^Q[0-9]+ redraw\z")]
-    private static partial Regex Redraw();
+    [GeneratedRegex(@"^Q[0-9]+ (redraw|more)\z")]
+    private static partial Regex KeepsOpen();
 }

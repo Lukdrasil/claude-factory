@@ -4,8 +4,9 @@
 # global memory instead of their bodies, top level only, never
 # proposals/ — is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
-# `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets a one-line nudge towards the
-# factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and prints nothing. Exit 0 always.
+# `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets that identity line and a
+# one-line nudge towards the factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and
+# prints nothing. Exit 0 always.
 # Two lines ride along with that context when they apply: the standalone-posture line (T-187, with no
 # DASHBOARD_URL there is no dashboard and no gate that is not a command) and the stale-plugin warning of
 # incident C below.
@@ -23,9 +24,16 @@ emit() { node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:s}}))})'; }
 
+identity_line() {
+  host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
+  [ -n "$host" ] || host=localhost
+  printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
+}
+
 key=$(repo_key_of_cwd "$cwd")
 if [ -z "$key" ]; then
-  printf '%s' "This clone is not registered in a factory state repo (WORK_DIR/state/repos.yml has no path: for it) — run the factory skill's init (factory init) for this repo to register it." | emit
+  { [ -z "$sid" ] || identity_line
+  printf '%s' "This clone is not registered in a factory state repo (WORK_DIR/state/repos.yml has no path: for it) — run the factory skill's init (factory init) for this repo to register it."; } | emit
   exit 0
 fi
 
@@ -91,9 +99,7 @@ stale_plugin_warning() {
   # guessed (a bridge/cse_ id) and the owner-based Stop lookup (owned_task_ids) never found its tasks. The id
   # is in the hook stdin, so the session is told the exact owner string of ADR-0050 first thing.
   if [ -n "$sid" ]; then
-    host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
-    [ -n "$host" ] || host=localhost
-    printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
+    identity_line
     ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
     if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
       sh "$(dirname -- "$0")/ui-session.sh" --session "$sid" --pane "${HERDR_PANE_ID:-}" >/dev/null
