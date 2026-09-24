@@ -2,7 +2,8 @@
 # The architect verdict holds every block write (T-249 F1): task-new.sh --parent refuses a block without a valid
 # verdict of the plan it names and writes nothing, and architect-gate.sh on a Write creating a task file finds
 # the product through the repos.yml `path:` and not a sibling of the state clone. A registered clone without
-# docs/architecture/, a draft naming no plan and a top-level write all pass.
+# docs/architecture/, a draft naming no plan and a top-level write all pass. An alias id (`T-CF-3`, its block
+# `T-CF-3-01`) is read from the file name whole, so a verdict of one never covers the other.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -140,6 +141,22 @@ registered "$bare"
 check '1e with no docs/architecture/, task-new.sh --parent with no verdict exits 0' 0 \
   "$(new --parent T-100 --file "$tmp/block.md")"
 check '1e with no docs/architecture/, the Write with no verdict exits 0' 0 "$(gate T-100-09-block.md "$names_plan")"
+
+# --- alias ids: T-CF-3 and its block T-CF-3-01 are read by their whole id ---------------
+registered "$docs"
+noverdict
+quick() { # <task id>: a quick-lane verdict, read by the task id the file name starts with
+  printf -- '---\nverdict: aligned\nscope: quick\n---\n' > "$st/repos/demo/verdicts/$1.md"
+}
+check 'an alias block with no verdict exits 2' 2 "$(gate T-CF-3-01-block.md "$names_plan")"
+quick T-CF-3
+check 'the parent verdict of T-CF-3 does not cover its block T-CF-3-01' 2 "$(gate T-CF-3-01-block.md "$names_plan")"
+check 'the alias parent T-CF-3 passes on its own verdict' 0 "$(gate T-CF-3-fix.md "$names_plan")"
+noverdict
+quick T-CF-3-01
+check 'the alias block T-CF-3-01 passes on its own verdict' 0 "$(gate T-CF-3-01-block.md "$names_plan")"
+check 'a block verdict does not cover T-CF-30-01' 2 "$(gate T-CF-30-01-block.md "$names_plan")"
+noverdict
 
 # --- the hook matcher -----------------------------------------------------------------
 m=$(node -e 'const h=require(process.argv[1]);const e=h.hooks.PreToolUse.find(x=>x.hooks.some(k=>/architect-gate\.sh/.test(k.command)));process.stdout.write(e?e.matcher:"")' \

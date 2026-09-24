@@ -23,7 +23,8 @@
       { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/pre-compact.sh" }
     ] }],
     "Stop": [{ "hooks": [
-      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/self-report-check.sh" }
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/self-report-check.sh" },
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/rearm-check.sh" }
     ] }]
   }
 }
