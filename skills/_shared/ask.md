@@ -56,4 +56,7 @@ is empty:
 - `gone`: the pane is missing, or reports another session id or none.
 - `prompt-failed`: herdr refused the prompt before sending it.
 
+Every pass also writes `sessions/<sid>/agent` for every session, answers queued or not: the pane's
+`agent_status`, or `gone` as above. The page reads it as the session's liveness.
+
 `--once` makes one pass over every session, up to the first hold or working pane, and exits.
