@@ -5,9 +5,9 @@
 #
 # One kind per run, the skeleton on stdout, nothing else. The shapes are the ones the skills describe:
 # `task` the draft a triage writes (block-triage), `block` the task decompose hands to task-new.sh, both with
-# the frontmatter task-new.sh validates; `plan-ready` the plan a grill ends with; `progress` the snapshot a
-# session rewrites and `handoff` the section the tests phase adds to it; `investigation` the five sections an
-# investigator reports in.
+# the frontmatter task-new.sh validates (a block's request, priority and issue are replaced by its parent's);
+# `plan-ready` the plan a grill ends with; `progress` the snapshot a session rewrites and `handoff` the section
+# the tests phase adds to it; `investigation` the five sections an investigator reports in.
 #
 # Exit 0: the skeleton.
 # Exit 1: no kind, more than one kind, or a kind that does not exist, the reason on stderr.
@@ -30,6 +30,9 @@ status: draft
 tier: <green|yellow|red>
 archetype: <feature|bugfix|refactor|research|ops>
 complexity: <low|medium|high>
+request: <R-YYYYMMDD-n|null>
+priority: <P0|P1|P2|P3>
+issue: <forge issue url|null>
 depends_on: []
 attempt: 0
 plan_hash: null
@@ -88,6 +91,9 @@ status: draft
 tier: green
 archetype: feature
 complexity: low
+request: null
+priority: P2
+issue: null
 depends_on: []
 attempt: 0
 plan_hash: null

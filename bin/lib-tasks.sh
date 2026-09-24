@@ -4,9 +4,59 @@
 # owned_task_ids read the state clone the caller put in $state, the way self-report-check.sh and
 # session-stats.sh always did.
 
-# the file is chosen by the `id:` line, not by an `<id>-*.md` glob: with hierarchical ids a child `T-005-01-…`
-# sorts before its parent `T-005-…` (`0` < a letter) and the glob would hand back the wrong task.
-task_of() { grep -lx "id: $1" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1; }
+# every task file of $state, one path per line: the live ones under repos/<key>/tasks/, and with --all also the
+# archived ones under repos/<key>/archive/<YYYY-MM>/tasks/ (state-archive.sh moves a finished parent there).
+# Without a key every repo. Every reader that used to glob repos/*/tasks goes through this.
+task_files() { # [--all] [<key>]
+  tf_all=''
+  if [ "${1:-}" = --all ]; then tf_all=1; shift; fi
+  tf_k=${1:-*}
+  for tf_f in "$state"/repos/$tf_k/tasks/*.md; do [ -f "$tf_f" ] || continue; printf '%s\n' "$tf_f"; done
+  [ -n "$tf_all" ] || return 0
+  for tf_f in "$state"/repos/$tf_k/archive/*/tasks/*.md; do [ -f "$tf_f" ] || continue; printf '%s\n' "$tf_f"; done
+}
+
+# the file of a task, live first, then the archive. By the file name first (`<id>.md`, `<id>-*.md`), and only when
+# no name matches by grepping every `id:` line. A name is only a hint: with hierarchical ids a child
+# `T-005-01-…` also matches `T-005-*` and sorts before its parent `T-005-…` (`0` < a letter), so the `id:` line of
+# a candidate decides. Prints nothing, and still returns 0, when no file holds the id.
+task_of() { # <id>
+  task_of_in "$1" "$state"/repos/*/tasks && return 0
+  task_of_in "$1" "$state"/repos/*/archive/*/tasks || :
+}
+task_of_in() { # <id> <tasks dir>...
+  to_id=$1
+  shift
+  for to_d in "$@"; do
+    for to_f in "$to_d/$to_id.md" "$to_d/$to_id"-*.md; do
+      [ -f "$to_f" ] && grep -qx "id: $to_id" "$to_f" && { printf '%s\n' "$to_f"; return 0; }
+    done
+  done
+  to_f=$(for to_d in "$@"; do grep -lx "id: $to_id" "$to_d"/*.md 2>/dev/null; done | head -n1)
+  [ -n "$to_f" ] && printf '%s\n' "$to_f"
+}
+
+# frontmatter fields of one task file, one value per line in the order asked, an empty line for a field that is
+# not there, from one awk instead of three processes per field. Only the frontmatter is read (a body line
+# `status: …` is no field); a ` # comment` is dropped as setf and task-new.sh drop it, a `#` inside a value (a
+# url anchor) stays.
+task_fields() { # <file> <field>...
+  tfs_f=$1
+  shift
+  [ -f "$tfs_f" ] || tfs_f=/dev/null
+  awk -v want="$*" '
+    BEGIN { n = split(want, k, " ") }
+    NR == 1 && /^---[ \t\r]*$/ { fm = 1; next }
+    fm && /^---[ \t\r]*$/ { exit }
+    !fm { exit }
+    {
+      c = index($0, ":"); if (c < 2 || $0 ~ /^[ \t#]/) next
+      name = substr($0, 1, c - 1); if (name in v) next
+      val = substr($0, c + 1); sub(/[ \t]+#.*$/, "", val); sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
+      v[name] = val
+    }
+    END { for (i = 1; i <= n; i++) print v[k[i]] }' "$tfs_f"
+}
 
 # one field of the repos.yml line of a repo in $state (ADR-0013 revision): `<key>: {url: …, default_branch: …,
 # path: …}`, written by factory-add-repo.sh, in the flat or the indented spelling
@@ -20,6 +70,18 @@ yml_field() { # <key> <field>
       gsub(/^["'"'"']|["'"'"']$/, "", v)
       if (v != "") { print v; exit }
     }' "$state/repos.yml"
+}
+
+# the id alias of a repo, `alias:` in its repos.yml entry: 2 to 4 uppercase letters, which make its new ids
+# T-<ALIAS>-<n>. Prints nothing for a repo without one (it keeps the legacy T-<n> ids), and nothing with status 1
+# when the value is no alias, so a writer can refuse instead of silently falling back to a legacy id.
+repo_alias() { # <key>
+  ra_v=$(yml_field "$1" alias)
+  case "$ra_v" in
+    '') return 0 ;;
+    [A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) printf '%s\n' "$ra_v" ;;
+    *) return 1 ;;
+  esac
 }
 
 # the plan slug of a task on stdin: decompose names `repos/<key>/plans/<slug>-plan-ready.md` in its `## Context`
@@ -88,7 +150,7 @@ architect_verdict() { # <key> <plan slug> <task id or empty>
 # last colon (ADR-0050); one id per line, sorted
 owned_task_ids() { # <session id>
   esc=$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')
-  grep -l "^owner:[[:space:]]*[^[:space:]]*:$esc[[:space:]]*\$" "$state"/repos/*/tasks/*.md 2>/dev/null \
+  task_files | xargs -r grep -l "^owner:[[:space:]]*[^[:space:]]*:$esc[[:space:]]*\$" 2>/dev/null \
     | xargs -r sed -n 's/^id:[[:space:]]*//p' 2>/dev/null | sed 's/[[:space:]]*#.*//' | sort -u | sort_ids
 }
 
@@ -172,6 +234,19 @@ state_unlock() {
   STATE_LOCK_HELD=''
 }
 
+# The one write path of a state clone for files already written: lock, add, commit the named paths, unlock, and
+# no push (state-push.sh publishes in the background, never under this lock). Returns state_lock's 1 (timeout) or
+# 2 (no lock path), and 3 when git refuses the commit. A caller that already holds the lock, because it picked an
+# id inside it, gets the commit alone and keeps its lock.
+state_write() { # <state> <message> <path>...
+  if [ -n "$STATE_LOCK_HELD" ]; then state_commit "$@" || return 3; return 0; fi
+  state_lock "$1" || return $?
+  sw_rc=0
+  state_commit "$@" || sw_rc=3
+  state_unlock
+  return "$sw_rc"
+}
+
 # The push recipe of ADR-0012, three tries of pull-rebase and push, shared by task-done.sh and task-approve.sh.
 # A clone with no origin stays local and is not an error (task-new.sh has the same rule). Returns 1 when the
 # third try still failed; the commits stay in the clone.
@@ -220,7 +295,7 @@ norm_into() { # <variable name> <path>
 }
 
 # T-003: the one layout rule the guard, the Stop hook and session-stats share: the standalone
-# <root>/<key>/<task-id>/… (ADR-0049), where <task-id> is `T-NNN` (a session worktree) or `T-NNN-NN` (a block
+# <root>/<key>/<task-id>/… (ADR-0049), where <task-id> is a parent id (a session worktree) or a block id (a block
 # worktree). Given a path (the guard's write target) or a cwd (a hook) plus the work root, it sets
 #   LO_POSTURE  standalone
 #   LO_TASK     the task id
@@ -228,9 +303,16 @@ norm_into() { # <variable name> <path>
 # and returns 1, setting nothing, for every path that is not inside such a task worktree.
 is_task_id() { is_parent_id "$1" || is_block_id "$1"; }
 
+# two parent grammars side by side: the legacy `T-<n>` with three or more digits, and `T-<ALIAS>-<n>` with the
+# repo's 2 to 4 uppercase letters from repos.yml and one or more digits. A repo key is lowercase, so neither
+# grammar reads a key as an id, and a step unit `<parent>-<step>` still strips back to its parent.
 is_parent_id() { # <id>
-  case "$1" in T-[0-9][0-9][0-9]*) ;; *) return 1 ;; esac
-  case "${1#T-}" in *[!0-9]*) return 1 ;; esac
+  case "$1" in
+    T-[A-Z][A-Z]-*|T-[A-Z][A-Z][A-Z]-*|T-[A-Z][A-Z][A-Z][A-Z]-*) ip_n=${1#T-*-} ;;
+    T-*) ip_n=${1#T-}; [ "${#ip_n}" -ge 3 ] || return 1 ;;
+    *) return 1 ;;
+  esac
+  case "$ip_n" in ''|*[!0-9]*) return 1 ;; esac
 }
 
 is_block_id() { # <id>
@@ -243,12 +325,15 @@ is_block_of() { # <parent> <id>
   is_block_id "$2" && [ "${2%-*}" = "$1" ]
 }
 
-# lines ordered by the task id in their first word: the parent number, then the block number with a parent
-# before its blocks, the whole line breaking a tie. Duplicates stay; a caller wanting unique lines runs sort -u.
+# lines ordered by the task id in their first word: legacy ids first, then the alias ids by alias (bytewise), then
+# the parent number, then the block number with a parent before its blocks, the whole line breaking a tie.
+# Duplicates stay; a caller wanting unique lines runs sort -u.
 sort_ids() {
-  awk '{ p = $1; sub(/^T-/, "", p); b = 0
+  awk '{ p = $1; sub(/^T-/, "", p); g = 0; a = ""; b = 0
+         if (match(p, /^[A-Z]+-/)) { g = 1; a = substr(p, 1, RLENGTH - 1); p = substr(p, RLENGTH + 1) }
          if (i = index(p, "-")) { b = substr(p, i + 1) + 1; p = substr(p, 1, i - 1) }
-         print p "\t" b "\t" $0 }' | sort -t "$(printf '\t')" -k1,1n -k2,2n -k3 | cut -f3-
+         print g "\t" a "\t" p "\t" b "\t" $0 }' \
+    | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2 -k3,3n -k4,4n -k5 | cut -f5-
 }
 
 resolve_layout() { # <path> <work root>
