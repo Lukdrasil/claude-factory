@@ -15,3 +15,5 @@ The terms of this repo, one line each. A term here means exactly this in code, s
   `sessions/`. Avoid: session folder for the whole.
 - **drawer**: the right-hand panel of the pipeline page for one task or for setup, holding its open asks and its
   context. Avoid: modal, sidebar.
+- **decision mode**: the drawer of a task with an open ask: at least 60% of the viewport wide, the asks first,
+  everything else behind one collapsed "Task details". Avoid: ask mode, focus mode.
