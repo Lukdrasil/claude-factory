@@ -40,6 +40,7 @@ ul { margin: 0; padding-left: 18px; }
 .top { position: sticky; top: 0; z-index: 2; height: 48px; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .top h1 { font-size: 16px; flex: 1; }
 .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; padding: 8px 16px; border: 0; border-bottom: 1px solid var(--line); background: var(--sunk); text-align: left; cursor: pointer; }
+.setup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
 .grid-wrap { overflow-x: auto; max-width: 100%; }
 table { border-collapse: collapse; min-width: 1100px; width: 100%; background: var(--panel); }
@@ -67,6 +68,7 @@ aside { position: fixed; top: 48px; right: 0; bottom: 0; width: 560px; overflow-
 .q { padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .q h4 { font-size: 14px; }
 .q p { margin: 4px 0; }
+.q pre { margin: 6px 0; padding: 8px; overflow-x: auto; font: 12px/1.5 var(--mono); background: var(--sunk); border-radius: 4px; }
 .qn { font-family: var(--mono); color: var(--accent); }
 .opts { display: grid; gap: 4px; margin: 6px 0; }
 .opt { display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: pointer; }

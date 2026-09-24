@@ -1,10 +1,11 @@
 import { groupOf, renderPipeline, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
 import { compose, parseAsk } from './ask-card.js';
+import { renderSetupStrip } from './setup.js';
 
-const token = location.hash.slice(1);
+const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
-const S = { board: [], sessions: [], raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null };
+const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null };
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
 const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane })));
@@ -17,11 +18,12 @@ async function api(path, init = {}) {
 }
 
 async function load() {
-  const [board, sessions] = await Promise.all(['/api/board', '/api/sessions'].map((p) => api(p).then((r) => r.text())));
-  if (board + sessions === S.raw) return;
-  S.raw = board + sessions;
+  const [board, sessions, setup] = await Promise.all(['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())));
+  if (board + sessions + setup === S.raw) return;
+  S.raw = board + sessions + setup;
   S.board = JSON.parse(board);
   S.sessions = JSON.parse(sessions);
+  S.setup = JSON.parse(setup);
   render();
 }
 
@@ -68,6 +70,7 @@ function render() {
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   app.replaceChildren(renderPipeline(S.board, S.sessions));
+  app.querySelector('.strip').append(renderSetupStrip(S.setup));
   app.querySelector('.grid-wrap').scrollLeft = left;
   if (S.drawer) {
     app.append(renderDrawer(group(S.drawer)));

@@ -2,8 +2,10 @@
 # Starts the Factory UI: builds the image claude-factory-ui:<plugin version> when missing, starts or reuses the
 # one container as the host uid:gid with the state dir at /state read-only and the UI home at /ui read-write,
 # published on 127.0.0.1:<ui_port> or a random free port when that is taken, opens the relay in the herdr tab
-# factory-ui-relay when none is open, and prints the URL with the token. A running container whose cf.version or
-# cf.state label differs is recreated. Exits 3 when Docker is not running, 4 outside herdr.
+# factory-ui-relay when none is open, and prints the URL with the token. A state dir is one with a repos.yml. With
+# no --state and none to resolve from the cwd, as before factory init, it starts with /ui only on port 7171. A
+# running container whose cf.version or cf.state label differs is recreated. Exits 3 when Docker is not running,
+# 4 outside herdr.
 #
 #   ui-up.sh [--state <dir>]
 set -eu
@@ -25,15 +27,20 @@ done
 [ "${HERDR_ENV:-}" = 1 ] || die "the Factory UI runs only inside herdr (HERDR_ENV=1)" 4
 docker info >/dev/null 2>&1 || die "Docker is not running" 3
 
-[ -n "$state" ] || state=$(resolve_state_dir "$PWD")
-state=$(CDPATH= cd -- "$state" 2>/dev/null && pwd) || die "no state dir at '$state'"
-[ -d "$state/repos" ] || die "$state is not a factory state repo (no repos/)"
+if [ -n "$state" ]; then
+  state=$(CDPATH= cd -- "$state" 2>/dev/null && pwd) || die "no state dir at '$state'"
+  [ -f "$state/repos.yml" ] || die "$state is not a factory state repo (no repos.yml)"
+else
+  state=$(CDPATH= cd -- "$(resolve_state_dir "$PWD")" 2>/dev/null && pwd) || state=''
+  [ -n "$state" ] && [ -f "$state/repos.yml" ] || state=''
+fi
 
 name=${FACTORY_UI_CONTAINER:-claude-factory-ui}
 ui=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
 ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -n1)
 image="claude-factory-ui:$ver"
-port=$(sed -n 's/^ui_port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state/factory.yml" 2>/dev/null | head -n1)
+port=''
+[ -z "$state" ] || port=$(sed -n 's/^ui_port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state/factory.yml" 2>/dev/null | head -n1)
 port=${port:-7171}
 
 mkdir -p "$ui"
@@ -56,10 +63,12 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 
 run() { # <publish spec>: docker run's stderr in $err
+  publish=$1
+  set --
+  [ -z "$state" ] || set -- -e "FACTORY_ROOT=${state%/*}" -v "$state:/state:ro"
   docker run -d --name "$name" --user "$(id -u):$(id -g)" \
     --label "cf.version=$ver" --label "cf.state=$state" \
-    -e "FACTORY_ROOT=${state%/*}" \
-    -v "$state:/state:ro" -v "$ui:/ui" -p "$1" "$image" >/dev/null 2>"$err"
+    "$@" -v "$ui:/ui" -p "$publish" "$image" >/dev/null 2>"$err"
 }
 
 start() {
