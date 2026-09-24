@@ -545,9 +545,11 @@ fwl_allowed() {
 
 # T-228 Q4/Q17: a commit in the state clone names its paths. Without `--`, or with -a/--all, it also takes whatever
 # another session left staged or modified there. T-228-06: the flags are read with quoted spans removed, the `-C`
-# directory and the paths after `--` from the segment as written, so a quoted one still counts.
+# directory and the paths after `--` from the segment as written, so a quoted one still counts. T-228-07: the paths
+# are the words after the first bare `--`, a quoted span one word, so a `--` inside the message is not one.
 check_state_commit() { # <one command segment, quotes removed> <the segment as written>
   scraw=$(printf '%s' "${2:-}" | tr -d '\042\047')
+  scq=$(printf '%s' "${2:-}" | sed -E "s/'[^']*'|\"[^\"]*\"/ @Q /g")
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -567,7 +569,7 @@ check_state_commit() { # <one command segment, quotes removed> <the segment as w
   case "$scd" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) ;; *) return 0 ;; esac
   for a in "$@"; do
     case "$a" in
-      --) printf '%s' "$scraw" | grep -Eq '(^|[[:space:]])--[[:space:]]+[^[:space:]]' && return 0; break ;;
+      --) printf '%s' "$scq" | awk '{ for (i = 1; i <= NF; i++) if ($i == "--") exit (i == NF); exit 1 }' && return 0; break ;;
       --all|-[!-]*a*) deny "'git commit -a' in the state clone $WORK_DIR/state takes every modified file, including another session's: stage your own files and commit them by name, 'git commit -m <message> -- <path>…'" ;;
     esac
   done
