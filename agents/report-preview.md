@@ -35,8 +35,8 @@ goes into typography, layout and navigation.
    covers all six keys and every `href="#id"` matches an `id` in the file.
 4. Redraw a ```mermaid fence as inline SVG by hand only when it has at most eight nodes and every label is
    one line. A bigger diagram, or one with `<br/>` in a label or labels on its edges, goes to the vendored
-   build: inline `mermaid.min.js` from the claude-os checkout (glob `**/wwwroot/js/mermaid.min.js`) once for
-   the whole file, since it weighs megabytes. A hand-drawn SVG carries a `viewBox`, sizes each box from its
+   build: inline `${CLAUDE_PLUGIN_ROOT}/vendor/mermaid/mermaid.min.js` once for the whole file, since it
+   weighs megabytes. A hand-drawn SVG carries a `viewBox`, sizes each box from its
    longest label, and keeps the source's nodes, edges and labels. Either way put the mermaid source beside it
    in `<details><pre><code>`, escaped, so it can be pasted back. Done when every fence is an SVG or covered
    by that build.

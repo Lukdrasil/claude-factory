@@ -9,7 +9,7 @@ page=$1
 [ -f "$page" ] || { echo "solution-map-inline.sh: '$page' not found" >&2; exit 2; }
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-build="$here/../../dotnet/ClaudeOs.Dashboard/wwwroot/js/mermaid.min.js"
+build="$here/../vendor/mermaid/mermaid.min.js"
 [ -f "$build" ] || { echo "solution-map-inline.sh: mermaid build not found at $build" >&2; exit 2; }
 
 grep -qF -- '<!-- slot:mermaid -->' "$page" || { echo "solution-map-inline.sh: '$page' has no <!-- slot:mermaid -->" >&2; exit 1; }
