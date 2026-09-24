@@ -64,8 +64,8 @@ no task.
 
 | module | what |
 |---|---|
-| `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the waiting-on-you counter |
-| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its open asks, its sessions' visuals and its context |
+| `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the to-answer counter |
+| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, its sessions' visuals and its context, in decision mode with an open ask |
 | `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view, and `compose(view, items)`, the answer Send posts |
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream and the clicks |
@@ -87,7 +87,15 @@ Send posts the staged items one answer per line in question order, since free te
 is sent and waiting for the session, or is answered, and shows the relay's held reason whenever the ask is held.
 The card of a session outside herdr shows no answer box.
 
-On a narrow screen the grid scrolls sideways inside its container and the drawer takes the full width.
+A drawer with an open ask opens in decision mode: at least 60% of the viewport wide, the asks first with the
+question text at about 70ch, and the blocked question, wave, panels, visuals and context in one "Task details",
+collapsed on open and kept as you left it across refreshes. A card's footer, Will be sent: and Send, sticks to the
+bottom of the drawer. The approve and done asks render with the other asks, once. Without an open ask the drawer
+shows all of it in one column. The panels render the task's markdown from its `html` twin, so no panel shows a
+`<pre>` of markdown.
+
+On a narrow screen the grid scrolls sideways inside its container and the drawer takes the full width, decision
+mode included.
 
 ## Tests
 

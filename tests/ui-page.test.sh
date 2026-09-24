@@ -1,6 +1,6 @@
 #!/bin/sh
 # The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, three
-# more sessions and an ask of every kind, served through ui-up.sh and driven by tests/ui-page.test.js through the
+# more sessions, an ask of every kind and a drawn visual of s2, served through ui-up.sh and driven by tests/ui-page.test.js through the
 # fixture's `browser`, as the host uid so the asks it writes mid-run belong to the host.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-page: no docker`.
 set -u
@@ -140,6 +140,8 @@ put s5 g1 T-003 solve '2026-09-24 09:10' <<'EOF'
 ➡️ **A**: the relay queues it.
 EOF
 printf 'gone\n' > "$ui/sessions/s5/agent"
+printf '<!doctype html>\n<p id="out">the drawing of s2</p>\n' > "$ui/sessions/s2/visual.html"
+printf -- '---\nrow: 2\nversion: 1\nstatus: current\n---\n' > "$ui/sessions/s2/visual.md"
 touch -d '2026-09-24 09:00' "$ui/sessions/s1/asks/q1.md"
 touch -d '2026-09-24 10:02' "$ui/sessions/s1/asks/q3.md"
 mkdir -p "$ui/sessions/s1/answers"

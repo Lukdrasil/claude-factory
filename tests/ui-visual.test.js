@@ -55,6 +55,7 @@ const drawer = (page) => page.getByRole('complementary');
 const visual = (page, sid) => drawer(page).locator(`[data-visual="${sid}"]`);
 const frameText = (page, sid) => visual(page, sid).frameLocator('iframe').locator('#out').innerText();
 const staleMark = /out of date/i;
+const details = (page) => drawer(page).locator('details', { has: page.locator('summary', { hasText: /^\s*Task details\s*$/ }) });
 
 async function openTask(page, id) {
   await page.goto('about:blank');
@@ -62,6 +63,8 @@ async function openTask(page, id) {
   await until(`the row of ${id}`, () => page.locator('table tr', { hasText: id }).first().isVisible());
   await page.locator('table tr', { hasText: id }).first().getByText(id, { exact: true }).first().click();
   await until(`the drawer of ${id}`, () => drawer(page).getByText(id).first().isVisible());
+  const d = details(page);
+  if ((await d.count()) && !(await d.first().evaluate((el) => el.open))) await d.first().locator('summary').first().click();
 }
 
 async function visualText(page, sid) {
@@ -85,9 +88,9 @@ async function visualText(page, sid) {
   // --- v1, current: the row, the version, the frame ------------------------------------------------------------
   await openTask(page, 'T-030');
 
-  await check('the drawer of T-030 shows the visual of session s30 with its row and version 1', async () => {
+  await check('the drawer of T-030 shows the visual of session s30 drawn for Q3, version 1', async () => {
     const text = await visualText(page, 's30');
-    ok(/\brow 3\b/i.test(text), `no row 3 in: ${text.slice(0, 300)}`);
+    ok(/\bDrawing for Q3\b/.test(text), `no Drawing for Q3 in: ${text.slice(0, 300)}`);
     ok(/\bv(ersion)?\s*1\b/i.test(text), `no version 1 in: ${text.slice(0, 300)}`);
   });
 

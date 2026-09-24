@@ -58,6 +58,12 @@ function lacks(text, items) {
 const drawer = (page) => page.getByRole('complementary');
 const wave = (page) => drawer(page).locator('[data-panel="wave"]');
 const row = (page, id) => wave(page).locator(`[data-block="${id}"]`);
+const details = (page) => drawer(page).locator('details', { has: page.locator('summary', { hasText: /^\s*Task details\s*$/ }) });
+
+async function expand(page) {
+  const d = details(page);
+  if ((await d.count()) && !(await d.first().evaluate((el) => el.open))) await d.first().locator('summary').first().click();
+}
 
 async function rowText(page, id) {
   return until(`the wave row of ${id}`, async () => (await row(page, id).count()) === 1 && row(page, id).innerText());
@@ -79,6 +85,7 @@ async function rowText(page, id) {
   await until('the row of T-030', () => page.locator('table tr', { hasText: 'T-030' }).first().isVisible());
   await page.locator('table tr', { hasText: 'T-030' }).first().getByText('T-030', { exact: true }).first().click();
   await until('the drawer of T-030', () => drawer(page).getByText('T-030').first().isVisible());
+  await expand(page);
 
   await check('the drawer of T-030 has a wave panel with one row per block', async () => {
     await until('the wave panel', async () => (await wave(page).count()) === 1);
@@ -110,8 +117,8 @@ async function rowText(page, id) {
     for (const id of ['T-030-01', 'T-030-02', 'T-030-04']) lacks(await rowText(page, id), [/at a dialog/i]);
   });
 
-  await check('T-030-04 shows its worker sw4 gone, since its pane is not in herdr', async () => {
-    holds(await rowText(page, 'T-030-04'), ['sw4', /\bgone\b/i]);
+  await check('T-030-04 shows its worker sw4 Session ended, since its pane is not in herdr', async () => {
+    holds(await rowText(page, 'T-030-04'), ['sw4', /\bSession ended\b/]);
   });
 
   await check('each worker is in the row of its own block only, and the monitor sm in none', async () => {

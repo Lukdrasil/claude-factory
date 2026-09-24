@@ -7,7 +7,7 @@ export function renderSetupStrip(setup) {
   const toolsets = new Set(setup.toolsets.map((t) => t.repo));
   const el = document.createElement('span');
   el.className = 'setup';
-  el.innerHTML = `<span class="chip ${ok ? 'ok' : 'warn'}" data-check="state" data-ok="${ok}">${ok ? 'state repo' : 'no state repo'}</span>`
+  el.innerHTML = `<span class="chip ${ok ? 'ok' : 'warn'}" data-check="state" data-ok="${ok}">${ok ? 'State repo found' : 'No state repo: run factory init'}</span>`
     + `<span class="muted">${esc(setup.root)}</span>`
     + keys.map((k) => `<span class="chip ${toolsets.has(k) ? 'ok' : 'warn'}" data-repo="${esc(k)}" data-toolset="${toolsets.has(k)}">`
       + `${esc(k)}${toolsets.has(k) ? '' : ' · no toolset'}</span>`).join('');

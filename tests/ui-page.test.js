@@ -51,7 +51,7 @@ function answers(sid) {
 
 const card = (page, id) => page.locator(`[data-ask="${id}"]`);
 const drawer = (page) => page.getByRole('complementary');
-const counter = (page) => page.getByRole('button', { name: /waiting on you/i });
+const counter = (page) => page.locator('[data-act="next"]');
 const question = (c, q) => c.locator(`[data-q="${q}"]`);
 
 async function taskRowIds(page) {
@@ -79,6 +79,30 @@ async function inViewport(locator) {
   });
 }
 
+async function exposed(page, selector) {
+  return page.evaluate((selector) => {
+    const els = [...document.querySelectorAll(selector)];
+    if (!els.length) return [`nothing matches ${selector}`];
+    return els.map((el) => {
+      const r = el.getBoundingClientRect();
+      const name = el.textContent.replace(/\s+/g, ' ').trim().slice(0, 40);
+      if (!r.height) return `${name}: not laid out`;
+      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
+        return `${name}: at ${Math.round(r.top)}..${Math.round(r.bottom)} of a ${innerHeight} px viewport`;
+      }
+      const hit = document.elementFromPoint(r.left + Math.min(r.width / 2, 20), r.top + r.height / 2);
+      return hit && el.contains(hit) ? '' : `${name}: covered by ${hit ? hit.outerHTML.slice(0, 80) : 'nothing'}`;
+    }).filter(Boolean);
+  }, selector);
+}
+
+const details = (page) => drawer(page).locator('details', { has: page.locator('summary', { hasText: /^\s*Task details\s*$/ }) });
+
+async function expand(page) {
+  const d = details(page);
+  if ((await d.count()) && !(await d.first().evaluate((el) => el.open))) await d.first().locator('summary').first().click();
+}
+
 async function fresh(page, url = `${BASE}/#${TOKEN}`) {
   await page.goto('about:blank');
   await page.goto(url);
@@ -87,6 +111,7 @@ async function fresh(page, url = `${BASE}/#${TOKEN}`) {
 async function openTask(page, id) {
   await page.locator('table tr', { hasText: id }).first().getByText(id, { exact: true }).first().click();
   await until(`the drawer of ${id}`, () => drawer(page).getByText(id).first().isVisible());
+  await until(`the panels of ${id}`, async () => (await drawer(page).locator('[data-panel]').count()) > 0);
 }
 
 async function stage(q, button, text) {
@@ -97,7 +122,7 @@ async function stage(q, button, text) {
 
 (async () => {
   const browser = await chromium.launch();
-  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
   page.setDefaultTimeout(3000);
   const requests = [];
@@ -122,6 +147,36 @@ async function stage(q, button, text) {
     await fresh(page, `${BASE}/`);
     await page.waitForTimeout(1500);
     ok(!(await page.getByText('T-001', { exact: false }).count()), 'T-001 is on the page');
+  });
+
+  await check('without the token the page reads This page needs its access link. Run ui-up.sh and open the link it prints.', async () => {
+    const text = (await page.locator('#app').innerText()).replace(/\s+/g, ' ').trim();
+    ok(text === 'This page needs its access link. Run ui-up.sh and open the link it prints.', `page: ${JSON.stringify(text)}`);
+  });
+
+  await check('with no task in the state repo the grid reads No tasks yet. Start one with /claude-factory:factory new.', async () => {
+    const p = await context.newPage();
+    await p.route('**/api/board', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+    await p.goto(`${BASE}/#${TOKEN}`);
+    const text = await until('the empty grid', async () => {
+      const t = (await p.locator('table tbody').first().innerText()).replace(/\s+/g, ' ').trim();
+      return t && t;
+    });
+    await p.close();
+    ok(text === 'No tasks yet. Start one with /claude-factory:factory new.', `grid: ${JSON.stringify(text)}`);
+  });
+
+  await check('with no state repo the setup chip reads No state repo: run factory init', async () => {
+    const p = await context.newPage();
+    await p.route('**/api/setup', async (r) => {
+      const res = await r.fetch();
+      await r.fulfill({ response: res, json: { ...(await res.json()), reposYml: null } });
+    });
+    await p.goto(`${BASE}/#${TOKEN}`);
+    await until('the state chip', () => p.locator('[data-check="state"]').isVisible());
+    const text = (await p.locator('[data-check="state"]').innerText()).trim();
+    await p.close();
+    ok(text === 'No state repo: run factory init', `chip: ${JSON.stringify(text)}`);
   });
 
   await fresh(page);
@@ -152,7 +207,17 @@ async function stage(q, button, text) {
 
   await check('the row of T-003 counts no waiting ask: its one session in herdr is gone', async () => {
     const text = await page.locator('table tr', { hasText: 'T-003' }).first().innerText();
-    ok(!/waiting/.test(text), `row: ${text}`);
+    ok(!/waiting|to answer/.test(text), `row: ${text}`);
+  });
+
+  await check('the current cell of T-002 reads 2 to answer, r1 and c1', async () => {
+    const cell = page.locator('table tr', { hasText: 'T-002' }).first().locator('[aria-current="step"]');
+    ok(await cell.getByText('2 to answer', { exact: true }).count(), `cell: ${JSON.stringify(await cell.innerText())}`);
+  });
+
+  await check('with the state repo found the setup chip reads State repo found', async () => {
+    const text = (await page.locator('[data-check="state"]').innerText()).trim();
+    ok(text === 'State repo found', `chip: ${JSON.stringify(text)}`);
   });
 
   await check('the row of T-002 marks step 11 as current', async () => {
@@ -160,10 +225,10 @@ async function stage(q, button, text) {
     ok(step === '11', `current: ${step}`);
   });
 
-  await check('the counter shows 4 waiting on you: not the sent q1, not the answered q2, not outside herdr, not the gone g1', async () => {
+  await check('the counter reads 4 to answer: not the sent q1, not the answered q2, not outside herdr, not the gone g1', async () => {
     await until('the counter', () => counter(page).isVisible());
-    const text = await counter(page).innerText();
-    ok(/(^|\D)4(\D|$)/.test(text), `counter: ${text}`);
+    const text = (await counter(page).innerText()).trim();
+    ok(text === '4 to answer', `counter: ${JSON.stringify(text)}`);
   });
 
   for (const [n, id, group] of [[1, 's4/d1', /setup/i], [2, 's2/r1', /T-002/], [3, 's1/q3', /T-001/], [4, 's2/c1', /T-002/]]) {
@@ -193,6 +258,11 @@ async function stage(q, button, text) {
     await page.getByRole('button', { name: /setup/i }).first().click();
     await until('d1 in the drawer', () => drawer(page).locator('[data-ask="s4/d1"]').isVisible());
     ok(!(await drawer(page).locator('[data-ask="s2/r1"]').count()), 'r1 is in the setup drawer');
+  });
+
+  await check('the setup drawer is headed Setup', async () => {
+    const text = (await drawer(page).getByRole('heading', { level: 2 }).first().innerText()).trim();
+    ok(text === 'Setup', `heading: ${JSON.stringify(text)}`);
   });
 
   await check('the notice renders its text and offers Write my answer, no options, Explain more, Compare options or Decide later', async () => {
@@ -245,6 +315,7 @@ async function stage(q, button, text) {
   await check('a session outside herdr shows its task state and its ask with no answer box', async () => {
     await fresh(page);
     await openTask(page, 'T-003');
+    await expand(page);
     const d = drawer(page);
     ok(/in_progress/.test(await d.innerText()), 'no task status in the drawer');
     const c = d.locator('[data-ask="s3/o1"]');
@@ -254,6 +325,75 @@ async function stage(q, button, text) {
     ok(!(await c.getByRole('textbox').count()), 'a text box');
     const live = await c.getByRole('button', { name: /^[A-D]\b/ }).evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 0, `${live} enabled option buttons`);
+  });
+
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    await page.setViewportSize({ width, height });
+    await fresh(page);
+    await openTask(page, 'T-002');
+
+    await check(`at ${width}x${height} opening T-002 shows the question text and options of Q1 of r1 in the first viewport`, async () => {
+      const q = question(card(page, 's2/r1'), 'Q1');
+      await until('Q1 of r1', () => q.isVisible());
+      ok(/Which store\?/.test(await q.locator('h4').innerText()), `Q1 reads ${await q.locator('h4').innerText()}`);
+      const off = await exposed(page, ['h4', '[data-act="pick"]'].map((e) => `aside [data-ask="s2/r1"] [data-q="Q1"] ${e}`).join(', '));
+      ok(!off.length, off.join(' | '));
+    });
+
+    await check(`at ${width}x${height} Send of the long ask r1 is visible without scrolling`, async () => {
+      const off = await exposed(page, 'aside [data-ask="s2/r1"] [data-act="send"]');
+      ok(!off.length, off.join(' | '));
+    });
+
+    await check(`at ${width}x${height} the drawer of T-002 is ${width > 720 ? 'at least 60% of' : 'the full'} viewport width`, async () => {
+      const box = await page.evaluate(() => {
+        const r = document.querySelector('aside').getBoundingClientRect();
+        return { left: r.left, right: r.right, width: r.width, viewport: innerWidth };
+      });
+      if (width > 720) ok(box.width >= 0.6 * box.viewport, `the drawer is ${box.width} px of ${box.viewport}`);
+      else ok(Math.abs(box.left) <= 1 && Math.abs(box.right - box.viewport) <= 1, `the drawer spans ${box.left} to ${box.right} of ${box.viewport}`);
+    });
+
+    await check(`at ${width}x${height} T-002 keeps its panels, visual and sessions in one collapsed Task details after the asks`, async () => {
+      const why = await page.evaluate(() => {
+        const aside = document.querySelector('aside');
+        const all = [...aside.querySelectorAll('details')].filter((d) => d.querySelector(':scope > summary')?.textContent.trim() === 'Task details');
+        if (all.length !== 1) return `${all.length} Task details`;
+        const det = all[0];
+        if (det.open) return 'Task details is open';
+        const out = [...aside.querySelectorAll('[data-panel], [data-visual], nav')].filter((e) => !det.contains(e));
+        if (out.length) return `outside Task details: ${out.map((e) => e.dataset.panel || e.dataset.visual || e.tagName).join(' ')}`;
+        if (!det.querySelector('[data-panel]')) return 'no panel in Task details';
+        if (!det.querySelector('[data-visual]')) return 'no visual in Task details';
+        const step = 'Step 11 of 16: wave 1 implement';
+        if (!det.textContent.includes(step)) return 'the session s2 is not in Task details';
+        const walk = document.createTreeWalker(aside, NodeFilter.SHOW_TEXT);
+        for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+          if (n.textContent.includes(step) && !det.contains(n)) return 'the session s2 is outside Task details too';
+        }
+        const asks = [...aside.querySelectorAll('[data-ask]')];
+        if (!asks.length) return 'no ask';
+        if (asks.some((a) => det.contains(a))) return 'an ask is inside Task details';
+        return asks[0].compareDocumentPosition(det) & Node.DOCUMENT_POSITION_FOLLOWING ? '' : 'Task details comes before the asks';
+      });
+      ok(!why, why);
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await check('the visual of s2 in Task details is headed Drawing for Q2 · version 1', async () => {
+    await expand(page);
+    const v = drawer(page).locator('[data-visual="s2"]');
+    await until('the visual of s2', () => v.isVisible());
+    const text = (await v.getByRole('heading').first().innerText()).trim();
+    ok(text === 'Drawing for Q2 · version 1', `heading: ${JSON.stringify(text)}`);
+  });
+
+  await check('once s2 marks its visual stale it reads Out of date: an answer changed. Redraw to update., Task details still open', async () => {
+    writeAtomic(path.join(UI, 'sessions/s2/visual.md'), '---\nrow: 2\nversion: 1\nstatus: stale\n---\n');
+    await until('the out-of-date text', async () =>
+      (await drawer(page).locator('[data-visual="s2"]').innerText()).includes('Out of date: an answer changed. Redraw to update.'), 3000);
+    ok(await details(page).first().evaluate((el) => el.open), 'Task details closed on the refresh');
   });
 
   const staged = ['Q1 B', 'Q2 more', 'explore Q3', 'Q4 cf-ui-fixture, on port 7171', 'Q5 ? why not both, SQLite and files', 'Q6 defer'];
@@ -297,6 +437,32 @@ async function stage(q, button, text) {
     ok(live === 0, `${live} enabled Send buttons`);
   });
 
+  for (const [width, height] of [[1440, 900], [390, 844]]) {
+    await check(`at ${width}x${height} the drawer header stays opaque over the answered r1 scrolled under it`, async () => {
+      await page.setViewportSize({ width, height });
+      const why = await page.evaluate(() => {
+        const aside = document.querySelector('aside');
+        const head = aside.querySelector('.drawer-h');
+        const c = aside.querySelector('[data-ask="s2/r1"]');
+        let box = c.parentElement;
+        while (box && !(/auto|scroll/.test(getComputedStyle(box).overflowY) && box.scrollHeight > box.clientHeight)) box = box.parentElement;
+        if (!box) return 'nothing scrolls the drawer';
+        box.scrollTop += c.getBoundingClientRect().top - head.getBoundingClientRect().top + 8;
+        const h = head.getBoundingClientRect();
+        const r = c.getBoundingClientRect();
+        if (!(r.top < h.top && r.bottom > h.bottom)) return `r1 at ${r.top}..${r.bottom} is not under the header at ${h.top}..${h.bottom}`;
+        const bg = getComputedStyle(head).backgroundColor;
+        const alpha = bg === 'transparent' ? 0 : Number((bg.match(/rgba?\([^)]*,\s*([\d.]+)\)/) || [0, 1])[1]);
+        if (alpha < 1) return `the header background is ${bg}`;
+        const over = [0.1, 0.5, 0.9].map((f) => document.elementFromPoint(h.left + h.width * f, h.top + h.height / 2))
+          .filter((e) => !head.contains(e));
+        return over.length ? `painted over by ${over.map((e) => e.outerHTML.slice(0, 60)).join(' | ')}` : '';
+      });
+      ok(!why, why);
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   await check('the confirm card offers yes and no, no Compare options or Decide later, and sends Q1 A for yes', async () => {
     const c = card(page, 's2/c1');
     ok(await c.getByRole('button', { name: /\byes\b/i }).count(), 'no yes');
@@ -313,9 +479,17 @@ async function stage(q, button, text) {
     await until('sent on c1', async () => /Sent, waiting for the session/.test(await card(page, 's2/c1').innerText()), 1500);
   });
 
+  await check('the counter reads All answered once the last waiting ask q3 has an answer', async () => {
+    writeAtomic(path.join(UI, 'sessions/s1/answers/2-q3.txt'), 'Q1 A');
+    const text = await until('All answered', async () => {
+      const t = (await counter(page).innerText()).trim();
+      return t === 'All answered' && t;
+    }, 3000).catch(async () => (await counter(page).innerText()).trim());
+    ok(text === 'All answered', `counter: ${JSON.stringify(text)}`);
+  });
+
   await check('a new ask raises the counter within 1 s of its write (QS-03)', async () => {
-    const before = (await counter(page).innerText()).match(/\d+/);
-    ok(before, `no number in the counter: ${await counter(page).innerText()}`);
+    const before = (await counter(page).innerText()).match(/\d+/) || ['0'];
     const t0 = Date.now();
     writeAtomic(path.join(UI, 'sessions/s2/asks/r2.md'),
       '---\nask: r2\ntask: T-002\nflow: solve\nstep: fixture\nstatus: open\n---\n\n' +
