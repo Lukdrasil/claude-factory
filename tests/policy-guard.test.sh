@@ -226,6 +226,9 @@ try 0 'gh issue create --label bug --label ai-drafted' "$C/cf" coord 'gh issue c
 try 0 'gh issue create -R with the label before the title' "$C/cf" coord 'gh issue create -R github.com/acme/w --label ai-drafted --title "fix: x" --body-file /tmp/b.md'
 try 0 'glab issue create -l ai-drafted' "$C/cf" coord 'glab issue create --title "fix: x" --description-file /tmp/b.md -l ai-drafted'
 try 0 'glab issue create --label ai-drafted' "$C/cf" coord 'glab issue create -R gitlab.example.com/g/w --title "fix: x" --description-file /tmp/b.md --label ai-drafted'
+# a mention inside quotes is no create: the create pattern reads the segment with its quoted spans removed
+try 0 'a commit message naming gh issue create mid-quote' "$C/cf" coord 'git commit -m "docs: gh issue create is denied without the label"'
+try 0 'an echo naming glab issue create mid-quote' "$C/cf" coord 'echo "run glab issue create with the label"'
 try 0 'bin/issue-create.sh is not a direct create' "$C/cf" coord 'sh bin/issue-create.sh cf --title "fix: x" --body-file /tmp/b.md'
 try 0 'gh issue list stays allowed' "$C/cf" coord 'gh issue list --state open --limit 100'
 try 0 'glab issue list stays allowed' "$C/cf" coord 'glab issue list --per-page 100'
