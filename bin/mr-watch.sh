@@ -38,10 +38,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] || die "usage: mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]"
-case "$id" in
-  T-[0-9][0-9][0-9]) ;;
-  *) die "'$id' is not a parent task id of the shape T-NNN" ;;
-esac
+is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: solve-next.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to
 if [ -z "$state" ]; then
@@ -83,10 +80,10 @@ blocks=''
 for f in "$state"/repos/*/tasks/*.md; do
   [ -f "$f" ] || continue
   b=$(fm "$f" id)
-  case "$b" in "$id"-[0-9][0-9]) blocks="$blocks$b
-" ;; esac
+  if is_block_of "$id" "$b"; then blocks="$blocks$b
+"; fi
 done
-blocks=$(printf '%s' "$blocks" | sort)
+blocks=$(printf '%s' "$blocks" | sort_ids)
 
 forge_of() { # <mr url>: the tool that speaks to that host
   case "$(printf '%s' "$1" | sed -n 's#^[a-zA-Z+]*://\([^/]*\)/.*#\1#p')" in

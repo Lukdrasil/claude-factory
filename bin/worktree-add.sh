@@ -68,7 +68,7 @@ branch_of() { # <task file>
 # highest numbered block the stack has to be cut from (T-164)
 deps_of() { # <task file>
   sed -n 's/^depends_on:[[:space:]]*//p' "$1" | head -n1 \
-    | tr -d '[]",' | tr ' ' '\n' | grep -E '^T-[0-9]{3}-[0-9]{2}$' | sort || :
+    | tr -d '[]",' | tr ' ' '\n' | while read -r d; do if is_block_id "$d"; then printf '%s\n' "$d"; fi; done | sort_ids || :
 }
 
 # `base: <branch>` and `base_sha: <sha>` in the block's progress file, the record of what the block branch was cut
@@ -117,8 +117,7 @@ git -C "$clone" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || die "the clone registered for $key in $state/repos.yml is not a git clone: $clone"
 
 task_branch=$(branch_of "$task")
-case "$id" in
-  T-*-[0-9][0-9])
+if is_block_id "$id"; then
     branch="block/$id"
     parent=${id%-*}
     ptask=$(task_of "$parent" || :)
@@ -134,8 +133,8 @@ case "$id" in
       dbranch=$(branch_of "$dtask")
       [ -n "$dbranch" ] || die "block $id: its dependency $dep has no 'branch:' in $dtask, so create the worktree of $dep first"
       base=$dbranch
-    fi ;;
-  *)
+    fi
+else
     branch=$task_branch
     if [ -z "$branch" ]; then
       slug=${task##*/}
@@ -147,8 +146,8 @@ case "$id" in
     fi
     base=$(yml_field "$key" default_branch)
     [ -n "$base" ] || base=$(git -C "$clone" symbolic-ref --short HEAD 2>/dev/null) || base=''
-    [ -n "$base" ] || die "repo $key has no 'default_branch:' in $state/repos.yml and its clone is on no branch: pass --from <branch>" ;;
-esac
+    [ -n "$base" ] || die "repo $key has no 'default_branch:' in $state/repos.yml and its clone is on no branch: pass --from <branch>"
+fi
 [ -z "$from" ] || base=$from
 
 wt="$WORK_DIR/$key/$id"
@@ -160,12 +159,11 @@ if [ -e "$wt" ]; then
     || die "$wt already exists on '${head:-no branch}', not $branch. Remove that worktree (git -C $clone worktree remove $wt) or check $branch out in it"
 fi
 
-case "$id" in
-  T-*-[0-9][0-9])
+if is_block_id "$id"; then
     base_sha=$(git -C "$clone" rev-parse --verify --quiet "$base^{commit}") \
       || die "block $id: its base $base is no commit in $clone"
-    block_resume "$progress" "$base_sha" ;;
-esac
+    block_resume "$progress" "$base_sha"
+fi
 
 if [ -e "$wt" ]; then
   printf 'worktree-add: %s already exists on %s, reused\n' "$wt" "$branch" >&2
@@ -183,9 +181,9 @@ fi
 # the `branch:` block-merge.sh merges by is written the one way task frontmatter is ever written, and only when
 # it is not already that branch: a report that changes nothing would still commit and push into the state clone
 based=''
-case "$id" in
-  T-*-[0-9][0-9]) based=$(record_base "$progress" "$base" "$(git -C "$clone" merge-base "refs/heads/$branch" "$base_sha")") ;;
-esac
+if is_block_id "$id"; then
+  based=$(record_base "$progress" "$base" "$(git -C "$clone" merge-base "refs/heads/$branch" "$base_sha")")
+fi
 
 if [ "$task_branch" != "$branch" ] || [ -n "$based" ]; then
   (cd "$wt" && "$(dirname -- "$0")/state-report.sh" --task "$id" --no-status --branch "$branch" >/dev/null) \
@@ -194,4 +192,4 @@ fi
 
 printf 'path: %s\n' "$wt"
 printf 'branch: %s\n' "$branch"
-case "$id" in T-*-[0-9][0-9]) printf 'base: %s\n' "$base" ;; esac
+if is_block_id "$id"; then printf 'base: %s\n' "$base"; fi

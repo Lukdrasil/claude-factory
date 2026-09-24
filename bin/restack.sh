@@ -32,8 +32,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] && [ -n "$block" ] || die "usage: restack.sh <T-NNN> <block-id> [--state <dir>] [--no-push]"
-case "$id" in T-[0-9][0-9][0-9]) ;; *) die "'$id' is not a parent task id of the shape T-NNN" ;; esac
-case "$block" in "$id"-[0-9][0-9]) ;; *) die "'$block' is not a block of $id" ;; esac
+is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
+is_block_of "$id" "$block" || die "'$block' is not a block of $id"
 
 if [ -z "$state" ]; then
   if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR/state/repos" ]; then
@@ -66,10 +66,10 @@ blocks=''
 for f in "$state"/repos/*/tasks/*.md; do
   [ -f "$f" ] || continue
   b=$(fm "$f" id)
-  case "$b" in "$id"-[0-9][0-9]) blocks="$blocks$b
-" ;; esac
+  if is_block_of "$id" "$b"; then blocks="$blocks$b
+"; fi
 done
-blocks=$(printf '%s' "$blocks" | sort)
+blocks=$(printf '%s' "$blocks" | sort_ids)
 
 moved=$(branch_of "$block")
 [ -n "$moved" ] || die "block $block has no branch:, so nothing was rebased"

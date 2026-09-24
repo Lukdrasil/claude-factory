@@ -93,16 +93,16 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   const ids=(e.IDS||"").split("\n").filter(Boolean);
   let id;
   if(e.PARENT){
-    if(!/^T-\d{3}$/.test(e.PARENT)||!ids.includes(e.PARENT))fail(`parent must be an existing top-level task id like T-005, not ${e.PARENT}`);
+    if(!/^T-\d{3,}$/.test(e.PARENT)||!ids.includes(e.PARENT))fail(`parent must be an existing top-level task id like T-005, not ${e.PARENT}`);
     const p=e.PARENT+"-";const hi=ids.filter(i=>i.startsWith(p)).map(i=>/^\d+$/.test(i.slice(p.length))?+i.slice(p.length):0).reduce((a,b)=>Math.max(a,b),0);
     id=`${e.PARENT}-${String(hi+1).padStart(2,"0")}`;
   }else{
-    const hi=ids.map(i=>{const m=/^T-(\d{3})(?:-\d{2})?$/.exec(i);return m?+m[1]:0}).reduce((a,b)=>Math.max(a,b),0);
+    const hi=ids.map(i=>{const m=/^T-(\d{3,})(?:-\d{2,})?$/.exec(i);return m?+m[1]:0}).reduce((a,b)=>Math.max(a,b),0);
     id=`T-${String(hi+1).padStart(3,"0")}`;
   }
   s=set(s,"id",id);
   const br=parse(s).branch||"",sl=br.indexOf("/");
-  if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^T-\d{3}(-\d{2})?-/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
+  if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^T-\d{3,}(-\d{2,})?-/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
   for(const [k,v] of [["runtime","default"],["depends_on","[]"],["parallel_group","null"],["attempt","0"],["max_attempts","3"],["plan_hash","null"],["owner","null"],["mr_url","null"]])
     if(!(k in parse(s)))s=set(s,k,v);
   if(!("created" in parse(s)))s=set(s,"created",e.TODAY);

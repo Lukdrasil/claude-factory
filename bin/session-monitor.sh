@@ -138,7 +138,7 @@ blocks_of() { # <T-NNN>
   for t in "$state"/repos/*/tasks/*.md; do
     [ -f "$t" ] || continue
     b=$(field "$t" id)
-    case "$b" in "$1"-[0-9][0-9]) printf '%s\n' "$b" ;; esac
+    if is_block_of "$1" "$b"; then printf '%s\n' "$b"; fi
   done
 }
 # a block a dispatch may start: ready and unowned, or tests_ready with the implement phase the monitor armed,
@@ -154,7 +154,7 @@ dispatchable_blocks_of() { # <T-NNN>
   for t in "$state"/repos/*/tasks/*.md; do
     [ -f "$t" ] || continue
     b=$(field "$t" id)
-    case "$b" in "$1"-[0-9][0-9]) ;; *) continue ;; esac
+    is_block_of "$1" "$b" || continue
     dispatchable "$t" || continue
     printf '%s\n' "$b"
   done
@@ -297,7 +297,7 @@ if [ -z "$parent" ]; then
       [ "$(field "$task" status)" = review ] || continue
       case "$(field "$task" mr_url)" in ''|null) continue ;; esac
       bid=$(field "$task" id)
-      case "$bid" in T-[0-9][0-9][0-9]-[0-9][0-9]) printf '%s\n' "${bid%-*}" ;; esac
+      if is_block_id "$bid"; then printf '%s\n' "${bid%-*}"; fi
     done | sort -u
   )
   for p in $parents; do
