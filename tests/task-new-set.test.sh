@@ -1,7 +1,8 @@
 #!/bin/sh
 # task-new.sh rewrites the `id:` and `branch:` lines of a block draft whole: a trailing `# comment` on either
 # line is dropped, so the written block carries the exact `id:` line task_of looks up. T-252-02: the defaults
-# task-new.sh fills in add no key the dashboard alone read, and the status enum it names has no stalled.
+# task-new.sh fills in add no key the dashboard alone read, and the status enum it names has no stalled. The
+# request, priority and issue lines a block copies from its parent replace the draft's own, comment and all.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -36,6 +37,7 @@ status: draft
 tier: green
 archetype: bugfix
 complexity: low
+priority: P1  # z
 created: 2026-09-24
 ---
 
@@ -53,8 +55,9 @@ bf="$state/repos/demo/tasks/T-001-01-fix-demo-a-block-with-commented.md"
 check "the block carries the exact line 'id: T-001-01'" 'id: T-001-01' "$(grep '^id:' "$bf" 2>/dev/null)"
 check "the block carries the exact line 'branch: feat/T-001-01-x'" 'branch: feat/T-001-01-x' \
   "$(grep '^branch:' "$bf" 2>/dev/null)"
+check "the block carries the exact line 'priority: P2' of its parent" 'priority: P2' "$(grep '^priority:' "$bf" 2>/dev/null)"
 check "the block frontmatter holds exactly the task keys" \
-  'archetype attempt branch complexity created depends_on id mr_url owner plan_hash repo status tier ' \
+  'archetype attempt branch complexity created depends_on id issue mr_url owner plan_hash priority repo request status tier ' \
   "$(awk '/^---$/ { n++; next } n == 1 { sub(/:.*/, ""); print } n == 2 { exit }' "$bf" 2>/dev/null | sort | tr '\n' ' ')"
 
 sed 's/^status: draft$/status: bogus/' "$tmp/block.md" > "$tmp/bogus.md"
