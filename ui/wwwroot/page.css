@@ -84,8 +84,8 @@ aside { position: fixed; top: 48px; right: 0; bottom: 0; width: 560px; overflow-
 .ask-f output { flex: 1; font-family: var(--mono); font-size: 12px; word-break: break-word; }
 
 .panels { padding: 8px 16px; }
-.panels section, [data-panel="blocked"] { border-top: 1px solid var(--line); padding: 4px 0 8px; }
-[data-panel="blocked"] { margin: 0 16px; }
+.panels section, [data-panel="blocked"], [data-panel="wave"] { border-top: 1px solid var(--line); padding: 4px 0 8px; }
+[data-panel="blocked"], [data-panel="wave"] { margin: 0 16px; }
 .panels pre, [data-panel="blocked"] pre { white-space: pre-wrap; margin: 4px 0; font: 12px/1.5 var(--mono); }
 .rail { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 4px 0 8px; }
 .rail li { font: 11px/1.6 var(--mono); padding: 0 6px; border-radius: 4px; background: var(--sunk); color: var(--muted); }
