@@ -1,11 +1,17 @@
-import { groupOf, renderPipeline, waiting } from './pipeline.js';
+import { groupOf, renderPipeline, renderTop, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
 import { compose } from './ask-card.js';
-import { renderSetupStrip } from './setup.js';
+import { renderSetupStrip, renderSetupTab } from './setup.js';
+import { renderOrg } from './org.js';
+import { pickRequest, renderMap, renderPlan } from './requests.js';
+import { renderMemory } from './memory.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
-const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null };
+const S = {
+  board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null,
+};
 let linked = new URLSearchParams(location.search).get('ask');
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
@@ -28,17 +34,38 @@ async function loadDetail(id) {
   return detail;
 }
 
+/** A route a server of an older build may lack: its body, or `null` for any answer but 200, so the page degrades. */
+async function soft(path) {
+  const r = await fetch(path, { headers: { 'X-Factory-Token': token } }).catch(() => null);
+  const text = r && r.ok ? await r.text() : 'null';
+  try {
+    JSON.parse(text);
+    return text;
+  } catch {
+    return 'null';
+  }
+}
+
 async function load() {
   const id = S.drawer;
-  const [board, sessions, setup, detail] = await Promise.all([
+  const [board, sessions, setup, org, requests, detail] = await Promise.all([
     ...['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())),
+    soft('/api/org'),
+    soft('/api/requests'),
     loadDetail(id).then((d) => d && JSON.stringify(d)),
   ]);
-  if (board + sessions + setup + detail === S.raw) return;
-  S.raw = board + sessions + setup + detail;
+  const list = [JSON.parse(requests)].flat().filter(Boolean);
+  const rid = (S.tab === 'Map' || S.tab === 'Plan') && pickRequest(list, S.request);
+  const map = rid ? await soft(`/api/requests/${encodeURIComponent(rid)}`) : 'null';
+  const raw = [board, sessions, setup, org, requests, detail, map].join('\n');
+  if (raw === S.raw) return;
+  S.raw = raw;
   S.board = JSON.parse(board);
   S.sessions = JSON.parse(sessions);
   S.setup = JSON.parse(setup);
+  S.org = JSON.parse(org);
+  S.requests = list;
+  S.map = JSON.parse(map);
   S.detail = detail && JSON.parse(detail);
   render();
   const a = linked && allAsks().find((w) => keyOf(w) === linked);
@@ -86,15 +113,33 @@ function group(id) {
   };
 }
 
+function renderTab() {
+  const rid = pickRequest(S.requests, S.request);
+  const map = S.map?.id === rid ? S.map : null;
+  const el = {
+    Map: () => renderMap(S.requests, rid, map),
+    Plan: () => renderPlan(S.requests, rid, map),
+    Org: () => renderOrg(S.org),
+    Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
+    Setup: () => renderSetupTab(S.setup),
+  }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity);
+  el.setAttribute('role', 'tabpanel');
+  el.setAttribute('aria-label', S.tab);
+  return el;
+}
+
 function render() {
   const typing = document.activeElement?.tagName === 'TEXTAREA' ? document.activeElement : null;
   const at = typing && [typing.closest('[data-ask]').dataset.ask, typing.closest('[data-q]').dataset.q, typing.selectionStart];
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
-  app.replaceChildren(renderPipeline(S.board, S.sessions));
-  app.querySelector('.strip').append(renderSetupStrip(S.setup));
-  app.querySelector('.grid-wrap').scrollLeft = left;
+  const page = renderTop(S.sessions, S.tab);
+  page.querySelector('.strip').append(renderSetupStrip(S.setup));
+  page.append(renderTab());
+  app.replaceChildren(page);
+  const grid = app.querySelector('.grid-wrap');
+  if (grid) grid.scrollLeft = left;
   if (S.drawer) {
     app.append(renderDrawer(group(S.drawer)));
     if (details) app.querySelector('aside .details')?.setAttribute('open', '');
@@ -156,6 +201,22 @@ async function redraw(visual) {
   }
 }
 
+/** A memory pass the human starts: a free message, no ask, typed into the CEO's pane by the relay. */
+async function startPass(b) {
+  const text = `start the ${b.dataset.kind} pass for ${b.dataset.scope}`;
+  try {
+    await api(`/api/answers/${S.org.ceo.sid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ask: '', text }),
+    });
+    S.passNote = { text: `Sent to the CEO: ${text}` };
+  } catch (err) {
+    S.passNote = { text: `Couldn't send "${text}": ${err.message}.`, error: true };
+  }
+  render();
+}
+
 function toggle(staged, act, q, text) {
   const item = staged.items[q];
   if (item && item.kind === act && item.text === text) delete staged.items[q];
@@ -165,9 +226,16 @@ function toggle(staged, act, q, text) {
 app.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b || b.disabled) return;
+  if (b.dataset.tab || b.dataset.request) {
+    S.tab = b.dataset.tab || b.dataset.goto || S.tab;
+    S.request = b.dataset.request || S.request;
+    render();
+    return refresh();
+  }
   if (b.dataset.drawer) return open(b.dataset.drawer);
   const act = b.dataset.act;
   if (act === 'next') return next();
+  if (act === 'pass') return startPass(b);
   if (act === 'redraw') return redraw(b.closest('[data-visual]'));
   if (act === 'close') {
     S.drawer = null;
