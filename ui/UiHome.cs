@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Held);
+public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Held, AskView View);
 
 public sealed record VisualInfo(string Row, string Version, string Status);
 
@@ -174,7 +174,8 @@ public sealed partial class UiHome(string root)
             modified,
             Frontmatter.Body(text),
             sent.Count > 0,
-            held is [var seq, var reason] && sent.Contains(seq) ? reason : null);
+            held is [var seq, var reason] && sent.Contains(seq) ? reason : null,
+            AskParser.Parse(Frontmatter.Body(text)));
     }
 
     /// <summary>The body of the newest ask of flow doctor in any session, or null.</summary>
