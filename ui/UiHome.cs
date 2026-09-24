@@ -1,4 +1,10 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
+
+/// <summary><c>setup/doctor.json</c> as read; every field may be missing.</summary>
+public sealed record DoctorFile(string? At, string? Root, List<DoctorFileStep>? Steps);
+
+public sealed record DoctorFileStep(string? Id, string? State, string? Detail, string? Fix);
 
 public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Held, AskView View);
 
@@ -35,15 +41,33 @@ public sealed partial class UiHome(string root)
 
     /// <summary>
     /// Writes <c>sessions/&lt;sid&gt;/answers/&lt;seq&gt;-&lt;ask&gt;.txt</c> with the next seq of the session
-    /// through a rename, only while the ask's status is open.
+    /// through a rename, only while the ask's status is open. An empty ask is a free message to a registered
+    /// session (the Memory tab's start button to the CEO): it needs text and is written under the ask id
+    /// <c>msg</c>, so the relay types it into the pane like any answer.
     /// </summary>
     public (AnswerStatus Status, string? File) WriteAnswer(string sid, string? ask, string? text)
     {
-        if (!Id().IsMatch(sid) || ask is null || !Id().IsMatch(ask) || text is null)
+        if (!Id().IsMatch(sid) || ask is null || text is null)
         {
             return (AnswerStatus.Invalid, null);
         }
         var session = Path.Combine(root, "sessions", sid);
+        if (ask == "")
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return (AnswerStatus.Invalid, null);
+            }
+            if (!File.Exists(Path.Combine(session, "session.md")))
+            {
+                return (AnswerStatus.Unknown, null);
+            }
+            return (AnswerStatus.Written, Write(session, "msg", text));
+        }
+        if (!Id().IsMatch(ask))
+        {
+            return (AnswerStatus.Invalid, null);
+        }
         var askFile = Path.Combine(session, "asks", ask + ".md");
         if (!File.Exists(askFile))
         {
@@ -53,6 +77,11 @@ public sealed partial class UiHome(string root)
         {
             return (AnswerStatus.NotOpen, null);
         }
+        return (AnswerStatus.Written, Write(session, ask, text));
+    }
+
+    string Write(string session, string ask, string text)
+    {
         var answers = Directory.CreateDirectory(Path.Combine(session, "answers")).FullName;
         lock (_answers)
         {
@@ -60,7 +89,7 @@ public sealed partial class UiHome(string root)
             var temp = Path.Combine(answers, $".{name}.tmp");
             File.WriteAllText(temp, text);
             File.Move(temp, Path.Combine(answers, name));
-            return (AnswerStatus.Written, name);
+            return name;
         }
     }
 
@@ -176,6 +205,42 @@ public sealed partial class UiHome(string root)
             mine.Any(a => !a.KeepsOpen),
             held is [var seq, var reason] && mine.Any(a => a.Seq == seq) ? reason : null,
             AskParser.Parse(Frontmatter.Body(text)));
+    }
+
+    /// <summary>The steps and date of <c>setup/doctor.json</c> as factory-doctor.sh --json writes it; none and <c>""</c> when absent or unreadable.</summary>
+    public (List<DoctorStep> Steps, string At) Doctor()
+    {
+        var path = Path.Combine(root, "setup", "doctor.json");
+        try
+        {
+            var doctor = File.Exists(path) ? JsonSerializer.Deserialize(File.ReadAllText(path), UiJson.Default.DoctorFile) : null;
+            return doctor is null
+                ? ([], "")
+                : ((doctor.Steps ?? []).Select(s => new DoctorStep(s.Id ?? "", s.State ?? "", s.Detail ?? "", s.Fix ?? "")).ToList(), doctor.At ?? "");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return ([], "");
+        }
+    }
+
+    /// <summary>The session registered with flow <c>ceo</c>, the most recently updated one when there are several, or null.</summary>
+    public CeoInfo? Ceo()
+    {
+        var sessions = Path.Combine(root, "sessions");
+        if (!Directory.Exists(sessions))
+        {
+            return null;
+        }
+        return Directory.EnumerateDirectories(sessions)
+            .Select(d => Path.Combine(d, "session.md"))
+            .Where(File.Exists)
+            .Select(f => (Dir: Path.GetFileName(Path.GetDirectoryName(f))!, Fields: Frontmatter.Read(f)))
+            .Where(s => s.Fields.GetValueOrDefault("flow") == "ceo")
+            .OrderByDescending(s => s.Fields.GetValueOrDefault("updated", ""), StringComparer.Ordinal)
+            .ThenBy(s => s.Dir, StringComparer.Ordinal)
+            .Select(s => new CeoInfo(s.Dir, s.Fields.GetValueOrDefault("pane", "")))
+            .FirstOrDefault();
     }
 
     /// <summary>The body of the newest ask of flow doctor in any session, or null.</summary>

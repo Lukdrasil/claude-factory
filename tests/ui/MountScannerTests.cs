@@ -188,6 +188,82 @@ public sealed class MountScannerTests : IAsyncDisposable
         Assert.False(_reader!.IsCompleted, $"the scan stopped: {_reader.Exception}");
     }
 
+    [Fact]
+    public async Task Nothing_under_git_is_reported_but_its_logs_HEAD_stands_for_a_commit()
+    {
+        Write("ref: refs/heads/main\n", ".git", "HEAD");
+        var head = Write("0 1 t <t@t> 1 +0000\tcommit: one\n", ".git", "logs", "HEAD");
+        await StartAsync();
+
+        Write("blob", ".git", "objects", "ab", "cdef");
+        Write("idx", ".git", "index");
+        File.AppendAllText(head, "1 2 t <t@t> 2 +0000\tcommit: two\n");
+        var marker = Write("after", "after.md");
+
+        await AssertReportedWithinASecondAsync(marker);
+        await AssertReportedWithinASecondAsync(head);
+        Assert.DoesNotContain(_seen, p => p.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.Ordinal) && p != head);
+    }
+
+    [Fact]
+    public async Task Nothing_under_capacity_is_reported()
+    {
+        await StartAsync();
+
+        Write("role=scout\nsession=s\nunit=\nat=1\n", ".capacity", "scout", "s.u");
+        Write("", ".capacity", ".lock");
+        var marker = Write("after", "after.md");
+
+        await AssertReportedWithinASecondAsync(marker);
+        await Task.Delay(Interval * 2, TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(_seen, p => p.Contains(".capacity", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Two_clients_share_one_scan_and_both_see_a_change()
+    {
+        var scanner = new MountScanner(_root, Interval);
+        var first = new ConcurrentQueue<string>();
+        var second = new ConcurrentQueue<string>();
+        async Task Read(ConcurrentQueue<string> into)
+        {
+            await foreach (var path in scanner.ChangesAsync(_cts.Token))
+            {
+                into.Enqueue(path);
+            }
+        }
+        var ct = TestContext.Current.CancellationToken;
+        var readers = new[] { Task.Run(() => Read(first), ct), Task.Run(() => Read(second), ct) };
+        await Task.Delay(Baseline, TestContext.Current.CancellationToken);
+        var before = scanner.Scans;
+
+        var path = Write("new", "shared.md");
+        await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+
+        Assert.Contains(path, first);
+        Assert.Contains(path, second);
+        var scans = scanner.Scans - before;
+        Assert.True(scans <= 8, $"{scans} scans in 1.5 s at one per {Interval.TotalMilliseconds} ms: each client scans on its own");
+        await _cts.CancelAsync();
+        await Task.WhenAll(readers.Select(r => r.ContinueWith(_ => { }, TaskScheduler.Default)));
+    }
+
+    [Fact]
+    public async Task A_burst_of_rewrites_is_debounced_into_at_most_two_reports()
+    {
+        await StartAsync();
+
+        var path = Write("0", "burst.md");
+        for (var i = 1; i <= 12; i++)
+        {
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+            File.AppendAllText(path, i.ToString());
+        }
+        await Task.Delay(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+
+        Assert.InRange(Count(path), 1, 2);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _cts.CancelAsync();
