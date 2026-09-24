@@ -21,7 +21,7 @@ worktree means no spawn.
 - **Grill.** `<plugin-root>/bin/plan-lint.sh <plan-ready.md>` comes back clean before the cut.
 - **Cut.** `<plugin-root>/bin/dag-check.sh <parent-id>` exits 0 over the block drafts, bodies from
   `<plugin-root>/bin/task-template.sh <kind>`. When one block builds a mechanism another block's document must
-  reach, both acceptances name it. A recut needs a fresh cut-check verdict, which `architect-gate.sh` demands.
+  reach, both acceptances name it. A recut needs a fresh cut-check verdict, which `task-new.sh --parent` demands.
 - **Spawn.** `<plugin-root>/bin/spawn-plan.sh <T-NNN>` prints the agent, the model and the brief per block of
   the wave, `<plugin-root>/bin/block-brief.sh <block-id> --agent <name> --phase <phase>` prints the whole
   brief and `<plugin-root>/bin/model-for.sh` picks the model. The brief is the subagent's whole input: it
@@ -63,7 +63,8 @@ it with `state-report.sh --mr-url`. A conflict is a cut defect: rebase the later
 read the threads with `mr-watch.sh <T-NNN> --comments <block-id>` first and answer each one on its own terms: a
 thread asking for a code change is that same fix round on the block branch, a question is answered on the MR by
 hand, since `forge.sh` only reads, and a thread asking for work outside the block's acceptance is a new draft
-block through `<plugin-root>/bin/task-new.sh` with `depends_on` on that block, never a fix round.
+block with `depends_on` on that block, never a fix round: an `architect-review` cut-check over that one block,
+then `<plugin-root>/bin/task-new.sh --parent`, and the verdict removed afterwards as decompose does.
 
 A block waiting on its open MR does not hold the stack: the later blocks are worked on past it, and only when
 every remaining block is a `review` with an `mr_url` does step 11 list the open MRs as `<block> <mr-url> ->

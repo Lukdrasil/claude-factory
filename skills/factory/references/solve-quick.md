@@ -23,8 +23,7 @@ Nothing done so far is lost: the task, the worktree and the branch carry over.
 ## Steps
 
 1. `<plugin-root>/bin/task-new.sh --repo <key> --file <draft>`, the draft from
-   `<plugin-root>/bin/task-template.sh task`. A repo with `docs/architecture/` needs a verdict file whose
-   `scope:` is `quick`, which `<plugin-root>/bin/architect-gate.sh` accepts without a plan hash.
+   `<plugin-root>/bin/task-template.sh task`.
 2. `<plugin-root>/bin/task-approve.sh <id>`, then
    `<plugin-root>/bin/state-report.sh --task <id> --set-status in_progress`.
 3. `<plugin-root>/bin/worktree-add.sh <id>`.
