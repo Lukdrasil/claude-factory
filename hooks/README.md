@@ -28,8 +28,8 @@ that used to sit in that key lives here instead.
 
 ## policy-guard rules
 
-The Bash rules of `bin/policy-guard.sh` that T-228 changed. `tests/policy-guard.test.sh` replays each one,
-together with every deny they keep.
+The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label rule T-254 added.
+`tests/policy-guard.test.sh` replays each one, together with every deny they keep.
 
 - **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
   break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
@@ -67,3 +67,6 @@ together with every deny they keep.
   at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts, and so does one
   spelled `~/…`. Every path is a file: `.`, `:/`, a path ending in `/` and an existing directory are denied.
   `git add` stays allowed.
+- **Issue label.** A segment with `gh issue create` or `glab issue create` is denied unless `--label` or `-l`
+  carries `ai-drafted` as one comma-separated value, quoted or bare, after a space or `=`. The deny names
+  `bin/issue-create.sh`, which adds the label.

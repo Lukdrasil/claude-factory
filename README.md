@@ -19,7 +19,7 @@ Skills are then invoked as `/claude-factory:<skill>`, e.g. `/claude-factory:gril
 
 | path | what |
 |---|---|
-| `skills/` | archetype and workflow skills (`grill`, `decompose`, `block-*`, `factory`, `mr-review`, ...) |
+| `skills/` | archetype and workflow skills (`grill`, `decompose`, `block-*`, `factory`, `mr-review`, `issue-create`, ...) |
 | `agents/` | subagent definitions the skills spawn |
 | `bin/` | the shell implementation: gates, task API, forge, verification |
 | `hooks/hooks.json` | SessionStart, PreToolUse, PreCompact and Stop wiring |
