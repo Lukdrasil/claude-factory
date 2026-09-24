@@ -13,7 +13,7 @@ nothing, so it needs no confirmation.
 
 - **Run.** `<plugin-root>/bin/factory-list.sh --root <root>` (`<root>` is `WORK_DIR`). Narrow it with
   `--repo <key>` and `--status <s>[,<s>…]` — the statuses are the ones in `docs/design/task-format.md`
-  (`draft triaged ready claimed in_progress tests_ready review blocked stalled failed done closed`).
+  (`draft triaged ready claimed in_progress tests_ready review blocked failed done closed`).
   Completion: exit 0 and one line per task, or no output when nothing matches.
 - **Show it.** Print the table as it came out — the columns are id, status, archetype, tier, repo, owner
   and the goal line. Sort or group only when the user asked for it. Completion: the user has the list.

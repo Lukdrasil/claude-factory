@@ -116,18 +116,18 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   s=set(s,"id",id);
   const br=parse(s).branch||"",sl=br.indexOf("/");
   if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^T-\d{3,}(-\d{2,})?-/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
-  for(const [k,v] of [["runtime","default"],["depends_on","[]"],["parallel_group","null"],["attempt","0"],["max_attempts","3"],["plan_hash","null"],["owner","null"],["mr_url","null"]])
+  for(const [k,v] of [["depends_on","[]"],["attempt","0"],["plan_hash","null"],["owner","null"],["mr_url","null"]])
     if(!(k in parse(s)))s=set(s,k,v);
   if(!("created" in parse(s)))s=set(s,"created",e.TODAY);
   f=parse(s);
 
   if(!safe(e.REPO))fail("repo must be a key from repos.yml (letters, digits, - and _)");
   if(f.repo!==e.REPO)fail("repo in the frontmatter must match --repo");
-  const miss=["id","repo","status","tier","archetype","complexity","runtime","depends_on","parallel_group","attempt","max_attempts","plan_hash","owner","mr_url","created"].filter(k=>!(k in f));
+  const miss=["id","repo","status","tier","archetype","complexity","depends_on","attempt","plan_hash","owner","mr_url","created"].filter(k=>!(k in f));
   if(miss.length)fail("missing key: "+miss.join(", "));
   const en=(k,vs)=>{if(!vs.includes(f[k]))fail(`${k} must be one of ${vs.join("|")}`)};
   en("archetype",["feature","bugfix","refactor","research","review","triage","ops"]);
-  en("status",["draft","triaged","ready","claimed","in_progress","tests_ready","review","blocked","stalled","failed","done","closed"]);
+  en("status",["draft","triaged","ready","claimed","in_progress","tests_ready","review","blocked","failed","done","closed"]);
   en("tier",["green","yellow","red"]);
   en("complexity",["low","medium","high"]);
   if(f.phase&&!["tests","implement"].includes(f.phase))fail("phase must be one of tests|implement, or absent");

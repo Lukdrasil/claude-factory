@@ -1,8 +1,7 @@
 #!/bin/sh
 # Stop hook (ADR-0009): a session must not end without a self-report the controller can see —
-# status review|blocked|failed in the task, delivered through state-report.sh: by default a commit and a push
-# from the session's own state clone (ADR-0050, the standalone posture), or through the Task API in the
-# alternative posture where DASHBOARD_URL is set (ADR-0047).
+# status review|blocked|failed in the task, delivered through state-report.sh: a commit and a push from the
+# session's own state clone (ADR-0050).
 # The hook is the writer: it sends the report itself, so the agent cannot forget to.
 # A task that already carries a terminal status, `done` or `closed`, is finished and is skipped by every loop
 # below (T-186): it has no self-report left to make, and re-reporting it is a transition state-report.sh refuses,
@@ -24,7 +23,7 @@ stdin=$(cat)
 # settled from this repo. Counting our own blocks needs no signal from the harness and is correct under either
 # reading.
 #
-# ponytail: 3 rounds, the same number as max_attempts in the task frontmatter — three real chances to fix the
+# ponytail: 3 rounds, three real chances to fix the
 # self-report, and at most three extra agent turns per session. It is a knob: change the number, nothing else.
 ROUND_BUDGET=3
 
@@ -198,11 +197,8 @@ if [ -s "$edits" ]; then
 fi
 
 # "is it committed and pushed" is not a question the agent answers: the hook delivers the report itself through
-# state-report.sh, which in the standalone posture (ADR-0050) commits in the state clone and pushes it, and under
-# a configured DASHBOARD_URL sends it to the Task API instead (ADR-0047), where there is deliberately no git
-# fallback because a second write path is exactly what that ADR removes. The exit codes carry the same meaning in
-# both. An undeliverable report therefore blocks, and once the round budget is spent block() records the
-# violation and lets the session go.
+# state-report.sh, which commits in the state clone and pushes it (ADR-0050). An undeliverable report therefore
+# blocks, and once the round budget is spent block() records the violation and lets the session go.
 for i in $ids; do
   t=$(task_of "$i")
   [ -n "${t:-}" ] && [ -f "$t" ] || continue
@@ -217,13 +213,8 @@ for i in $ids; do
     0) ;;
     1) add "Stop blocked: state-report.sh refused the self-report of task $i. $report Fix what it names in $t or in $state/repos/*/progress/$i.md and stop again: the report is sent for you, you do not commit or push it." \
          "state-report.sh refused the self-report of $i: $report" ;;
-    *) if [ -n "${DASHBOARD_URL:-}" ]; then
-         add "Stop blocked: the self-report of task $i never reached the controller. $report The state clone cannot push it instead (ADR-0047) — check DASHBOARD_URL and DASHBOARD_API_TOKEN in the session environment, note what happened in the progress file and stop again." \
-           "the self-report of $i never reached the dashboard: $report"
-       else
-         add "Stop blocked: the self-report of task $i could not be pushed to the state root. $report There is no dashboard to send it to instead (ADR-0050) — check \`<root>/state\` is reachable and carries receive.denyCurrentBranch=updateInstead (ADR-0040), note what happened in the progress file and stop again." \
-           "the self-report of $i could not be pushed to the state root: $report"
-       fi ;;
+    *) add "Stop blocked: the self-report of task $i could not be pushed to the state root. $report There is no dashboard to send it to instead (ADR-0050) — check \`<root>/state\` is reachable and carries receive.denyCurrentBranch=updateInstead (ADR-0040), note what happened in the progress file and stop again." \
+         "the self-report of $i could not be pushed to the state root: $report" ;;
   esac
 done
 [ -z "$msgs" ] || block "$msgs" "$labels"

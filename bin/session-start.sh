@@ -6,9 +6,8 @@
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
 # `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets a one-line nudge towards the
 # factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and prints nothing. Exit 0 always.
-# Two lines ride along with that context when they apply: the standalone-posture line (T-187, with no
-# DASHBOARD_URL there is no dashboard and no gate that is not a command) and the stale-plugin warning of
-# incident C below.
+# Two lines ride along with that context: the standalone-posture line (T-187, there is no dashboard and no gate
+# that is not a command) and, when it applies, the stale-plugin warning of incident C below.
 set -u
 [ "${HARNESS_WORKER:-}" != 1 ] || exit 0
 
@@ -97,10 +96,8 @@ stale_plugin_warning() {
   fi
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
   # every text they had read named one and the single sentence that says otherwise lives in a skill a worker
-  # never loads. The switch is DASHBOARD_URL, the same one state-report.sh and policy-guard.sh read.
-  if [ -z "${DASHBOARD_URL:-}" ]; then
-    printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
-  fi
+  # never loads.
+  printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
   stale_plugin_warning
   printf 'Factory context for repo %s from the state repo at %s/state (ADR-0049): the sections below are concatenated from there, not files of this clone — do not edit them here; a lesson worth keeping goes through a memory proposal (ADR-0011).\n' "$key" "$WORK_DIR"
   if [ -n "${FACTORY_MEMORY_OVER_BUDGET:-}" ]; then
