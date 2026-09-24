@@ -89,7 +89,8 @@ if [ "$due" = 1 ]; then
     at=$(last "$state/$dir/passes.yml" "$kind")
     # a stamp is UTC; days from the civil date, so no date(1) dialect is needed to read one back
     awk -v at="$at" -v now="$now" -v max="$max" 'BEGIN {
-      if (at !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/) exit 0
+      if (at !~ /^[0-9]+-[0-9]+-[0-9]+T[0-9]+:[0-9]+:[0-9]+Z$/ || length(at) != 20) exit 0
+      if (substr(at, 5, 1) substr(at, 8, 1) substr(at, 11, 1) substr(at, 14, 1) substr(at, 17, 1) != "--T::") exit 0
       y = substr(at, 1, 4) + 0; m = substr(at, 6, 2) + 0; d = substr(at, 9, 2) + 0
       if (m <= 2) { y--; m += 12 }
       days = 365 * y + int(y / 4) - int(y / 100) + int(y / 400) + int((153 * (m - 3) + 2) / 5) + d - 719469
