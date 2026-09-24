@@ -181,4 +181,37 @@ fi
 grep -q 'gap ledger' "$tmp/err2"; check 'the plan-lint reason reaches stderr' $?
 [ ! -d "$badout" ] || [ -z "$(ls -A "$badout")" ]; check 'the refusal writes nothing' $?
 
+# F10 (T-228): a proposal whose `design:` owns no member under a heading became a block with no
+# ``### `path` `` heading, which dag-check refused only after the cut reached the human. The fourth proposal
+# leaves proposals 1 to 3 as they are, so plan-lint passes and the refusal can only come from decompose.
+headless() { # <label> <design value>
+  hp="$state/repos/demo/plans/headless-$1-plan-ready.md"
+  hout="$tmp/headless-$1"
+  awk -v design="$2" '
+    /^## Out of scope/ {
+      print "### 4. Pin LF line endings"
+      print "- tier: green, one config file"
+      print "- archetype: feature"
+      print "- complexity: low, one file"
+      print "- depends_on: []"
+      print "- goal: feat(export): pin lf line endings for the exporter files"
+      print "- context: the exporter files are checked out on two platforms"
+      print "- acceptance: `sh tests/eol.sh`"
+      print "- docs: none"
+      print "- design: " design
+      print "- out of scope: the exporter code"
+      print ""
+    }
+    { print }
+  ' "$plan" > "$hp"
+  sh "$bin/plan-lint.sh" "$hp" >/dev/null 2>&1; check "$1: plan-lint accepts the plan" $?
+  sh "$bin/decompose.sh" "$hp" --out "$hout" --state "$state" >/dev/null 2>"$tmp/herr"
+  [ $? -eq 1 ]; check "$1: a block with no path heading is refused with exit 1" $?
+  grep -qE 'proposal 4|Pin LF line endings' "$tmp/herr"; check "$1: the refusal names the block" $?
+  [ ! -d "$hout" ] || [ -z "$(ls -A "$hout")" ]; check "$1: the refusal writes nothing" $?
+}
+headless none-with-prose 'none, a config file and a test with no code surface'
+headless file-only '`src/export/cli.py`'
+headless bare-none-on-a-feature 'none'
+
 exit $fail
