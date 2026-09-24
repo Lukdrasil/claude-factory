@@ -34,6 +34,14 @@ task=$(grep -lx "id: $id" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1)
 [ -n "${task:-}" ] && [ -f "$task" ] || die "no task file with 'id: $id' in $state/repos/*/tasks/"
 rel=${task#"$state/"}
 
+# T-248: the status read, both commits and the push under the one lock per state clone (state_lock, lib-tasks.sh)
+state_lock "$state" && lrc=0 || lrc=$?
+case "$lrc" in
+  0) trap state_unlock EXIT ;;
+  1) die "another session holds the state lock of $state, waited ${STATE_LOCK_WAIT:-30} s; nothing was written, run it again" ;;
+  *) die "the state lock could not be taken in $state; is it a git clone?" ;;
+esac
+
 from=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
 case "$from" in
   draft|triaged|ready|claimed|tests_ready|review|blocked|stalled|failed|done|closed) ;;

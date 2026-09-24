@@ -176,6 +176,9 @@ printf '%s\n' "$res" | sed '1,2d' > "$state/$rel"
 state_commit "$state" "chore($id): new $status task" "$rel" || die "the new task could not be committed in $state"
 }
 
+# T-248: the state clone is one working tree shared by every session on the machine. The sync, the id, the
+# commit and the push run under the one lock state-report.sh and task-done.sh take, so two runs cannot hand
+# out one id, and a refused push undoes only this run's own commit and file, never another session's work.
 state_lock "$state" && lrc=0 || lrc=$?
 case "$lrc" in
   0) trap state_unlock EXIT ;;
