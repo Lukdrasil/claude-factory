@@ -1,24 +1,26 @@
 #!/bin/sh
-# Registers a product clone in the standalone state repo (ADR-0049): one repos.yml line with url, default_branch
-# and path, and repos/<key>/toolset.md seeded from toolsets/<stack>.md. Two commits in the
-# state repo, nothing pushed. Idempotent: a registered clone with a toolset is "nothing to do".
+# Registers a product clone in the standalone state repo (ADR-0049): one repos.yml line with url, default_branch,
+# path and alias, and repos/<key>/toolset.md seeded from toolsets/<stack>.md. Two commits in the
+# state repo, nothing pushed. Idempotent: a registered clone with an alias and a toolset is "nothing to do".
 #
-#   factory-add-repo.sh --root <dir> [--repo <clone-dir>] [--yes]
+#   factory-add-repo.sh --root <dir> [--repo <clone-dir>] [--alias <ALIAS>] [--yes]
 #
-# The key is the basename of the origin URL without .git.
+# The key is the basename of the origin URL without .git. The alias (2 to 4 uppercase letters, unique in repos.yml)
+# makes the repo's new task ids T-<ALIAS>-<n>; it is proposed from the key unless --alias names one, and a repo
+# registered before aliases gets it added to its line. Every run refreshes the doctor.json of the Setup tab.
 #
 # Exit 0 = applied, or nothing to do. Exit 3 = changes pending, printed, not written (no --yes), the same gate
 # factory-init.sh has, so the skill previews and reruns identically on both scripts.
 set -eu
 
-root='' repo='' yes=0
+root='' repo='' yes=0 alias=''
 die() { printf 'factory-add-repo: %s\n' "$1" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root|--repo)
+    --root|--repo|--alias)
       [ $# -ge 2 ] || die "$1 needs a value"
-      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; esac
+      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; --alias) alias=$2 ;; esac
       shift 2 ;;
     --yes) yes=1; shift ;;
     *) die "unknown argument '$1'" ;;
@@ -30,6 +32,10 @@ root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
 state="$root/state"
 [ -f "$state/repos.yml" ] || die "$state/repos.yml does not exist - run factory-init.sh --root $root first"
 plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+case "$alias" in
+  ''|[A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) ;;
+  *) die "--alias takes 2 to 4 uppercase letters, not '$alias'" ;;
+esac
 
 top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
 [ -n "$top" ] || die "$repo is not a git clone"
@@ -48,12 +54,60 @@ commit() { # <message> <path...>
     git -C "$state" -c user.name=harness -c user.email=harness@localhost commit -q -m "$m" -- "$@"
   fi
 }
+# the Setup tab reads <ui home>/setup/doctor.json, so every run leaves it current; it never changes this exit
+refresh_doctor() { sh "$plugin/bin/factory-doctor.sh" --json --root "$root" >/dev/null 2>&1 || :; }
+
+# the alias proposed for a key: the initials of its words (claude-factory: CF) or the first three letters of a single
+# word (nemeton: NEM); when that one is taken, the first two letters and each later letter in turn, then the first
+# three and each later one (expiriointegrations: EXI beside EXP). Nothing when every candidate is taken.
+propose_alias() { # <key> <taken aliases, space separated>
+  printf '%s\n' "$1" | awk -v taken=" $2 " '
+    function try(c) { if (length(c) >= 2 && length(c) <= 4 && index(taken, " " c " ") == 0) { print c; exit } }
+    {
+      n = split(toupper($0), w, /[^A-Z]+/); s = ""; l = ""; nw = 0
+      for (i = 1; i <= n; i++) if (w[i] != "") { s = s substr(w[i], 1, 1); l = l w[i]; nw++ }
+      if (nw >= 2) try(substr(s, 1, 4))
+      try(substr(l, 1, 3))
+      for (i = 3; i <= length(l); i++) try(substr(l, 1, 2) substr(l, i, 1))
+      for (i = 4; i <= length(l); i++) try(substr(l, 1, 3) substr(l, i, 1))
+    }'
+}
 
 echo "$key"
 
 # --- what is pending ---------------------------------------------------------------------------------------
-need_yml=0
+need_yml=0 need_alias=0
 grep -q "^$key:" "$state/repos.yml" || need_yml=1
+
+# `<key> <alias>` of every repo that has one, in the flat or the indented spelling
+aliases=$(awk '
+  /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
+  k != "" && match($0, /(^|[{, \t])alias[ \t]*:[ \t]*["'"'"']?[A-Za-z]+/) {
+    v = substr($0, RSTART, RLENGTH); sub(/.*:[ \t]*/, "", v); gsub(/["'"'"']/, "", v); print k, v
+  }' "$state/repos.yml")
+cur_alias=$(printf '%s\n' "$aliases" | awk -v k="$key" '$1 == k { print $2; exit }')
+if [ -n "$alias" ]; then
+  other=$(printf '%s\n' "$aliases" | awk -v k="$key" -v a="$alias" '$1 != k && $2 == a { print $1; exit }')
+  [ -z "$other" ] || die "alias $alias is taken by $other"
+  [ -z "$cur_alias" ] || [ "$cur_alias" = "$alias" ] \
+    || die "$key already has alias $cur_alias; its ids carry it, so a change is a hand edit of repos.yml"
+fi
+old_line=''
+if [ -z "$cur_alias" ]; then
+  if [ -z "$alias" ]; then
+    alias=$(propose_alias "$key" "$(printf '%s\n' "$aliases" | awk '{ printf "%s ", $2 }')")
+    [ -n "$alias" ] || die "no free alias from the letters of '$key', pass --alias <2 to 4 uppercase letters>"
+    echo "note: alias $alias proposed from the key - --alias <ALIAS> overrides"
+  fi
+  if [ "$need_yml" = 0 ]; then
+    old_line=$(grep -E "^$key: \{.*\}[[:space:]]*$" "$state/repos.yml" | head -n1 || :)
+    if [ -n "$old_line" ]; then
+      need_alias=1
+    else
+      echo "note: $key is not on one {...} line in repos.yml - add alias: $alias to its entry by hand" >&2
+    fi
+  fi
+fi
 
 files=$(git -C "$top" ls-files)
 
@@ -69,8 +123,10 @@ if cc=$(commitlint_cap "$top"); then
   echo "note: $title_src lints the MR title - mr_title_max: $title_max for $key"
 fi
 
-yml_line=$(printf '%s: {url: "%s", default_branch: %s, path: "%s"%s}' \
-  "$key" "$url" "$branch" "$top" "${title_max:+, mr_title_max: $title_max}")
+yml_line=$(printf '%s: {url: "%s", default_branch: %s, path: "%s", alias: %s%s}' \
+  "$key" "$url" "$branch" "$top" "$alias" "${title_max:+, mr_title_max: $title_max}")
+new_line=''
+[ "$need_alias" = 0 ] || new_line=$(printf '%s\n' "$old_line" | sed "s/}[[:space:]]*\$/, alias: $alias}/")
 
 if printf '%s\n' "$files" | grep -qE '\.(sln|slnx|csproj)$'; then stack=dotnet
 elif printf '%s\n' "$files" | grep -qE '(^|/)pyproject\.toml$'; then stack=python
@@ -91,18 +147,24 @@ else
   [ -n "$solution" ] || solution=$(printf '%s\n' "$files" | grep -E '\.csproj$' | head -n1)
 fi
 
-if [ "$need_yml$need_toolset" = 00 ]; then
+if [ "$need_yml$need_alias$need_toolset" = 000 ]; then
   if [ -f "$toolset" ]; then echo "nothing to do: $key is registered with repos/$key/toolset.md"
   else echo "nothing to do: $key is registered"; fi
+  refresh_doctor
   exit 0
 fi
 
 # --- the diff ------------------------------------------------------------------------------------------------
 [ "$need_yml" = 0 ] || echo "+ $yml_line   in $state/repos.yml"
+if [ "$need_alias" = 1 ]; then
+  echo "- $old_line   in $state/repos.yml"
+  echo "+ $new_line   in $state/repos.yml"
+fi
 [ "$need_toolset" = 0 ] || echo "+ $toolset   from toolsets/$stack.md (stack $stack${solution:+, solution $solution})"
 
 if [ "$yes" = 0 ]; then
   echo "pending - rerun with --yes to apply"
+  refresh_doctor
   exit 3
 fi
 
@@ -111,7 +173,14 @@ if [ "$need_yml" = 1 ]; then
   [ -z "$(tail -c1 "$state/repos.yml")" ] || echo >> "$state/repos.yml"
   printf '%s\n' "$yml_line" >> "$state/repos.yml"
   commit "chore($key): register repo" repos.yml
-  echo "registered $key ($url, $branch, $top)"
+  echo "registered $key ($url, $branch, $top, alias $alias)"
+fi
+if [ "$need_alias" = 1 ]; then
+  awk -v old="$old_line" -v new="$new_line" '!done && $0 == old { print new; done = 1; next } { print }' \
+    "$state/repos.yml" > "$state/repos.yml.tmp"
+  mv "$state/repos.yml.tmp" "$state/repos.yml"
+  commit "chore($key): alias $alias" repos.yml
+  echo "alias $alias for $key"
 fi
 if [ "$need_toolset" = 1 ]; then
   mkdir -p "$state/repos/$key"
@@ -121,3 +190,4 @@ if [ "$need_toolset" = 1 ]; then
   commit "chore($key): toolset $stack" "repos/$key/toolset.md"
   echo "toolset repos/$key/toolset.md (stack $stack${solution:+, solution $solution})"
 fi
+refresh_doctor
