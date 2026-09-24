@@ -2,7 +2,9 @@ using System.Text.RegularExpressions;
 
 public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Held);
 
-public sealed record SessionInfo(string Sid, string Pane, string Flow, string Task, string Step, List<AskInfo> Asks);
+public sealed record VisualInfo(string Row, string Version, string Status);
+
+public sealed record SessionInfo(string Sid, string Pane, string Flow, string Task, string Step, List<AskInfo> Asks, VisualInfo? Visual);
 
 public enum AnswerStatus
 {
@@ -108,8 +110,32 @@ public sealed partial class UiHome(string root)
                     .Order(StringComparer.Ordinal)
                     .Select(f => ReadAsk(f, answers, held))
                     .ToList()
-                : []);
+                : [],
+            ReadVisual(dir));
     }
+
+    static VisualInfo? ReadVisual(string dir)
+    {
+        var meta = Path.Combine(dir, "visual.md");
+        if (!File.Exists(meta) || !File.Exists(Path.Combine(dir, "visual.html")))
+        {
+            return null;
+        }
+        var fields = Frontmatter.Read(meta);
+        return new VisualInfo(
+            fields.GetValueOrDefault("row", ""),
+            fields.GetValueOrDefault("version", ""),
+            fields.GetValueOrDefault("status", ""));
+    }
+
+    /// <summary>The path of <c>sessions/&lt;sid&gt;/visual.html</c> when it exists, otherwise null.</summary>
+    public string? VisualFile(string sid)
+    {
+        var file = Path.Combine(root, "sessions", sid, "visual.html");
+        return File.Exists(file) ? file : null;
+    }
+
+    public static bool IsId(string? value) => value is not null && Id().IsMatch(value);
 
     static List<(string Seq, string Ask)> AnswerFiles(string answers) =>
         Directory.Exists(answers)

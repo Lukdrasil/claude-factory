@@ -77,6 +77,7 @@ function group(id) {
       .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified)),
     staged: S.staged,
     detail: S.detail?.task.id === id ? S.detail : null,
+    token,
   };
 }
 
@@ -133,6 +134,18 @@ async function send(key, staged) {
   render();
 }
 
+async function redraw(visual) {
+  try {
+    await api(`/api/answers/${visual.dataset.visual}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ask: visual.dataset.redraw, text: `Q${visual.dataset.row} redraw` }),
+    });
+  } catch (err) {
+    showError(err);
+  }
+}
+
 function toggle(staged, act, q, text) {
   const item = staged.items[q];
   if (item && item.kind === act && item.text === text) delete staged.items[q];
@@ -145,6 +158,7 @@ app.addEventListener('click', (e) => {
   if (b.dataset.drawer) return open(b.dataset.drawer);
   const act = b.dataset.act;
   if (act === 'next') return next();
+  if (act === 'redraw') return redraw(b.closest('[data-visual]'));
   if (act === 'close') {
     S.drawer = null;
     return render();

@@ -7,7 +7,7 @@ as the host uid:gid with two mounts:
 | mount | mode | what |
 |---|---|---|
 | `/state` | read-only | the factory state repo |
-| `/ui` | read-write | the UI home: `token`, `port`, `sessions/<sid>/` with `session.md`, `asks/`, `answers/`, `relay`, `delivered` |
+| `/ui` | read-write | the UI home: `token`, `port`, `sessions/<sid>/` with `session.md`, `asks/`, `answers/`, `relay`, `delivered`, `visual.html`, `visual.md` |
 
 The container listens on 8080 and is published only on `127.0.0.1`.
 
@@ -20,7 +20,7 @@ static files are served without it.
 |---|---|
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh` |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline |
-| `GET /api/sessions` | every session's `session.md` fields and its asks: frontmatter, body, mtime, `sent` and the relay's `held` reason |
+| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent` and the relay's `held` reason, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets and the last doctor notice |
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
@@ -32,6 +32,12 @@ into the session.
 
 The stream comes from two `MountScanner`s, one per mount. Each compares the name, length and mtime of every
 file under its mount every 250 ms. It skips a folder it cannot read and hidden entries such as `.git`.
+
+`GET /visual?sid=<sid>&token=<token>` is the one route outside `/api` that needs the token, as a query parameter,
+since an iframe sends no header. It serves `sessions/<sid>/visual.html` byte for byte as `text/html` with
+`Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:`,
+so a visual's script can read the token in its URL but cannot send it anywhere. It answers 401 for a missing or
+wrong token, 400 for a missing sid or one outside `[A-Za-z0-9-]+`, and 404 without `visual.html`.
 
 `sent` is true once an answer file names the ask. `held` is the reason in `sessions/<sid>/relay` while the relay
 holds one of the ask's answers, otherwise null.
@@ -46,8 +52,9 @@ no task.
 | module | what |
 |---|---|
 | `pipeline.js` | `renderPipeline(board, sessions)`: the grid of tasks across the solve steps, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"`, the setup strip and the waiting-on-you counter |
-| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its open asks and its context |
+| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its open asks, its sessions' visuals and its context |
 | `ask-card.js` | `renderAsk(ask, staged)`: one ask as a round, a confirm or a notice, and `compose`, the shorthand Send posts |
+| `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream and the clicks |
 
 The counter counts the open asks nobody has sent an answer for, of sessions in herdr. Each click opens the next
