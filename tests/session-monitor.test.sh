@@ -332,9 +332,27 @@ rec T-109 T-109 tab-109
 herdr_tab tab-109 idle false t-109
 : > "$HERDR_STUB_LOG"
 out=$(sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/null)
+nocheck '--all prints no closed line on stdout'  ' closed tab-'
 out=$(cat "$HERDR_STUB_LOG")
 check '--all closes the tab of a leaf at done'   '^tab close tab-108 '
 nocheck '--all keeps the tab of a leaf at review' '^tab close tab-109 '
+
+# a tab create reply with no tab id: the agent still starts, nothing is recorded, and the batch goes on
+armed T-111 T-111-01
+mkdir -p "$hroot/demo/T-111-02"
+sed 's/T-111-01/T-111-02/; s/h\.ts/i.ts/' "$hstate/repos/demo/tasks/T-111-01.md" > "$hstate/repos/demo/tasks/T-111-02.md"
+HERDR_STUB_CREATE='{"result":{"root_pane":{"pane_id":"pane-1"}}}'
+export HERDR_STUB_CREATE
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --task T-111 --spawn herdr --state "$hstate" 2>"$tmp/t111.err"); cat "$tmp/t111.err" >&2
+unset HERDR_STUB_CREATE
+check 'a tab with no id still spawns the unit'   '^T-111-01 spawned '
+check 'the next unit of the batch is spawned'    '^T-111-02 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'the first unit starts its agent'          '^agent start t-111-01 '
+check 'the next unit starts its agent'           '^agent start t-111-02 '
+out=$(cat "$hroot/demo/.harness/T-111/herdr-tabs" 2>/dev/null)
+nocheck 'a tab with no id writes no record line' '^T-111-0'
 
 # the verbs herd-watch and session-monitor share
 out=$(sh "$bin/herdr-tabs.sh" state T-108-grill --state "$hstate" 2>/dev/null)

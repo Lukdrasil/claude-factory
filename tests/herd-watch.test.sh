@@ -143,7 +143,27 @@ err2=$(sh "$bin/herd-watch.sh" T-005 --once --no-mr --state "$state" 2>&1 >/dev/
 if [ "$rc" -eq 0 ] && [ "$rc2" -eq 0 ] && [ -z "$err$err2" ]; then printf 'PASS tab_not_found is no error\n'
 else printf 'FAIL tab_not_found exited %s/%s with: %s\n' "$rc" "$rc2" "$err$err2"; fail=1; fi
 check 'tab_not_found appends the closed line'     0 '^T-005-01 tab-51 closed$' "$(cat "$tmp/factory/demo/.harness/T-005/herdr-tabs")"
-if [ "$(closes tab-51)" -eq 1 ]; then printf 'PASS tab_not_found is not retried\n'
+if [ "$(closes tab-51)" -eq 0 ]; then printf 'PASS a tab get tab_not_found calls no tab close\n'
 else printf 'FAIL tab-51 was closed %s times\n' "$(closes tab-51)"; fail=1; fi
+
+# a tab get that fails for another reason, or answers with no focused field, keeps the tab
+task T-006 in_progress null
+task T-006-01 done null
+task T-006-02 done null
+rec T-006 T-006-01 tab-61
+rec T-006 T-006-02 tab-62
+herdr_tab tab-61 idle false t-006-01
+herdr_tab tab-62 idle false t-006-02
+herdr_tab_reply tab-61 1 '{"error":{"code":"timeout","message":"server did not answer"},"id":"cli:tab:get"}'
+herdr_tab_reply tab-62 0 '{"id":"cli:tab:get","result":{"tab":{"agent_status":"idle","tab_id":"tab-62"},"type":"tab_info"}}'
+out=$(sh "$bin/herdr-tabs.sh" close T-006-01 T-006-02 --state "$state" 2>/dev/null)
+all=$(cat "$log")
+tabs=$(cat "$tmp/factory/demo/.harness/T-006/herdr-tabs")
+check 'a failed tab get calls no tab close'       1 '^tab close tab-61 ' "$all"
+check 'a failed tab get prints the kept reason'   0 '^T-006-01 kept tab-61 tab get failed$' "$out"
+check 'a failed tab get appends no closed line'   1 '^T-006-01 tab-61 closed$' "$tabs"
+check 'a reply with no focused calls no close'    1 '^tab close tab-62 ' "$all"
+check 'a reply with no focused is kept'           0 '^T-006-02 kept tab-62 tab get failed$' "$out"
+check 'a reply with no focused appends nothing'   1 '^T-006-02 tab-62 closed$' "$tabs"
 
 exit $fail

@@ -86,8 +86,8 @@ a fixed pick by the repo key. The herdr agent name stays the lowercased id (`t-2
 Closing is scripted, never done by hand. Before a unit starts again, `session-monitor.sh` closes its recorded
 tab and the step tabs of its parent, and prints the unit `skipped` when its own tab is still at work. Every
 `herd-watch.sh` pass, and every `--all` run, closes the recorded tabs of units at `done` or `closed`. A
-focused tab, the caller's own `$HERDR_TAB_ID` and an agent that is `working` or `blocked` are kept, and a tab
-not in the record is never touched.
+focused tab, the caller's own `$HERDR_TAB_ID`, an agent that is `working` or `blocked` and a tab `herdr tab
+get` cannot read are kept, and a tab not in the record is never touched.
 
 `--max N` caps a batch, default 5. A unit with no worktree is skipped: run
 `<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. `--spawn herdr` overrides `spawn:` for

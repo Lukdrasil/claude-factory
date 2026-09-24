@@ -49,13 +49,14 @@
 # Every unit carries the session name `<emoji> <repo> <id>` of `herdr-tabs.sh name`: the tab label and the
 # `claude --name` of a herdr spawn, and the `--name` of a printed manual line. The herdr agent name stays the
 # lowercased id. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh record`,
-# `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`.
+# `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`. A tab with no tab id, or a record
+# that fails, is one line on stderr and the unit still starts.
 #
 # A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-NNN, before the
 # claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
 # or an agent at work) is printed `skipped` and not started. `--all` first runs `herdr-tabs.sh sweep` over
 # every T-NNN with a tab record, which closes the tabs of units at `done` or `closed` and prints one
-# `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line per recorded tab it tried.
+# `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line on stderr per recorded tab it tried.
 #
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
@@ -293,7 +294,7 @@ else
   if [ "$mode" = herdr ] && [ -z "$dry" ]; then
     for rec in "$root"/*/.harness/T-[0-9][0-9][0-9]/herdr-tabs; do
       [ -f "$rec" ] || continue
-      sh "$bin/herdr-tabs.sh" sweep "$(basename -- "$(dirname -- "$rec")")" --state "$state" || :
+      sh "$bin/herdr-tabs.sh" sweep "$(basename -- "$(dirname -- "$rec")")" --state "$state" >&2 || :
     done
   fi
   for task in "$state"/repos/*/tasks/*.md; do
@@ -373,7 +374,10 @@ while IFS='	' read -r id cwd model claimid prompt; do
     echo "session-monitor: herdr tab create gave no pane id for $id" >&2
     rc=2; continue
   fi
-  sh "$bin/herdr-tabs.sh" record "$id" "$(printf '%s' "$created" | json result.tab.tab_id)" "$pane" --state "$state"
+  tab=$(printf '%s' "$created" | json result.tab.tab_id)
+  if [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; then
+    echo "session-monitor: no tab record for $id, so its tab is not closed by the scripts" >&2
+  fi
   if ! herdr agent start "$name" --kind claude --pane "$pane" -- --model "$model" --name "$label" >/dev/null; then
     echo "session-monitor: herdr agent start failed for $id in pane $pane" >&2
     rc=2; continue
