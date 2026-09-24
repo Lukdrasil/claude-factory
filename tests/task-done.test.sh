@@ -220,6 +220,15 @@ git -C "$clone" push -q origin block/T-010-03 >/dev/null 2>&1
 git -C "$clone" worktree add -q "$tmp/demo/T-010-03" block/T-010-03 >/dev/null 2>&1
 git -C "$tmp/demo/T-010-03" commit -q --allow-empty -m 'local only'
 git -C "$clone" worktree remove "$tmp/demo/T-010-03"
+task T-010-04 bugfix review null 'factory@host:sess-1'
+task T-010-05 bugfix review null 'factory@host:sess-1'
+commit_all
+git -C "$state" push -q >/dev/null 2>&1
+git -C "$clone" worktree add -q --detach "$tmp/demo/T-010-04" main >/dev/null 2>&1
+git -C "$tmp/demo/T-010-04" commit -q --allow-empty -m 'detached, local only'
+git -C "$clone" worktree add -q --detach "$tmp/demo/T-010-05" main >/dev/null 2>&1
+git -C "$tmp/demo/T-010-05" commit -q --allow-empty -m 'detached, pushed'
+git -C "$tmp/demo/T-010-05" push -q origin HEAD:refs/heads/block/T-010-05 >/dev/null 2>&1
 
 branch_there() { git -C "$clone" show-ref --verify --quiet "refs/heads/$1" && echo yes || echo no; }
 dir_there() { [ -e "$1" ] && echo yes || echo no; }
@@ -236,6 +245,8 @@ check 'the dirty block worktree is kept'         yes "$(dir_there "$tmp/demo/T-0
 check 'the dirty block file survives'            yes "$(dir_there "$tmp/demo/T-010-02/scratch.txt")"
 check 'the branch of the dirty worktree is kept' yes "$(branch_there block/T-010-02)"
 check 'a branch ahead of its remote is kept'     yes "$(branch_there block/T-010-03)"
+check 'a clean detached worktree no remote-tracking ref contains is kept' yes "$(dir_there "$tmp/demo/T-010-04")"
+check 'a clean detached worktree whose HEAD is pushed is removed'         no  "$(dir_there "$tmp/demo/T-010-05")"
 check 'the remote branches are not touched'      yes \
   "$(git -C "$tmp/clone-origin.git" show-ref --verify --quiet refs/heads/block/T-010-01 && echo yes || echo no)"
 if printf '%s\n' "$out" | grep -E '^skipped: ' | grep -q "$tmp/demo/T-010-02"; then
@@ -244,6 +255,9 @@ else printf 'FAIL a skipped: line names the dirty worktree: %s\n' "$out"; fail=1
 if printf '%s\n' "$out" | grep -E '^skipped: ' | grep -q 'block/T-010-03'; then
   printf 'PASS a skipped: line names the unpushed branch\n'
 else printf 'FAIL a skipped: line names the unpushed branch: %s\n' "$out"; fail=1; fi
+if printf '%s\n' "$out" | grep -E '^skipped: ' | grep -q "$tmp/demo/T-010-04"; then
+  printf 'PASS a skipped: line names the detached worktree\n'
+else printf 'FAIL a skipped: line names the detached worktree: %s\n' "$out"; fail=1; fi
 if printf '%s\n' "$out" | grep -E '^skipped: ' | grep -q 'T-010-01'; then
   printf 'FAIL no skipped: line for what was removed: %s\n' "$out"; fail=1
 else printf 'PASS no skipped: line for what was removed\n'; fi
