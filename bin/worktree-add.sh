@@ -11,12 +11,15 @@
 # T-164, the stack: a block is cut from the branch of the last block in its `depends_on:` (the highest numbered
 # one when there are several) and from the parent's `branch:` when it depends on nothing, so blocks of one wave
 # still share a base and stay parallel. The base is recorded as `base: <branch>` in the block's progress file,
-# which is what block-mr.sh targets its MR at and what restack.sh walks.
+# which is what block-mr.sh targets its MR at and what restack.sh walks, and the commit it was cut from as
+# `base_sha: <sha>` beside it (T-228 A7).
 #
 # Exit 0 with `path: <dir>` and `branch: <branch>` on stdout, plus `base: <branch>` for a block. An existing worktree whose HEAD is already the
-# task's branch is a resume: the same two lines, exit 0, nothing created. Exit 1 with the reason on stderr
-# when no task id is given, when the id resolves to no task file, when the repo's clone is unknown, when the
-# worktree exists on another branch, or when git refuses to create it.
+# task's branch is a resume: the same two lines, exit 0, nothing created. A resumed block whose base moved is
+# reset to it when it has no commits of its own (block_resume). Exit 1 with the reason on stderr when no task
+# id is given, when the id resolves to no task file, when the repo's clone is unknown, when the worktree exists
+# on another branch, when a resumed block has commits of its own on a base that moved (the rebase command is in
+# the message), or when git refuses to create it.
 set -eu
 . "$(dirname -- "$0")/lib-tasks.sh"
 
@@ -55,20 +58,6 @@ key=${key%%/*}
 [ -n "${WORK_DIR:-}" ] || die "WORK_DIR is not set, so there is no work root to put the worktree of $id under"
 case "$WORK_DIR" in /*|[A-Za-z]:/*) ;; *) die "WORK_DIR must be an absolute path, not '$WORK_DIR'" ;; esac
 
-# one field of the repos.yml line of a repo (ADR-0013 revision): `<key>: {url: …, default_branch: …, path: …}`,
-# written by factory-add-repo.sh, in the flat or the indented spelling
-yml_field() { # <key> <field>
-  [ -f "$state/repos.yml" ] || return 0
-  awk -v want="$1" -v field="$2" '
-    /^[A-Za-z0-9_-]+:/ { key = $1; sub(/:$/, "", key) }
-    key == want && match($0, field "[ \t]*:[ \t]*") {
-      v = substr($0, RSTART + RLENGTH)
-      sub(/[ \t]*[,}].*$/, "", v); sub(/[ \t]+#.*$/, "", v)
-      gsub(/^["'"'"']|["'"'"']$/, "", v)
-      if (v != "") { print v; exit }
-    }' "$state/repos.yml"
-}
-
 branch_of() { # <task file>
   bo=$(sed -n 's/^branch:[[:space:]]*//p' "$1" | head -n1)
   case "$bo" in null|'~') bo='' ;; esac
@@ -82,15 +71,44 @@ deps_of() { # <task file>
     | tr -d '[]",' | tr ' ' '\n' | grep -E '^T-[0-9]{3}-[0-9]{2}$' | sort || :
 }
 
-# `base: <branch>` in the block's progress file, the record of what the block branch was cut from: replaced
-# when the line is there, appended when it is not. Prints the file when it changed, nothing when it did not.
-record_base() { # <progress file> <branch>
+# `base: <branch>` and `base_sha: <sha>` in the block's progress file, the record of what the block branch was cut
+# from: replaced when the lines are there, appended when they are not. `base:` holds the branch alone because
+# block-mr.sh, mr-watch.sh, restack.sh and solve-next.sh read its whole value. Prints the file when it changed,
+# nothing when it did not.
+record_base() { # <progress file> <branch> <sha>
   mkdir -p "$(dirname -- "$1")"
   [ -f "$1" ] || printf '# %s\n' "$id" > "$1"
-  if [ "$(sed -n 's/^base:[[:space:]]*//p' "$1" | head -n1)" = "$2" ]; then return 0; fi
-  awk -v b="$2" '/^base:[[:space:]]*/ { if (!done) { print "base: " b; done = 1 } next }
-    { print } END { if (!done) print "base: " b }' "$1" > "$1.tmp" && mv -f "$1.tmp" "$1"
+  if [ "$(sed -n 's/^base:[[:space:]]*//p' "$1" | head -n1)" = "$2" ] \
+    && [ "$(sed -n 's/^base_sha:[[:space:]]*//p' "$1" | head -n1)" = "$3" ]; then return 0; fi
+  awk -v b="$2" -v s="$3" '
+    /^base_sha:[[:space:]]*/ { next }
+    /^base:[[:space:]]*/ { if (!done) { print "base: " b; print "base_sha: " s; done = 1 } next }
+    { print } END { if (!done) { print "base: " b; print "base_sha: " s } }' "$1" > "$1.tmp" && mv -f "$1.tmp" "$1"
   printf '%s' "$1"
+}
+
+# A block branch that already exists is a resume, and its base may have moved since it was cut (T-228 A7: T-208-05
+# stayed on a squashed parent commit). A tip still at the recorded `base_sha:` has no commits of its own and is
+# reset to the new base; a tip past it is refused with the rebase command. With no `base_sha:` (a progress file
+# from before T-228) only a tip that is an ancestor of the new base is reset, and anything else is left as it is.
+block_resume() { # <progress file> <new base sha>
+  git -C "$clone" show-ref --verify --quiet "refs/heads/$branch" || return 0
+  br_tip=$(git -C "$clone" rev-parse "refs/heads/$branch")
+  br_old=$(sed -n 's/^base_sha:[[:space:]]*//p' "$1" 2>/dev/null | head -n1)
+  [ "$br_tip" != "$2" ] || return 0
+  if [ -n "$br_old" ]; then
+    [ "$br_old" != "$2" ] || return 0
+    [ "$br_tip" = "$br_old" ] \
+      || die "block $id has commits of its own on $br_old, and its base $base has moved to $2. Rebase them onto it (git -C $clone rebase --onto $2 $br_old $branch) and run this again"
+  else
+    git -C "$clone" merge-base --is-ancestor "$br_tip" "$2" || return 0
+  fi
+  if [ -e "$wt" ]; then
+    git -C "$wt" reset -q --keep "$2" || die "$wt could not be reset from $br_tip to its new base $2 (git -C $wt reset --keep $2)"
+  else
+    git -C "$clone" branch -f "$branch" "$2" >/dev/null || die "$branch could not be reset from $br_tip to its new base $2"
+  fi
+  printf 'worktree-add: %s was reset from %s to its new base %s\n' "$branch" "$br_tip" "$2" >&2
 }
 
 clone=$(yml_field "$key" path)
@@ -134,11 +152,22 @@ esac
 [ -z "$from" ] || base=$from
 
 wt="$WORK_DIR/$key/$id"
+progress="$state/repos/$key/progress/$id.md"
 
 if [ -e "$wt" ]; then
   head=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null) || head=''
   [ "$head" = "$branch" ] \
     || die "$wt already exists on '${head:-no branch}', not $branch. Remove that worktree (git -C $clone worktree remove $wt) or check $branch out in it"
+fi
+
+case "$id" in
+  T-*-[0-9][0-9])
+    base_sha=$(git -C "$clone" rev-parse --verify --quiet "$base^{commit}") \
+      || die "block $id: its base $base is no commit in $clone"
+    block_resume "$progress" "$base_sha" ;;
+esac
+
+if [ -e "$wt" ]; then
   printf 'worktree-add: %s already exists on %s, reused\n' "$wt" "$branch" >&2
 else
   mkdir -p "$WORK_DIR/$key" || die "the work directory $WORK_DIR/$key could not be created"
@@ -155,7 +184,7 @@ fi
 # it is not already that branch: a report that changes nothing would still commit and push into the state clone
 based=''
 case "$id" in
-  T-*-[0-9][0-9]) based=$(record_base "$state/repos/$key/progress/$id.md" "$base") ;;
+  T-*-[0-9][0-9]) based=$(record_base "$progress" "$base" "$(git -C "$clone" merge-base "refs/heads/$branch" "$base_sha")") ;;
 esac
 
 if [ "$task_branch" != "$branch" ] || [ -n "$based" ]; then
