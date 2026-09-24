@@ -20,8 +20,8 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | route | what |
 |---|---|
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh` |
-| `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline |
-| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent` and the relay's `held` reason, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
+| `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
+| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets and the last doctor notice |
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
@@ -41,6 +41,15 @@ so a visual's script can read the token in its URL. The CSP stops its requests b
 frame, which can carry the token to another origin. The Host check is what keeps a name rebound to 127.0.0.1
 from reaching the API with it. It answers 401 for a missing or
 wrong token, 400 for a missing sid or one outside `[A-Za-z0-9-]+`, and 404 without `visual.html`.
+
+The server is the one reader of an ask. `view` is `AskParser`'s reading of the body: `kind` is `notice` without a
+question, `confirm` for one question whose options are exactly yes and no, `round` otherwise. `preamble` is the
+rendered text before the first `❓`, the whole body for a notice. Each question has `q`, `title`, `after`, `html`
+(its text without the header, option and `➡️` lines), `options` (`key` and inline `html`), `rec` and `recKey`.
+Options inside a fenced block are never read. `body` stays, the text the terminal shows.
+
+Markdown is rendered by Markdig with the advanced extensions and raw HTML escaped. A link whose URL is not http,
+https, relative or a fragment keeps its text and loses its `href`, autolinks included.
 
 `sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw`, so an ask
 rewritten under the same id reads open again. `held` is the reason in `sessions/<sid>/relay` while the relay
