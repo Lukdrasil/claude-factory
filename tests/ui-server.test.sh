@@ -150,6 +150,10 @@ has 'a redraw of q5 succeeds'                                 '^20[01]$' "$(post
 is 'q5 with only a redraw answer is not sent'                 "$(sent q5)" false
 has 'an answer to q5 after the redraw succeeds'               '^20[01]$' "$(post "$port1" s1 '{"ask":"q5","text":"Q1 A"}')"
 is 'q5 with an answer after the redraw reads sent'            "$(sent q5)" true
+printf -- '---\nask: q6\ntask: T-001\nflow: grill\nstep: round 4\nstatus: open\n---\n\nThe visual row of q6.\n' > "$ui/sessions/s1/asks/q6.md"
+sleep 1
+has 'a Q1 more on q6 succeeds'                                '^20[01]$' "$(post "$port1" s1 '{"ask":"q6","text":"Q1 more"}')"
+is 'q6 with only a Q1 more answer is not sent'                "$(sent q6)" false
 
 # --- the stream: a change under /state reaches it within 1 s, past a folder it cannot read ------------------------
 curl -sN -m 60 -H "X-Factory-Token: $token" "http://127.0.0.1:$port1/api/stream" > "$tmp/stream" 2>/dev/null &
