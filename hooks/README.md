@@ -36,7 +36,8 @@ together with every deny they keep.
   dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
 - **cd tracking.** `cd <abs>`, `cd`, `cd ~` and `cd ~/x` (through `$HOME`) move the cwd that the segments
   joined to it by `&&` are judged against. After `;`, `||` or `|` the `cd` may have failed or run in a
-  subshell, so a relative target is judged against the cwd before the `cd` as well. After a `cd` the guard
+  subshell, so a relative target is judged against the cwd before the `cd` as well. A `cd` entered through `|`
+  runs in a subshell and never moves the cwd. After a `cd` the guard
   cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`), a relative
   write target is denied, whether a redirect or an in-place editor's operand. An absolute target is judged as
   any absolute target.

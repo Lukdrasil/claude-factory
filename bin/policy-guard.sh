@@ -670,7 +670,7 @@ heredoc_stripped() { # <command> — prints the command to scan
 
 # T-228 Q23: a segment ends at `;`, `|`, `&` and a line break, but only outside quotes: a `&&` inside a printf
 # argument or a commit message is data. A quoted span that runs over several lines stays on one. T-228-06: with
-# `lead`, each segment carries the separator before it, `a` for `&&`, `o` for any other and `-` for none.
+# `lead`, each segment carries the separator before it, `a` for `&&`, `p` for `|`, `o` for any other and `-` for none.
 split_segs() { # <command> [lead]
   printf '%s\n' "$1" | awk -v lead="${2:-}" '
     function emit() { if (seg != "") print (lead != "" ? code " " : "") seg; seg = "" }
@@ -685,7 +685,7 @@ split_segs() { # <command> [lead]
           seg = seg (ch == "\n" ? " " : ch); continue
         }
         if (ch == ";" || ch == "|" || ch == "&" || ch == "\n") { sep = sep ch; continue }
-        if (sep != "") { emit(); code = (sep == "&&" ? "a" : "o"); sep = "" }
+        if (sep != "") { emit(); code = (sep == "&&" ? "a" : (sep == "|" ? "p" : "o")); sep = "" }
         if (ch == "\\") { seg = seg ch substr(s, ++i, 1); continue }
         if (ch == "\047" || ch == "\"") q = ch
         seg = seg ch
@@ -701,11 +701,13 @@ unquoted() { # <text>
 # T-228 Q22: `cd <abs>`, and `cd`, `cd ~`, `cd ~/x` through $HOME, move the cwd the later segments are judged
 # against. A `cd` the guard cannot resolve (relative, `-`, a variable, `..`, a quoted path, a `)`) leaves it unknown.
 # T-228-06: only `&&` makes the next segment wait for the cd. After `;`, `||` or `|` the cd may have failed or run in
-# a subshell, so cwd_alt keeps the cwd before it, and a relative target is judged against both.
+# a subshell, so cwd_alt keeps the cwd before it, and a relative target is judged against both. A cd entered through
+# `|` runs in a subshell and never moves the cwd.
 cwd_lost=''
 cwd_alt=''
-cd_track() { # <one command segment> <separator code after it>
+cd_track() { # <one command segment> <separator code after it> <separator code before it>
   ct_sep=$2
+  [ "${3:-}" != p ] || return 0
   set -f
   # shellcheck disable=SC2086
   set -- $1
@@ -864,10 +866,10 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''
+  prev=''; plead=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}"; prev=$seg
+    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
     check_state_push "$seg"
     with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
@@ -955,10 +957,10 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''
+  prev=''; plead=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}"; prev=$seg
+    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
     case "$seg" in
       *'>'*)
         rtargets=$(unquoted "$seg" | grep -oE '(^|[^=<>-])>>?[[:space:]]*[^[:space:]"'"'"';|&<>()]+' | sed 's/^[^>]*>*[[:space:]]*//'
@@ -993,10 +995,10 @@ guard_bash() {
   set -- $ssegs
   IFS=$oIFS
   set +f
-  prev=''
+  prev=''; plead=''
   for line in "$@"; do
     seg=${line#* }
-    cd_track "$prev" "${line%% *}"; prev=$seg
+    cd_track "$prev" "${line%% *}" "$plead"; prev=$seg; plead=${line%% *}
     bash_in_place_write "$seg" || continue
     useg=$(unquoted "$seg")
     pseg=$(printf '%s' "$seg" | sed -E "s/'[^']*'|\"[^\"]*\"/ @Q /g")
