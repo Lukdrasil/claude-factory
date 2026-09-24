@@ -19,6 +19,7 @@ app.UseStaticFiles();
 app.MapGet("/api/stream", (HttpContext ctx, [FromServices] MountScanner[] scanners, CancellationToken ct) => Api.Stream(ctx, scanners, ct));
 app.MapGet("/api/board", (StateReader state) => Api.Board(state));
 app.MapGet("/api/tasks/{id}", (string id, StateReader state) => Api.TaskDetail(id, state));
+app.MapGet("/api/sessions", (UiHome home) => Results.Ok(home.Sessions()));
 app.MapGet("/api/setup", (StateReader state, UiHome home) => Api.Setup(state, home));
 app.MapPost("/api/answers/{sid}", (string sid, AnswerRequest req, UiHome home) => Api.PostAnswer(sid, req, home));
 app.Run();
@@ -105,5 +106,6 @@ static class Api
 [JsonSerializable(typeof(List<TaskRow>))]
 [JsonSerializable(typeof(TaskDetail))]
 [JsonSerializable(typeof(SetupInfo))]
+[JsonSerializable(typeof(List<SessionInfo>))]
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 partial class UiJson : JsonSerializerContext;
