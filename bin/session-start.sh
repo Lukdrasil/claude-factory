@@ -1,6 +1,6 @@
 #!/bin/sh
-# SessionStart hook, the standalone posture (ADR-0049): the context a worker gets baked into its CLAUDE.md
-# (ClaudeMdBuilder, ADR-0013): the repo's toolset, then one index line per memory file of the repo and of the
+# SessionStart hook, the standalone posture (ADR-0049): the context a session starts with (ADR-0013): the
+# repo's toolset, then one index line per memory file of the repo and of the
 # global memory instead of their bodies, top level only, never
 # proposals/ — is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
@@ -94,8 +94,8 @@ stale_plugin_warning() {
     printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
   fi
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
-  # every text they had read named one and the single sentence that says otherwise lives in a skill a worker
-  # never loads.
+  # every text they had read named one and the single sentence that says otherwise lives in a skill a session
+  # may never load.
   printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
   stale_plugin_warning
   printf 'Factory context for repo %s from the state repo at %s/state (ADR-0049): the sections below are concatenated from there, not files of this clone — do not edit them here; a lesson worth keeping goes through a memory proposal (ADR-0011).\n' "$key" "$WORK_DIR"

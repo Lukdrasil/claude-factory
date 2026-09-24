@@ -1,6 +1,6 @@
 ---
 name: block-feature
-description: Implementing a feature task in a worker session: TDD, WIP push, self-reporting progress and status into the state repo. Started by the controller after dispatch with the path to the task file.
+description: Implementing a feature task in a standalone session: TDD, WIP push, self-reporting progress and status into the state repo. Started with the path to the task file.
 ---
 
 # block-feature

@@ -1,7 +1,7 @@
 #!/bin/sh
 # The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
 # as two commits, so plan_hash pins exactly the body a human approved — the first commit flips the status (and
-# bumps `attempt` from failed, sets `phase: implement` from tests_ready, as StateRepository does), the second
+# bumps `attempt` from failed, sets `phase: implement` from tests_ready), the second
 # writes the SHA of that commit into plan_hash. Both commits are then pushed with state_push (lib-tasks.sh), the
 # retry task-done.sh uses; a clone with no origin stays local (T-228 D2).
 #
@@ -9,7 +9,7 @@
 #
 # Exit 2 when both commits landed but the push to the state root did not.
 # Exit 1 with the reason when the task is `in_progress`; nothing written. Every other status may be approved to
-# ready — TaskTransitions.Allowed offers `ready` from all of them, `in_progress` from none, and that includes the
+# ready: `ready` is reachable from all of them, from `in_progress` it is not, and that includes the
 # refinement flip `review → ready` of ADR-0031, which a narrower set here would have refused.
 set -eu
 
@@ -37,7 +37,7 @@ rel=${task#"$state/"}
 from=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)
 case "$from" in
   draft|triaged|ready|claimed|tests_ready|review|blocked|failed|done|closed) ;;
-  *) die "task $id is '$from' — in_progress cannot be approved to ready (TaskTransitions.Allowed)" ;;
+  *) die "task $id is '$from': in_progress cannot be approved to ready" ;;
 esac
 
 # E (2026-09-22, MR !412): approving is the last gate before the body is frozen - plan_hash pins exactly this

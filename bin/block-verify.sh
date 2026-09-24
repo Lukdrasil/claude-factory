@@ -88,7 +88,7 @@ branch_of() { # <task file>
     | sed 's/^["'\'']//; s/["'\'']$//'
 }
 
-# see: docs/design/toolset.md, the command table whose binding cell is wrapped in backticks
+# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks
 binding_of() { # <toolset file> <command name>
   [ -f "$1" ] || return 0
   awk -F '|' -v want="$2" '

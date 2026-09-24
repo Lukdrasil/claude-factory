@@ -1,6 +1,6 @@
 #!/bin/sh
 # PreToolUse attribution gate (P7 "the text describes, the hook enforces"): the deterministic twin of the
-# attribution rule in prompts/worker-system-prompt.md. Nothing this harness publishes says who or what wrote
+# attribution rule in skills/_shared/mr-description.md. Nothing this harness publishes says who or what wrote
 # it: no co-author trailer, no session line or URL, no "generated with" line, no robot emoji. The one sanctioned
 # marker is the ai-drafted label: the forge label every issue created through bin/issue-create.sh carries, so a
 # reader can tell a drafted issue from a human one. The command text carrying `--label ai-drafted` is scanned

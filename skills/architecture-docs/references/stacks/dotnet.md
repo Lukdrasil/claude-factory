@@ -10,8 +10,8 @@ contradicts it means the profile predates the solution, not that the solution dr
 `approaches.md` decides the shape (how many deployable units, how the code inside one is organised,
 how they talk). This file decides what those units *are* in .NET — which project types to propose,
 and what each choice costs. Put every option to the human the same way: options, consequences,
-recommendation. The claude-os solution in `src/dotnet/` (AppHost, ServiceDefaults, a Blazor
-dashboard, a minimal-API worker) is used below only as a worked example.
+recommendation. An invented Orders API solution (AppHost, ServiceDefaults, an `Orders.Api`
+minimal API, an `Orders.Worker` background worker, PostgreSQL) is used below only as a worked example.
 
 Consequences that belong in a document, not in a conversation: a render mode that needs websockets
 is a deployment constraint (`02-constraints.md`, `06-deployment.md`); a project boundary is what
@@ -55,8 +55,8 @@ auth, filters and metadata for everything under them.
 
 One `Map<Capability>Api(this IEndpointRouteBuilder)` extension per capability, one file each,
 `Program.cs` reduced to composition. That is what makes an endpoint group a unit of work: one group
-= one file = one task = one branch, with no shared file to conflict on. claude-os's `WorkerApi`
-`Program.cs` is 25 lines of registrations plus `app.MapWorkerApi()`.
+= one file = one task = one branch, with no shared file to conflict on. `Orders.Api`'s
+`Program.cs` is 25 lines of registrations plus `app.MapOrders()`.
 
 For integration tests, `WebApplicationFactory` needs the entry point visible — `public partial class
 Program;` at the foot of `Program.cs`. Decide once whether the test seam is the host or the handler;
@@ -184,8 +184,8 @@ The render mode chosen above lands here as a deployment constraint.
   you wanted was OpenTelemetry.
 - **Typical mistakes** logic in the AppHost that belongs in a service; editing the generated manifest
   by hand and calling it the deployment; keeping a hand-written compose file *and* an AppHost without
-  recording which one production follows — claude-os has both, and that split is a decision, not an
-  accident.
+  recording which one production follows. If the Orders API kept both, that split would be a
+  decision, not an accident.
 
 ### Background work
 
@@ -195,9 +195,9 @@ The render mode chosen above lands here as a deployment constraint.
 | Separate worker project | the work has its own schedule, scaling or failure profile, or must not be duplicated by web scale-out | another deployable, another configuration and telemetry surface, and a way to hand it work |
 | Queue-driven | work must survive restarts, absorb bursts, or have retry and dead-letter semantics | a broker to operate, idempotent handlers, poison-message handling |
 
-claude-os runs the first shape: `WorkerRegistrationService` and `WorkerPoller` are hosted services
-inside the two web projects — correct while each runs as a single instance, and a risk to record in
-`07-risks.md` with the trigger (a second replica) that changes the answer.
+The Orders API runs the second shape: `OrderExpiryService` and `PaymentPoller` live in `Orders.Worker`,
+so scaling `Orders.Api` out does not duplicate them. The worker itself assumes a single instance, a
+risk to record in `07-risks.md` with the trigger (a second worker replica) that changes the answer.
 
 ## Data access
 

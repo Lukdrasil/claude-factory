@@ -299,7 +299,7 @@ in_registered_clone() { # <cwd>
 # the layout of a session that is reporting for a known task: resolve_cwd_layout's standalone answer where the cwd
 # is a work dir under $WORK_DIR, and otherwise the coordinator's own standalone posture, whose work dir is the
 # registered clone, whose state clone is $WORK_DIR/state and whose stamps sit in $WORK_DIR/<key>/.harness/<task-id>/,
-# the same stamp directory the task's own worker session would use. It falls back to resolve_cwd_layout, so every
+# the same stamp directory the task's own session would use. It falls back to resolve_cwd_layout, so every
 # posture the resolver already reported stays what it was.
 resolve_session_layout() { # <cwd> <task id>
   resolve_cwd_layout "$1" && [ "$LO_POSTURE" = standalone ] && return 0

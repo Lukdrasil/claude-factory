@@ -10,13 +10,10 @@ The session mechanics of the implement archetypes, read with `<plugin-root>/skil
   frontmatter; otherwise change nothing and self-report `failed`.
 - The state clone is `$WORK_DIR/state` (ADR-0049: the worktrees are `$WORK_DIR/<key>/<T-NNN>`, so the clone is
   not a sibling of cwd). `WORK_DIR` comes from your environment, and the SessionStart context names the same
-  path in its "Factory context for repo `<key>` from the state repo at `<WORK_DIR>/state`" line. Only in the
-  older layout, where the clone really is next to the worktree, is it `../state`; `ls $WORK_DIR/state` is what
-  settles it in one call.
+  path in its "Factory context for repo `<key>` from the state repo at `<WORK_DIR>/state`" line.
 - `<id>`, `<key>` and `<branch>` come from the frontmatter; the progress file is
   `$WORK_DIR/state/repos/<key>/progress/<id>.md`.
-- This repo's memory arrives as SessionStart additionalContext, not as a file: a standalone worker has no
-  `CLAUDE.md` in cwd to read. Its **toolset** section (ADR-0039) binds command names to what this repo runs;
+- This repo's memory arrives as SessionStart additionalContext, not as a file in cwd. Its **toolset** section (ADR-0039) binds command names to what this repo runs;
   call them by name, never guess a stack.
   A command the toolset does not have is not a failure: note it in the progress file and move on.
 
@@ -40,7 +37,7 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 ## Output
 
 1. `git fetch origin && git rebase origin/<base>`, `<base>` being `default_branch` for `<key>` in
-   `../state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
+   `$WORK_DIR/state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
    you cannot reconcile inside the task's scope is `blocked`.
 2. Run acceptance again: a rebase can break what was green.
 3. `git push --force-with-lease=<branch>:<sha> origin <branch>`, the only rewrite permitted and only on a
@@ -59,19 +56,18 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 | `blocked` | you need a human decision; question per `<plugin-root>/skills/_shared/blocked-question.md` |
 | `failed` | acceptance could not be met; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
-You write `status:` and `mr_url:`, nothing else: `attempt` and `plan_hash` are the controller's, `ready` and
-`done` the human's (P5). Never write `done`, `ready` or `stalled`, and never a status or an `owner` on a task
+You write `status:` and `mr_url:`, nothing else: `attempt` and `plan_hash` are `task-approve.sh`'s, `ready`
+and `done` the human's (P5). Never write `done` or `ready`, and never a status or an `owner` on a task
 that is not yours.
 
 The one exception is your own claim: the task you were dispatched for goes `in_progress` under your own owner
 string, through `state-report.sh` and never by hand, as step 1 of your archetype spells out.
 
-The posture is standalone unless `DASHBOARD_URL` is set in your environment, which it usually is not: there is
-then no dashboard anywhere, every human gate is a command (`task-approve.sh`, `task-done.sh`, `factory approve`
-/ `factory done`), and telling the user to do something in a dashboard is always wrong.
+There is no dashboard: `state-report.sh` validates, commits and pushes, every human gate is a command
+(`task-approve.sh`, `task-done.sh`, `factory approve` / `factory done`), and telling the user to do something in a dashboard is always wrong.
 
-## WIP push and liveness
+## WIP push
 
-`git push -u origin <branch>` after every green, never `--force`. Report progress before a long operation or the
-watchdog declares you `stalled` (ADR-0009). Every run carries the cap in
+`git push -u origin <branch>` after every green, never `--force`. Report progress before a long operation
+(ADR-0009). Every run carries the cap in
 `<plugin-root>/skills/_shared/test-budget.md`.

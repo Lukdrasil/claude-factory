@@ -7,15 +7,15 @@ Write straight into `proposals/`, never into `memory/`, `adr/` or `architecture/
 subdirectory of `proposals/`: the curation gate does not see them. A human, or the `memory-curator` agent
 under ADR-0052, decides what gets filed.
 
-- **Lesson** to `../state/repos/<key>/memory/proposals/<id>-<slug>.md`, or
-  `../state/memory/global/proposals/` when it holds across repos, or
-  `../state/agents/<agent>/memory/proposals/` when it is about a subagent's own craft.
+- **Lesson** to `$WORK_DIR/state/repos/<key>/memory/proposals/<id>-<slug>.md`, or
+  `$WORK_DIR/state/memory/global/proposals/` when it holds across repos, or
+  `$WORK_DIR/state/agents/<agent>/memory/proposals/` when it is about a subagent's own craft.
   **At most two lessons per task**; with more candidates, keep the two that would save the most next time.
-  A lesson is a sentence you needed at the start of this session and that was not in `CLAUDE.md`.
-- **ADR proposal** to `../state/repos/<key>/adr/proposals/<slug>.md` when this session decided something that
+  A lesson is a sentence you needed at the start of this session and that was not in its SessionStart context.
+- **ADR proposal** to `$WORK_DIR/state/repos/<key>/adr/proposals/<slug>.md` when this session decided something that
   shapes the architecture: a pattern chosen, a dependency direction set, an alternative rejected. Write it
   **without a number**; the gate numbers it on acceptance.
-- **Architecture proposal** to `../state/repos/<key>/architecture/proposals/<slug>.md` when the result made
+- **Architecture proposal** to `$WORK_DIR/state/repos/<key>/architecture/proposals/<slug>.md` when the result made
   something in the product repo's `docs/architecture/` stale and your branch did not fix it. Name the
   document and section, what the merged result does, and the edit to paste.
 
