@@ -6,6 +6,7 @@ import { renderSetupStrip } from './setup.js';
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
 const S = { board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null };
+let linked = new URLSearchParams(location.search).get('ask');
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
 const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane })));
@@ -40,6 +41,9 @@ async function load() {
   S.setup = JSON.parse(setup);
   S.detail = detail && JSON.parse(detail);
   render();
+  const a = linked && allAsks().find((w) => keyOf(w) === linked);
+  linked = null;
+  if (a) show(a);
 }
 
 let loading = null;
@@ -110,7 +114,10 @@ function open(id) {
 function next() {
   const list = waiting(S.sessions);
   if (!list.length) return;
-  const a = list[(list.findIndex((w) => keyOf(w) === S.cursor) + 1) % list.length];
+  show(list[(list.findIndex((w) => keyOf(w) === S.cursor) + 1) % list.length]);
+}
+
+function show(a) {
   S.cursor = keyOf(a);
   open(groupOf(a.task));
   app.querySelector(`aside [data-ask="${S.cursor}"]`)?.scrollIntoView({ block: 'start' });
