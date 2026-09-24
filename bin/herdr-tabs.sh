@@ -17,8 +17,9 @@
 #
 # `state` prints `open`, `closed`, or `none` for a unit with no record. `close` closes the open recorded tab of
 # each unit and prints `<unit> closed <tab_id>`, or `<unit> kept <tab_id> <reason>` for a tab it leaves alone:
-# the caller's own `$HERDR_TAB_ID`, a focused tab, and an agent that is not idle, done or unknown per
-# `herdr tab get`. A close herdr answers with `tab_not_found` is a close. `sweep` runs `close` over every
+# the caller's own `$HERDR_TAB_ID`, a focused tab, an agent that is not idle, done or unknown per
+# `herdr tab get`, and `tab get failed` for a `tab get` that fails or answers with no `focused` field. A
+# `tab get` or a close herdr answers with `tab_not_found` is a close. `sweep` runs `close` over every
 # recorded unit of T-NNN whose status is `done` or `closed`, a step unit judged by its parent's status. Both
 # do nothing without herdr on PATH.
 #
@@ -81,15 +82,22 @@ close_one() { # <unit>
   if [ "$tab" = "${HERDR_TAB_ID:-}" ]; then
     printf '%s kept %s own tab\n' "$1" "$tab"; return 0
   fi
-  info=$(herdr tab get "$tab" 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
-    let t={};try{t=JSON.parse(s).result.tab||{}}catch(e){}
-    process.stdout.write((t.focused===true)+" "+(t.agent_status||"unknown"))})')
+  rc=0
+  reply=$(herdr tab get "$tab" 2>&1) || rc=$?
+  case "$rc $reply" in
+    0\ *) info=$(printf '%s' "$reply" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+      let t;try{t=JSON.parse(s).result.tab}catch(e){}
+      process.stdout.write(t&&typeof t.focused==="boolean"?t.focused+" "+(t.agent_status||"unknown"):"failed")})') ;;
+    *tab_not_found*) info=gone ;;
+    *) info=failed ;;
+  esac
   case "$info" in
+    failed) printf '%s kept %s tab get failed\n' "$1" "$tab"; return 0 ;;
     true\ *) printf '%s kept %s focused\n' "$1" "$tab"; return 0 ;;
-    *\ idle|*\ done|*\ unknown) ;;
+    gone|*\ idle|*\ done|*\ unknown) ;;
     *) printf '%s kept %s agent %s\n' "$1" "$tab" "${info#* }"; return 0 ;;
   esac
-  if ! err=$(herdr tab close "$tab" 2>&1 >/dev/null); then
+  if [ "$info" != gone ] && ! err=$(herdr tab close "$tab" 2>&1 >/dev/null); then
     case "$err" in
       *tab_not_found*) ;;
       *) printf '%s kept %s herdr tab close failed\n' "$1" "$tab"; return 0 ;;
