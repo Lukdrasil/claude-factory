@@ -55,7 +55,14 @@ done
 ask=$(fm "$tmp" ask)
 valid_id "$ask" || die "'$ask' is not an ask id ([a-z0-9-]+)"
 case "$(fm "$tmp" status)" in open|answered) ;; *) die "status: takes open or answered" ;; esac
+bad=$(awk 'NR == 1 && $0 == "---" { fm = 1; next }
+  fm { if ($0 == "---") fm = 0; next }
+  /^```/ { fence = !fence; next }
+  fence { next }
+  /^(❓ |\*\*Q[0-9])/ && !/^❓ \*\*Q[0-9]+\*\* - \*\*.+\*\*/ || /^[ \t]*[-*+][ \t]+(\*\*)?[A-Z](\)|\*\*)/ { print NR ": " $0; exit }' "$tmp")
+[ -z "$bad" ] || die "line $bad: a question is '❓ **Q<n>** - **Title**: ...', an option '  **A** label' (skills/grill/SKILL.md)"
 mv -f "$tmp" "$asks/$ask.md"
 
 port=$(cat "$ui/port" 2>/dev/null || :)
-printf 'http://127.0.0.1:%s/?ask=%s/%s\n' "${port:-7171}" "$sid" "$ask"
+token=$(cat "$ui/token" 2>/dev/null || :)
+printf 'http://127.0.0.1:%s/?ask=%s/%s%s\n' "${port:-7171}" "$sid" "$ask" "${token:+#token=$token}"
