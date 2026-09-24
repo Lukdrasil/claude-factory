@@ -368,4 +368,36 @@ herdr_tab tab-110 blocked false t-109-grill
 out=$(sh "$bin/herdr-tabs.sh" close T-109-grill --state "$hstate" 2>/dev/null)
 check 'close prints a kept tab with its reason'  '^T-109-grill kept tab-110 [^ ]'
 
+# task ids past T-999: a four-digit parent owns the tab record of its blocks and steps
+printf -- '---\nid: T-1000\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: green\ncomplexity: low\n---\n\n# Goal\nfeat(demo): a parent\n' \
+  > "$hstate/repos/demo/tasks/T-1000.md"
+for b in T-1000-01 T-1000-02; do
+  printf -- '---\nid: %s\nrepo: demo\nstatus: done\narchetype: feature\ntier: green\ncomplexity: low\n---\n\n# Goal\nfeat(demo): a block\n' \
+    "$b" > "$hstate/repos/demo/tasks/$b.md"
+done
+out=$(sh "$bin/herdr-tabs.sh" name T-1000-01 --state "$hstate" 2>/dev/null)
+check 'a four-digit block is named'              '^🦊 demo T-1000-01$'
+sh "$bin/herdr-tabs.sh" record T-1000-01 tab-1001 pane-1001 --state "$hstate" 2>/dev/null
+sh "$bin/herdr-tabs.sh" record T-1000-grill tab-1002 pane-1002 --state "$hstate" 2>/dev/null
+out=$(cat "$hroot/demo/.harness/T-1000/herdr-tabs" 2>/dev/null)
+check 'a four-digit block is recorded under its parent' '^T-1000-01 tab-1001 pane-1001$'
+check 'a four-digit step is recorded under its parent'  '^T-1000-grill tab-1002 pane-1002$'
+out=$(sh "$bin/herdr-tabs.sh" state T-1000-01 --state "$hstate" 2>/dev/null)
+check 'a four-digit block reads its record'      '^open$'
+out=$(sh "$bin/herdr-tabs.sh" state T-1000-grill --state "$hstate" 2>/dev/null)
+check 'a four-digit step reads its record'       '^open$'
+herdr_tab tab-1001 idle false t-1000-01
+herdr_tab tab-1002 idle false t-1000-grill
+: > "$HERDR_STUB_LOG"
+sh "$bin/herdr-tabs.sh" sweep T-1000 --state "$hstate" >/dev/null 2>&1
+out=$(cat "$HERDR_STUB_LOG")
+check 'sweep of a four-digit parent closes a done block' '^tab close tab-1001 '
+nocheck 'sweep keeps the step of a parent in progress'   '^tab close tab-1002 '
+rec T-1000 T-1000-02 tab-1003
+herdr_tab tab-1003 idle false t-1000-02
+: > "$HERDR_STUB_LOG"
+sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" >/dev/null 2>&1
+out=$(cat "$HERDR_STUB_LOG")
+check '--all sweeps a record under a four-digit parent'  '^tab close tab-1003 '
+
 exit $fail
