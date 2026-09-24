@@ -119,17 +119,14 @@ deps_of() { # <task file>
 for f in "$state"/repos/*/tasks/*.md; do
   [ -f "$f" ] || continue
   bid=$(sed -n 's/^id:[[:space:]]*//p' "$f" | sed 's/[[:space:]]*#.*//' | head -n 1)
-  case "$bid" in
-    "$parent"-[0-9][0-9]) ;;
-    *) continue ;;
-  esac
+  is_block_of "$parent" "$bid" || continue
   printf '%s\n' "$bid" >> "$tmp/blocks"
   claimed_paths "$f" > "$tmp/paths/$bid"
   deps_of "$f" > "$tmp/deps/$bid"
   acceptance_phrase "$f" > "$tmp/integration/$bid"
 done
 [ -f "$tmp/blocks" ] || die "'$parent' has no T-NNN-NN blocks, so it is not a parent task"
-sort -u "$tmp/blocks" -o "$tmp/blocks"
+sort -u "$tmp/blocks" | sort_ids > "$tmp/blocks.sorted" && mv -f "$tmp/blocks.sorted" "$tmp/blocks"
 
 skeleton="$parent-00"
 

@@ -34,10 +34,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$id" ] || die "usage: block-mr.sh <block-id> [--dry-run] [--state <dir>] [--worktree <dir>]"
-case "$id" in
-  T-[0-9][0-9][0-9]-[0-9][0-9]) ;;
-  *) die "'$id' is not a block id of the shape T-NNN-NN; the parent's MR is bin/mr-open.sh" ;;
-esac
+is_block_id "$id" || die "'$id' is not a block id of the shape T-NNN-NN; the parent's MR is bin/mr-open.sh"
 
 # see: worktree-add.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to
 if [ -z "$state" ]; then

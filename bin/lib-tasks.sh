@@ -27,7 +27,7 @@ yml_field() { # <key> <field>
 owned_task_ids() { # <session id>
   esc=$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')
   grep -l "^owner:[[:space:]]*[^[:space:]]*:$esc[[:space:]]*\$" "$state"/repos/*/tasks/*.md 2>/dev/null \
-    | xargs -r sed -n 's/^id:[[:space:]]*//p' 2>/dev/null | sed 's/[[:space:]]*#.*//' | sort -u
+    | xargs -r sed -n 's/^id:[[:space:]]*//p' 2>/dev/null | sed 's/[[:space:]]*#.*//' | sort -u | sort_ids
 }
 
 # a block that runs as one implement agent with red-first TDD inside, instead of a tests phase and an implement
@@ -166,7 +166,30 @@ norm_into() { # <variable name> <path>
 #   LO_OWN      the session's work dir LO_STATE  the state clone   LO_STAMP  the per-session stamp directory
 # and returns 1 when the path is not under the root at all. The worker layout keeps exactly the directories it
 # always had: LO_OWN = <root>/<task-id>, LO_STATE = <own>/state, LO_STAMP = <own>.
-is_task_id() { case "$1" in T-[0-9][0-9][0-9]|T-[0-9][0-9][0-9]-[0-9][0-9]) return 0 ;; *) return 1 ;; esac; }
+is_task_id() { is_parent_id "$1" || is_block_id "$1"; }
+
+is_parent_id() { # <id>
+  case "$1" in T-[0-9][0-9][0-9]*) ;; *) return 1 ;; esac
+  case "${1#T-}" in *[!0-9]*) return 1 ;; esac
+}
+
+is_block_id() { # <id>
+  is_parent_id "${1%-*}" || return 1
+  case "${1##*-}" in [0-9][0-9]*) ;; *) return 1 ;; esac
+  case "${1##*-}" in *[!0-9]*) return 1 ;; esac
+}
+
+is_block_of() { # <parent> <id>
+  is_block_id "$2" && [ "${2%-*}" = "$1" ]
+}
+
+# lines ordered by the task id in their first word: the parent number, then the block number with a parent
+# before its blocks, the whole line breaking a tie. Duplicates stay; a caller wanting unique lines runs sort -u.
+sort_ids() {
+  awk '{ p = $1; sub(/^T-/, "", p); b = 0
+         if (i = index(p, "-")) { b = substr(p, i + 1) + 1; p = substr(p, 1, i - 1) }
+         print p "\t" b "\t" $0 }' | sort -t "$(printf '\t')" -k1,1n -k2,2n -k3 | cut -f3-
+}
 
 resolve_layout() { # <path> <work root>
   LO_POSTURE=''; LO_TASK=''; LO_OWN=''; LO_STATE=''; LO_STAMP=''

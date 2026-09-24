@@ -54,7 +54,7 @@ fi
 # suffix) of a session that owns a block and its children, otherwise the first owned task
 id=''
 for i in $ids; do
-  case "$i" in T-[0-9][0-9][0-9]) id=$i; break ;; esac
+  if is_parent_id "$i"; then id=$i; break; fi
 done
 [ -n "$id" ] || id=$(printf '%s\n' "$ids" | head -n1)
 task=$(task_of "$id")

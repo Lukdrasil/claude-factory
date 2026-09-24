@@ -99,7 +99,7 @@ wave_ids() { # <wave number>
     { match($0, /wave[[:space:]]*[0-9]+/); if (RSTART == 0) next
       n = substr($0, RSTART, RLENGTH); sub(/wave[[:space:]]*/, "", n)
       if (n + 0 != want + 0) next
-      while (match($0, /T-[0-9][0-9][0-9]-[0-9][0-9]/)) {
+      while (match($0, /T-[0-9][0-9][0-9]+-[0-9][0-9]+/)) {
         print substr($0, RSTART, RLENGTH); $0 = substr($0, RSTART + RLENGTH) } }'
 }
 

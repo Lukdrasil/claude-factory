@@ -153,10 +153,8 @@ if [ -z "${DASHBOARD_URL:-}" ]; then
       review|blocked|failed|tests_ready|in_progress|changes_requested) ;;
       # why: a block MR merged on the forge is a fact the watcher records, so `done` is reachable for a block
       # why: and for a block only; the parent's done stays the human gate of task-done.sh
-      done) case "$id" in
-              T-[0-9][0-9][0-9]-[0-9][0-9]) ;;
-              *) die1 "agent may not set done on $id — only a block reaches done by itself, once its MR is merged" ;;
-            esac ;;
+      done) is_block_id "$id" \
+              || die1 "agent may not set done on $id — only a block reaches done by itself, once its MR is merged" ;;
       # why (T-186): a triage, ops or research task never opens an MR, so `done` is out of reach for it and
       # why: `closed` is its terminal status; the session that finished the work is the one that gets there.
       closed) case "$archetype" in
