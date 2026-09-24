@@ -162,6 +162,21 @@ sleep 1
 has 'a Q1 more on q6 succeeds'                                '^20[01]$' "$(post "$port1" s1 '{"ask":"q6","text":"Q1 more"}')"
 is 'q6 with only a Q1 more answer is not sent'                "$(sent q6)" false
 
+# --- held: the relay's reason reaches an ask whenever it holds any of its answers, a kept-open one included -------
+held() { # <ask>: the held field of that ask of s1 in /api/sessions
+  http "$port1" /api/sessions -H "X-Factory-Token: $token" >/dev/null
+  grep -o "\"ask\":\"$1\"[^}]*" "$tmp/body" | sed -n 's/.*"held":"\([^"]*\)".*/\1/p' | head -n1
+}
+seq_of() { ls "$ui/sessions/s1/answers" | sed -n "s/^\([0-9]*\)-$1\.txt\$/\1/p" | tail -n1; }
+printf -- '---\nask: q7\ntask: T-001\nflow: grill\nstep: round 5\nstatus: open\n---\n\nThe visual row of q7.\n' > "$ui/sessions/s1/asks/q7.md"
+sleep 1
+has 'a redraw of q7 succeeds'                                 '^20[01]$' "$(post "$port1" s1 '{"ask":"q7","text":"Q1 redraw"}')"
+printf '%s gone\n' "$(seq_of q7)" > "$ui/sessions/s1/relay"
+is 'q7 whose only answer is a held Q1 redraw reads held gone' "$(held q7)" gone
+printf '%s gone\n' "$(seq_of q6)" > "$ui/sessions/s1/relay"
+is 'q6 whose only answer is a held Q1 more reads held gone'   "$(held q6)" gone
+rm -f "$ui/sessions/s1/relay"
+
 # --- the stream: a change under /state reaches it within 1 s, past a folder it cannot read ------------------------
 curl -sN -m 60 -H "X-Factory-Token: $token" "http://127.0.0.1:$port1/api/stream" > "$tmp/stream" 2>/dev/null &
 stream=$!
