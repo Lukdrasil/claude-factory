@@ -38,16 +38,18 @@ case "$root" in /*|[A-Za-z]:/*) ;; *) root="$(pwd)/$root" ;; esac
 # is what goes into WORK_DIR; elsewhere cygpath does not exist and the path is already the one the hooks see.
 command -v cygpath >/dev/null 2>&1 && root=$(cygpath -m "$root") || :
 state="$root/state"
-if [ -z "$ui" ] && [ -f "$state/factory.yml" ]; then
-  ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+cur_ui=''
+if [ -f "$state/factory.yml" ]; then
+  cur_ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
 fi
+[ -n "$ui" ] || ui=$cur_ui
 [ -n "$ui" ] || ui=off
 case "$ui" in docker|off) ;; *) die "--ui takes docker or off, not '$ui'" ;; esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # --- what is pending ---------------------------------------------------------------------------------------
-need_init=0 need_yml=0 need_cfg=0 need_wd=0 need_ps=0 need_curation=0
+need_init=0 need_yml=0 need_cfg=0 need_wd=0 need_ps=0 need_curation=0 need_ui=0
 [ -d "$state/.git" ] || need_init=1
 [ -f "$state/repos.yml" ] || need_yml=1
 [ -f "$state/factory.yml" ] || need_curation=1
@@ -66,6 +68,15 @@ printf '%s\n' \
   '# the Factory UI: docker|off, and the port it listens on' \
   "ui: $ui" \
   'ui_port: 7171' > "$tmp/factory.yml"
+# an existing factory.yml keeps every key and gains the ui: asked for and a ui_port: when it has none
+if [ "$need_curation" = 0 ]; then
+  awk -v ui="$ui" '
+    /^ui:/ && !seen { sub(/^ui:[ \t]*[^ \t#]*/, "ui: " ui); seen = 1 }
+    /^ui_port:/ { port = 1 }
+    { print }
+    END { if (!seen) print "ui: " ui; if (!port) print "ui_port: 7171" }' "$state/factory.yml" > "$tmp/factory.yml"
+  cmp -s "$state/factory.yml" "$tmp/factory.yml" || need_ui=1
+fi
 
 # the settings file with env.WORK_DIR set, and with ui: docker promptSuggestionEnabled false, every other key kept;
 # node is native on win32, so the root, the ui and the file all go in on stdin (an env var or an argument would get
@@ -90,7 +101,7 @@ process.stdin.on("data", d => s += d).on("end", () => {
 [ "$(printf '%s\n' "$current" | head -n1)" = "$root" ] || need_wd=1
 [ "$ui" != docker ] || [ "$(printf '%s\n' "$current" | tail -n1)" = true ] || need_ps=1
 
-if [ "$need_init$need_yml$need_cfg$need_wd$need_ps$need_curation" = 000000 ]; then
+if [ "$need_init$need_yml$need_cfg$need_wd$need_ps$need_curation$need_ui" = 0000000 ]; then
   echo "nothing to do: $state is a state repo and $settings has WORK_DIR=$root"
   exit 0
 fi
@@ -110,6 +121,10 @@ if [ "$need_curation" = 1 ]; then
   echo "config $state/factory.yml:"
   diff -u --label /dev/null --label "$state/factory.yml" /dev/null "$tmp/factory.yml" || :
 fi
+if [ "$need_ui" = 1 ]; then
+  echo "config $state/factory.yml:"
+  diff -u --label "$state/factory.yml" --label "$state/factory.yml" "$state/factory.yml" "$tmp/factory.yml" || :
+fi
 [ "$need_cfg" = 0 ] || echo "+ git -C $state config receive.denyCurrentBranch updateInstead"
 if [ "$need_wd" = 1 ] || [ "$need_ps" = 1 ]; then
   echo "settings $settings:"
@@ -122,16 +137,17 @@ if [ "$yes" = 0 ]; then
 fi
 
 # --- apply -----------------------------------------------------------------------------------------------------
-if [ "$need_init" = 1 ] || [ "$need_yml" = 1 ] || [ "$need_curation" = 1 ]; then
+if [ "$need_init" = 1 ] || [ "$need_yml" = 1 ] || [ "$need_curation" = 1 ] || [ "$need_ui" = 1 ]; then
   mkdir -p "$state"
   [ "$need_init" = 0 ] || git init -q -b main "$state"
   [ "$need_yml" = 0 ] || cp "$tmp/repos.yml" "$state/repos.yml"
-  [ "$need_curation" = 0 ] || cp "$tmp/factory.yml" "$state/factory.yml"
+  [ "$need_curation$need_ui" = 00 ] || cp "$tmp/factory.yml" "$state/factory.yml"
   paths=''
   [ ! -f "$state/repos.yml" ] || paths="repos.yml"
   [ ! -f "$state/factory.yml" ] || paths="$paths factory.yml"
   msg="chore: init state repo"
   [ "$need_init" = 1 ] || [ "$need_yml" = 1 ] || msg="chore: default curation: auto"
+  [ "$need_init$need_yml$need_curation" != 000 ] || msg="chore: ui: $ui"
   git -C "$state" add -- $paths
   if [ -n "$(git -C "$state" config user.email || :)" ]; then
     git -C "$state" commit -q -m "$msg" -- $paths

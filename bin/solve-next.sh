@@ -110,7 +110,7 @@ emit() { # <heading> <completion line>
   printf '## %s\n' "$1"
   printf 'Completion: %s\n' "$2"
   printf 'Commands:\n'
-  [ -z "$ui" ] || sh "$bin/ui-session.sh" --session "$ui" --step "$1"
+  [ -z "$ui" ] || sh "$bin/ui-session.sh" --session "$ui" --task "$id" --flow solve --step "$1"
 }
 cmd() { printf '  %s\n' "$1"; }
 

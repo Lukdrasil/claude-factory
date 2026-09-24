@@ -13,6 +13,7 @@ builder.Services.AddSingleton<MountScanner[]>(
     [new MountScanner("/state", TimeSpan.FromMilliseconds(250)), new MountScanner("/ui", TimeSpan.FromMilliseconds(250))]);
 
 var app = builder.Build();
+app.Use(Api.RequireLocalHost);
 app.Use(Api.RequireToken);
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -103,6 +104,19 @@ static class Api
             return Results.BadRequest();
         }
         return home.VisualFile(sid) is { } file ? Results.File(file, "text/html; charset=utf-8") : Results.NotFound();
+    }
+
+    /// <summary>403 for any Host other than 127.0.0.1 or localhost on the port in <c>/ui/port</c>, read per request.</summary>
+    public static Task RequireLocalHost(HttpContext ctx, RequestDelegate next)
+    {
+        var host = ctx.Request.Host;
+        if (host.Host is not ("127.0.0.1" or "localhost") || host.Port is null
+            || host.Port != ctx.RequestServices.GetRequiredService<UiHome>().Port())
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        return next(ctx);
     }
 
     public static Task RequireToken(HttpContext ctx, RequestDelegate next)

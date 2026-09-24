@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using Markdig;
 
 public sealed record TaskRow(string Id, string Status, string Archetype, string Tier, string Repo, string Owner, string Goal);
 
@@ -8,7 +7,6 @@ public sealed record TaskDetail(
     TaskRow Task,
     Dictionary<string, string> Fields,
     string Body,
-    string Html,
     List<TaskRow> Blocks,
     string? Plan,
     string? Grill,
@@ -44,7 +42,6 @@ public sealed partial class StateReader(string root)
             Row(text),
             fields,
             body,
-            Markdown.ToHtml(body),
             Tasks().Where(t => t.Id.StartsWith(id + "-", StringComparison.Ordinal)).ToList(),
             slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md"),
             (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id),
