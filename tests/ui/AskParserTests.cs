@@ -246,6 +246,51 @@ public sealed class AskParserTests
         Assert.DoesNotContain("href", q.Options[0].Html);
     }
 
+    [Theory]
+    [InlineData("![x](https://x.invalid/a){onerror=alert(1)}")]
+    [InlineData("## Head {onmouseover=alert(1)}")]
+    [InlineData("![v](https://www.youtube.com/watch?v=dQw4w9WgXcQ)")]
+    public void Markdown_attaches_no_event_attribute_and_no_iframe(string markdown)
+    {
+        var html = Md.ToHtml(markdown);
+
+        Assert.DoesNotMatch(@"\son\w+\s*=", html);
+        Assert.DoesNotContain("<iframe", html);
+    }
+
+    [Fact]
+    public void A_headerless_segment_after_a_question_joins_that_questions_html()
+    {
+        var view = AskParser.Parse("""
+            ❓ **Q1** - **Which store?**: the drawer reads one store.
+              **A** the state repo
+              **B** the UI home
+
+            ❓ a loose line after the question
+            """);
+
+        Assert.Equal(["Q1"], view.Questions.Select(q => q.Q));
+        Assert.Contains("a loose line after the question", view.Questions[0].Html);
+    }
+
+    [Fact]
+    public void A_headerless_segment_before_the_first_question_joins_the_preamble()
+    {
+        var view = AskParser.Parse("""
+            The preamble.
+
+            ❓ a loose line before the question
+
+            ❓ **Q1** - **Which store?**: the drawer reads one store.
+              **A** the state repo
+              **B** the UI home
+            """);
+
+        Assert.Equal(["Q1"], view.Questions.Select(q => q.Q));
+        Assert.Contains("a loose line before the question", view.Preamble);
+        Assert.DoesNotContain("a loose line before the question", view.Questions[0].Html);
+    }
+
     [Fact]
     public void Inline_renders_one_line_without_its_wrapping_paragraph()
     {

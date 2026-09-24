@@ -15,6 +15,7 @@ builder.Services.AddSingleton<MountScanner[]>(
 var app = builder.Build();
 app.Use(Api.RequireLocalHost);
 app.Use(Api.RequireToken);
+app.Use(Api.PagePolicy);
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapGet("/api/stream", (HttpContext ctx, [FromServices] MountScanner[] scanners, CancellationToken ct) => Api.Stream(ctx, scanners, ct));
@@ -116,6 +117,13 @@ static class Api
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         }
+        return next(ctx);
+    }
+
+    /// <summary>The page's own origin for everything and data images besides; <c>/visual</c> sets its own policy.</summary>
+    public static Task PagePolicy(HttpContext ctx, RequestDelegate next)
+    {
+        ctx.Response.Headers.ContentSecurityPolicy = "default-src 'self'; img-src 'self' data:";
         return next(ctx);
     }
 

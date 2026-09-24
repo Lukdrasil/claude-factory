@@ -59,8 +59,8 @@ bad=$(awk 'NR == 1 && $0 == "---" { fm = 1; next }
   fm { if ($0 == "---") fm = 0; next }
   /^```/ { fence = !fence; next }
   fence { next }
-  /^(❓ |\*\*Q[0-9])/ && !/^❓ \*\*Q[0-9]+\*\* - \*\*.+\*\*/ || /^[ \t]*[-*+][ \t]+(\*\*)?[A-Z](\)|\*\*)/ { print NR ": " $0; exit }' "$tmp")
-[ -z "$bad" ] || die "line $bad: a question is '❓ **Q<n>** - **Title**: ...', an option '  **A** label' (skills/grill/SKILL.md)"
+  /^(❓ |\*\*Q[0-9])/ && !/^❓ \*\*Q[0-9]+\*\* - \*\*.+\*\*/ || /^[ \t]*[-*+][ \t]+(\*\*)?[A-Z](\)|\*\*)/ || /^\*\*[A-Z]\*\* / { print NR ": " $0; exit }' "$tmp")
+[ -z "$bad" ] || die "line $bad: a question is '❓ **Q<n>** - **Title**: ...', an option '  **A** label', indented and never a '- **A**' bullet (skills/grill/SKILL.md)"
 mv -f "$tmp" "$asks/$ask.md"
 
 port=$(cat "$ui/port" 2>/dev/null || :)
