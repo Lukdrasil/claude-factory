@@ -51,6 +51,12 @@
 # lowercased id. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh record`,
 # `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`.
 #
+# A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-NNN, before the
+# claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
+# or an agent at work) is printed `skipped` and not started. `--all` first runs `herdr-tabs.sh sweep` over
+# every T-NNN with a tab record, which closes the tabs of units at `done` or `closed` and prints one
+# `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line per recorded tab it tried.
+#
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
 # the task cannot be resolved and when no mode was named, 2 when herdr was asked for and a spawn failed.
