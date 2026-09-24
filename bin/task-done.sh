@@ -128,6 +128,9 @@ cleanup() { # <task file>
   if [ -e "$cu_wt" ]; then
     if [ -n "$(git -C "$cu_wt" status --porcelain 2>/dev/null)" ]; then
       printf 'skipped: %s has uncommitted changes\n' "$cu_wt"
+    elif ! git -C "$cu_wt" symbolic-ref -q HEAD >/dev/null 2>&1 \
+       && [ -z "$(git -C "$cu_wt" branch -r --contains HEAD 2>/dev/null)" ]; then
+      printf 'skipped: %s is on a detached HEAD no remote-tracking ref contains\n' "$cu_wt"
     elif ! git -C "$clone" worktree remove "$cu_wt" >/dev/null 2>&1; then
       printf 'skipped: %s git worktree remove refused it\n' "$cu_wt"
     fi
