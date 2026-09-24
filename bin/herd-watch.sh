@@ -7,8 +7,8 @@
 #
 # The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
 # `<id> mr <old> -> <new>`, with a first sighting written without the arrow. The agent states are herdr's own - working, idle, blocked,
-# done, unknown - plus `gone` for a name that is no longer live, which is how a finished or closed session
-# reads. What has already been reported is kept in `<root>/<key>/.harness/<T-NNN>/herd-watch.state`, one
+# done, unknown - plus `closed` for a unit whose recorded tab herdr-tabs.sh closed, and `gone` for a name that
+# is no longer live otherwise, which is how a session that ended on its own reads. What has already been reported is kept in `<root>/<key>/.harness/<T-NNN>/herd-watch.state`, one
 # `<id> <status> <phase> <agent> <mr>` per line, so a pass with nothing new prints nothing.
 #
 # why: on 2026-09-22 the monitors that ran stopped at `review` and missed the merges and a `need_rebase`. A
@@ -16,6 +16,10 @@
 # the stack and sets a merged block `done` - and turns its state file into the `<id> mr <old> -> <new>` lines
 # above, in this watcher's own vocabulary. mr-watch's own stdout is not passed through, so a merge is one line
 # and not two. `--no-mr` leaves the forge alone, for a repo that has none.
+#
+# After mr-watch every pass runs `herdr-tabs.sh sweep <T-NNN>`, which closes the recorded tab of each unit that
+# is `done` or `closed`, a step by its parent's status. Its stdout is dropped: the `<id> agent <old> -> closed`
+# line of that pass is how the monitor learns of the close.
 #
 # The units are the parent, every T-NNN-NN block of it, and the parent-level step sessions
 # `<T-NNN>-<triage|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step session is
@@ -75,6 +79,7 @@ field() { sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n1 | sed 's/[[:space:]]*#.
 
 # the herdr lifecycle of one dispatched session, by the agent name session-monitor.sh started it under
 agent_state() { # <unit id>
+  [ "$(sh "$bin/herdr-tabs.sh" state "$1" --state "$state")" != closed ] || { printf 'closed'; return 0; }
   command -v herdr >/dev/null 2>&1 || { printf 'gone'; return 0; }
   name=$(printf '%s' "$1" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
   out=$(herdr agent get "$name" 2>/dev/null) || { printf 'gone'; return 0; }
@@ -99,6 +104,7 @@ pass() {
   # the forge first, so the mr column of this pass is the one mr-watch just wrote; a watcher that cannot reach
   # the forge is not a failed pass, the task columns are still news
   [ -n "$nomr" ] || sh "$bin/mr-watch.sh" "$id" --once --state "$state" >/dev/null || :
+  sh "$bin/herdr-tabs.sh" sweep "$id" --state "$state" >/dev/null || :
   now=$(mktemp)
   for f in "$state"/repos/"$key"/tasks/*.md; do
     [ -f "$f" ] || continue
