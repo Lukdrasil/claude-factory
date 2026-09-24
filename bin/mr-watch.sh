@@ -77,12 +77,14 @@ base_of() { # <block id>: the base its worktree was cut from, the session branch
 }
 
 blocks=''
-for f in "$state"/repos/*/tasks/*.md; do
-  [ -f "$f" ] || continue
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
   b=$(fm "$f" id)
   if is_block_of "$id" "$b"; then blocks="$blocks$b
 "; fi
-done
+done <<EOF
+$(task_files "$key")
+EOF
 blocks=$(printf '%s' "$blocks" | sort_ids)
 
 forge_of() { # <mr url>: the tool that speaks to that host

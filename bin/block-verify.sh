@@ -43,6 +43,8 @@
 #     crap:  <value> | over <threshold>: <method> <value>, ... | not bound (repos/<key>/toolset.md)
 #     verdict: green | red
 #
+# The same four lines go to `<root>/<key>/.harness/<block-id>/verify.txt` when the worktree sits under
+# $WORK_DIR, which is where block-mr.sh reads the verification that ran.
 # Two spaces after `crap:` line the value up with the one on the `tests:` line. The verdict is green only when
 # at least one test ran (or the diff is markdown-only, above), none failed and no method of the `crap` run is
 # over the threshold, so zero tests on a diff that carries code is red and so is one method over the threshold
@@ -238,10 +240,20 @@ fi
 note=''
 if [ "$docs_only" -eq 1 ] && [ "$run" -eq 0 ]; then note=' (markdown-only diff)'; fi
 
-printf 'block: %s\n' "$id"
-printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
-printf 'crap:  %s\n' "$crap"
-printf 'verdict: %s\n' "$verdict"
+{
+  printf 'block: %s\n' "$id"
+  printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
+  printf 'crap:  %s\n' "$crap"
+  printf 'verdict: %s\n' "$verdict"
+} > "$tmp/report"
+cat "$tmp/report"
+# see: 3.4 of the agent-org plan, block-mr.sh puts the last report into the block MR as the verification that
+# see: ran, from `<root>/<key>/.harness/<block>/verify.txt` beside review.md and arch.md; a worktree outside
+# see: $WORK_DIR has no such folder and keeps the report on stdout only
+if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}"; then
+  mkdir -p "${LO_STAMP%/*}/$id" && cp "$tmp/report" "${LO_STAMP%/*}/$id/verify.txt" \
+    || printf 'block-verify: the report could not be written to %s\n' "${LO_STAMP%/*}/$id/verify.txt" >&2
+fi
 
 if [ "$verdict" = green ]; then
   exit 0
