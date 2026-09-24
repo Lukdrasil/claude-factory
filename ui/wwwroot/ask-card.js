@@ -19,13 +19,20 @@ const FORMS = {
   defer: (q) => `${q} defer`,
 };
 
-/** Splits an ask's markdown into its questions: a notice has none, a confirm is one question with the options yes and no. */
+const FENCE = /^```[^\n]*\n([\s\S]*?)^```[ \t]*$/gm;
+
+/**
+ * Splits an ask's markdown into its questions: a notice has none, a confirm is one question with the options yes and
+ * no. A fenced block in a question, such as a printed diff, is kept verbatim as its code and never read for options.
+ */
 export function parseAsk(body) {
-  const questions = body.split(/^❓ /m).slice(1).map((part) => {
+  const questions = body.split(/^❓ /m).slice(1).map((fenced) => {
+    const code = [...fenced.matchAll(FENCE)].map(([, c]) => c);
+    const part = fenced.replace(FENCE, '');
     const [, q, title, after, text] = part.match(/^\*\*(Q\d+)\*\* - \*\*(.+?)\*\*(?: \((after [^)]*)\))?:?[ \t]*(.*)/) || [];
     const options = [...part.matchAll(/^[ \t]+\*\*([A-Z])\*\* (.+)$/gm)].map(([, key, label]) => ({ key, label }));
     const rec = (part.match(/^➡️ (.*)$/m) || [])[1] || '';
-    return { q, title, after, text, options, rec, recKey: (rec.match(/^\*\*([A-Z])\*\*/) || [])[1] };
+    return { q, title, after, text, code, options, rec, recKey: (rec.match(/^\*\*([A-Z])\*\*/) || [])[1] };
   }).filter((q) => q.q);
   if (!questions.length) return { kind: 'notice', text: body.trim(), questions };
   const yesNo = questions.length === 1 && questions[0].options.map((o) => o.label.trim().toLowerCase()).join() === 'yes,no';
@@ -55,6 +62,7 @@ function question(q, kind, staged, live) {
   let h = `<section class="q" data-q="${q.q}"><h4><span class="qn">${q.q}</span> ${inline(q.title)}</h4>`;
   if (q.after) h += `<div class="muted">${esc(q.after)}</div>`;
   if (q.text) h += `<p>${inline(q.text)}</p>`;
+  h += q.code.map((c) => `<pre>${esc(c)}</pre>`).join('');
   if (q.options.length) {
     h += `<div class="opts">${q.options.map((o) => `<button class="opt ${on('pick', o.key) ? 'on' : ''}" data-act="pick" data-k="${o.key}" ${live ? '' : 'disabled'}>`
       + `<b>${o.key}</b> ${inline(o.label)}${o.key === q.recKey ? ' <span class="chip accent">recommended</span>' : ''}</button>`).join('')}</div>`;

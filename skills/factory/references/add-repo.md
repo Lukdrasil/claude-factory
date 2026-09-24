@@ -15,8 +15,9 @@ clone or with `--repo <clone-dir>`; a registered clone with a toolset is `nothin
   is `WORK_DIR`). It prints what it would write as two commits in `<root>/state` — the
   `<key>: {url, default_branch, path}` line for `repos.yml` (the key is the origin URL's basename without
   `.git`) and the `repos/<key>/toolset.md` it would seed from `<plugin-root>/toolsets/<stack>.md`
-  (the stack is detected from the clone's files) — and exits 3 without writing. Show that output and ask with
-  one ask (`_shared/ask.md`). Completion: a yes recorded.
+  (the stack is detected from the clone's files) — and exits 3 without writing. Ask with one confirm
+  (`_shared/ask.md`) that carries that output verbatim as a fenced block (```` ```diff ````) between the question
+  line and the options yes and no. Completion: a yes recorded.
 - **Run.** After the yes: the same command with `--yes`. Completion: exit 0.
 - **Read the output.** The first line is the key; then `registered …` / `toolset …` lines, or
   `nothing to do`. A `note: stack <stack> has no toolsets/<stack>.md yet` on stderr means the repo is
