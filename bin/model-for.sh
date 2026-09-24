@@ -1,7 +1,6 @@
 #!/bin/sh
-# The coordinator's model pick per phase/attempt/complexity (T-007), mirroring the orchestrator's lockout
-# ladder (Orchestrator.cs:452-467) over the archetype x tier table (OrchestratorOptions.cs:136-149,
-# OrchestratorOptions.ModelFor): complexity high or attempt >= 1 escalates to opus at every phase; otherwise
+# The coordinator's model pick per phase/attempt/complexity (T-007) over the archetype x tier table: complexity
+# high or attempt >= 1 escalates to opus at every phase; otherwise
 # phase tests -> opus, phase implement -> opus; with no phase, archetype review/feature/bugfix/refactor -> opus
 # (generated code never runs below opus), triage/ops or tier green -> haiku, everything else -> sonnet.
 #

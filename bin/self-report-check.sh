@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop hook (ADR-0009): a session must not end without a self-report the controller can see —
+# Stop hook (ADR-0009): a session must not end without a self-report a human can see:
 # status review|blocked|failed in the task, delivered through state-report.sh: a commit and a push from the
 # session's own state clone (ADR-0050).
 # The hook is the writer: it sends the report itself, so the agent cannot forget to.
@@ -67,14 +67,12 @@ fi
 rounds="$stamp/.harness-stop-rounds"
 
 # Issue #313 point 2: the budget must never end in a silent pass — that silence is the failure mode being fixed.
-# The unresolved violation is written where the controller and a human already look: a line in the task's
-# `## Attempts`, in the shape session-stats.sh and Orchestrator.SetStatusAsync already write there, sent through
-# state-report.sh, which is the one write path either posture has (ADR-0050, and ADR-0047 where a dashboard is
-# configured). Idempotent (a repeated Stop must not append a
+# The unresolved violation is written where a human already looks: a line in the task's `## Attempts`, in the
+# shape session-stats.sh already writes there, sent through state-report.sh, the one write path (ADR-0050).
+# Idempotent (a repeated Stop must not append a
 # second line) and never fatal — a failure to record must not take the session down on top of everything else.
 record_unresolved() { # <a short label of what stayed unresolved>
-  # under a dashboard the line is written server side, so the local clone never gains it and grepping the task
-  # file cannot deduplicate any more: the marker is a file in the work dir, next to the round counter. The `<!-- sid:… -->`
+  # the dedupe marker is a file in the work dir, next to the round counter. The `<!-- sid:… -->`
   # marker of session-stats.sh stays deliberately unshared — it greps for exactly that string to skip its own
   # duplicate, so sharing it would silently suppress the stats line for this session.
   marker="$stamp/.harness-stop-unresolved"
@@ -134,7 +132,7 @@ for i in $ids; do
 
   # T-164: a session may end while the block MRs wait on the forge, so a block in `review` with an `mr_url`
   # (the developer has it), one in `changes_requested` (the fix round is open) and one already `done` are all
-  # reports the controller can see, and none of them blocks the Stop.
+  # reports a human can see, and none of them blocks the Stop.
   case "$s" in
     review|tests_ready|blocked|failed|changes_requested|done) ;;
     *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md and commit + push from the state clone." \

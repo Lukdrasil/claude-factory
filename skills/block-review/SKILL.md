@@ -1,6 +1,6 @@
 ---
 name: block-review
-description: A review task in a worker session: judging a branch or MR diff against acceptance and writing a report into the progress file. Started by the controller after dispatch with the path to the task file.
+description: A review task in a standalone session: judging a branch or MR diff against acceptance and writing a report into the progress file. Started with the path to the task file.
 ---
 
 # block-review
@@ -10,8 +10,8 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
 
 ## Preconditions
 
-- cwd is the clone under review, **read-only**; you write only `../state/repos/<key>/progress/<id>.md`.
-- The toolset section of `CLAUDE.md` (ADR-0039) binds `build`, `test`, `test-filter <expr>`,
+- cwd is the clone under review, **read-only**; you write only `$WORK_DIR/state/repos/<key>/progress/<id>.md`.
+- The toolset section of the SessionStart context (ADR-0039) binds `build`, `test`, `test-filter <expr>`,
   `find-refs <symbol>`. One it lacks is a note under `### Verified`, not a failure.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/rules.md` and
   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/delegation.md` hold; a subagent never writes a finding.
@@ -28,10 +28,10 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
    `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
    owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
    `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
-   snapshot and run `state-report.sh --task <id>` again: that heartbeat is your only liveness signal, so repeat it at every milestone and
-   before a long run (ADR-0009).
+   snapshot and run `state-report.sh --task <id>` again, and repeat it at every milestone and before a long run
+   (ADR-0009).
 2. `git fetch origin && git checkout <branch>`; the diff is `git diff origin/<base>...HEAD`, `<base>` being
-   `default_branch` for `<key>` in `../state/repos.yml`. Read the MR with
+   `default_branch` for `<key>` in `$WORK_DIR/state/repos.yml`. Read the MR with
    `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh mr <mr_url>`; a description not matching it is a finding.
 3. Judge against the source task's `## Acceptance` and `## Out of scope`, never your own. A `- mr: <url>`
    source with no task runs `${CLAUDE_PLUGIN_ROOT}/skills/mr-review/SKILL.md` instead of steps 2 to 5.
@@ -78,4 +78,4 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
 | `blocked` | you need a human decision; question per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
 | `failed` | acceptance unreachable; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
-Never write `done`, `ready`, `in_progress` or `stalled`.
+Never write `done` or `ready`.

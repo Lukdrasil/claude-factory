@@ -1,6 +1,6 @@
 #!/bin/sh
-# arch-delta.sh — the deterministic half of the semantic-drift check of docs/design/architecture-model.md
-# § Enforcement. Read-only, no LLM: it exports the LikeC4 model of the working tree and of <base-ref> and prints
+# arch-delta.sh: the deterministic half of the semantic-drift check of the architecture model
+# (skills/_shared/session-contract.md, Architecture model). Read-only, no LLM: it exports the LikeC4 model of the working tree and of <base-ref> and prints
 # the elements and relations that appeared, vanished or changed kind/technology between them. Whether a change
 # needed a doc edit, which document owns it, or whether the model is *true* stays a human answer — the script
 # says what moved, it never decides and never fixes. A repo with no docs/architecture/*.c4, or a machine with no

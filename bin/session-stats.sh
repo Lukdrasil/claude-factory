@@ -1,8 +1,8 @@
 #!/bin/sh
 # Stop hook: session statistics for the task — the archetype/tier from the frontmatter plus the model, duration
 # and tokens from the transcript (transcript_path from the hook stdin) are sent through state-report.sh as a line
-# for ## Attempts, failed tool calls as lines for ## Tool failures; the dashboard writes them (ADR-0047), or the
-# state clone commits them without one (ADR-0050). A session that owns several tasks gets one line per task.
+# for ## Attempts, failed tool calls as lines for ## Tool failures; the state clone
+# commits them (ADR-0050). A session that owns several tasks gets one line per task.
 # Telemetry: it never blocks (always exit 0); duplicates are guarded by the session_id, in the line and in a marker file.
 set -eu
 
@@ -84,7 +84,7 @@ for id in $ids; do
   [ -n "$stats" ] || parse_transcript || exit 0
 
   attempt=$(sed -n 's/^attempt:[[:space:]]*//p' "$task" | head -n1)
-  # #300: the archetype × tier of the dispatch goes into the line next to the model — the controller maps the
+  # #300: the archetype × tier of the task goes into the line next to the model: model-for.sh maps the
   # initial model from exactly this pair, so the mapping can be tuned from the stats without a second source.
   archetype=$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1)
   tier=$(sed -n 's/^tier:[[:space:]]*//p' "$task" | head -n1)

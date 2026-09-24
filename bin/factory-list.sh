@@ -27,7 +27,7 @@ state="$root/state"
 set -- "$state"/repos/*/tasks/*.md
 [ -f "$1" ] || exit 0
 
-# ponytail: one awk over every task file; the frontmatter is flat key: value (docs/design/task-format.md),
+# ponytail: one awk over every task file; the frontmatter is flat key: value (task-new.sh validates it),
 # so a line-wise read is enough — no yaml parser for six keys.
 awk -v want_repo="$repo" -v want_status="$status" '
   function flush() {

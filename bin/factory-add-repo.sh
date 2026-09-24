@@ -1,6 +1,6 @@
 #!/bin/sh
 # Registers a product clone in the standalone state repo (ADR-0049): one repos.yml line with url, default_branch
-# and path, and repos/<key>/toolset.md seeded from toolsets/<stack>.md (docs/design/toolset.md). Two commits in the
+# and path, and repos/<key>/toolset.md seeded from toolsets/<stack>.md. Two commits in the
 # state repo, nothing pushed. Idempotent: a registered clone with a toolset is "nothing to do".
 #
 #   factory-add-repo.sh --root <dir> [--repo <clone-dir>] [--yes]
@@ -83,7 +83,7 @@ need_toolset=0 solution=''
 if [ -f "$toolset" ]; then
   :
 elif [ ! -f "$tpl" ]; then
-  echo "note: stack $stack has no toolsets/$stack.md yet - $key is registered without a toolset; write repos/$key/toolset.md by hand (docs/design/toolset.md)" >&2
+  echo "note: stack $stack has no toolsets/$stack.md yet - $key is registered without a toolset; write repos/$key/toolset.md by hand (the plugin's toolsets/dotnet.md shows the format)" >&2
 else
   need_toolset=1
   solution=$(printf '%s\n' "$files" | grep -E '\.slnx$' | head -n1)

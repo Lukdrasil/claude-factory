@@ -140,8 +140,8 @@ EOF
   fi
   # architect-agent plan #3: a research task whose `## Context` names the architecture-docs skill gets a
   # product-repo write carve-out (docs/**, CONTEXT.md, README.md) — every other research session stays
-  # read-only. README.md is in because the bootstrap task template asks for a paragraph pointing at the model
-  # (docs/design/architecture-model.md § Docs); without it the task's own ## Docs section is unsatisfiable.
+  # read-only. README.md is in because the bootstrap task template asks for a paragraph pointing at the model;
+  # without it the task's own ## Docs section is unsatisfiable.
   if [ "$archetype" = research ] && [ -n "$taskfile" ]; then
     if awk '/^## Context/ { s=1; next } /^## / { s=0 } s' "$taskfile" | grep -q 'architecture-docs'; then
       architecture_docs=1
@@ -156,8 +156,8 @@ EOF
   # Issue #290: the test lock of the implement phase. "The red tests are the contract" was prompt-level only, and
   # prompting is not a control — ImpossibleBench measured strict prompting cutting reward hacking on SWE-bench
   # from 66 % only to 54 %, and EvilGenie found Claude models specifically favour editing the tests directly.
-  # The globs come from the repo's toolset frontmatter (ADR-0039, issue #289) through the very awk snippet
-  # docs/design/toolset.md publishes — one source, no YAML parser. `phase` is empty (or `null`) on a single-phase
+  # The globs come from the repo's toolset frontmatter (ADR-0039, issue #289) through a line-wise awk over
+  # the `test-globs:` list, no YAML parser. `phase` is empty (or `null`) on a single-phase
   # run, so nothing below ever fires there.
   if [ "$phase" = implement ] && [ -n "$taskfile" ]; then
     key=${taskfile#"$state"/repos/}; key=${key%%/*}
@@ -294,8 +294,8 @@ EOF
 }
 
 # T-003 rule (b): the human gate, enforced. A worktree under $WORK_DIR/<key>/<task-id>/ opens only for a task
-# that is `ready` with the body the `plan_hash` commit carries (the twin of DispatchGate.BodyUnchanged: nothing
-# dispatches on any other basis, and `ready` with a plan_hash is what task-approve.sh writes), or one this very
+# that is `ready` with the body the `plan_hash` commit carries (`ready` with a plan_hash is what task-approve.sh
+# writes), or one this very
 # session already holds: `owner:
 # factory@<host>:<session_id>` with the session id off the hook stdin. A block (`T-NNN-NN`) is created `claimed`
 # by the coordinator and never carries a plan_hash of its own, so `claimed` + owner is the whole gate for it.
@@ -303,7 +303,7 @@ EOF
 # T-187: the two denials below name the approver, and the approver is a command. Telling a session to go to a
 # dashboard it does not have is what sent four sessions to tell their user to "close it in the dashboard".
 approval_stale() { # <the target that asked for it> <the plan_hash it was approved as>
-  deny "the body of $task changed since it was approved as $2 (DispatchGate.BodyUnchanged): re-approve it with $(dirname -- "$0")/task-approve.sh $task --state $state before working in its worktree: $1"
+  deny "the body of $task changed since it was approved as $2: re-approve it with $(dirname -- "$0")/task-approve.sh $task --state $state before working in its worktree: $1"
 }
 approval_gate() { # <the target that asked for it>
   if [ -z "$taskfile" ]; then
@@ -315,12 +315,12 @@ approval_gate() { # <the target that asked for it>
         ''|null) deny "task $task is ready but carries no plan_hash — a human has not approved this body yet (ADR-0004), so its worktree stays closed: $1" ;;
         *) gph=${plan_hash%%[ 	#]*} ;;
       esac
-      # DispatchGate.BodyUnchanged: the body at the approved commit against the body on disk, both without the
+      # the body at the approved commit against the body on disk, both without the
       # frontmatter and without the two sections the machine keeps writing back (`## Attempts`,
       # `## Tool failures` — the status notes and the session-stats lines). A missing commit and an empty
-      # approved body are the same mismatch (DispatchGate.cs:83-87).
+      # approved body are the same mismatch.
       gappr=$(git -C "$state" show "$gph:${taskfile#"$state"/}" 2>/dev/null) || gappr=''
-      [ -n "$gappr" ] || deny "the approved body of $task cannot be read from plan_hash $gph in $state (a missing commit or an empty body is a mismatch, DispatchGate.BodyUnchanged): $1"
+      [ -n "$gappr" ] || deny "the approved body of $task cannot be read from plan_hash $gph in $state (a missing commit or an empty body is a mismatch): $1"
       # the approved body travels in the environment, not in `awk -v`: -v runs its value through escape
       # processing, so a body containing `printf %s\n` (or any other backslash) would arrive changed and every
       # comparison against it would report a mismatch that is not there.
@@ -330,7 +330,7 @@ approval_gate() { # <the target that asked for it>
           n = split(text, lines, "\n"); skip = 0; out = ""
           for (i = 1; i <= n; i++) {
             t = lines[i]; sub(/^[ \t]+/, "", t); sub(/[ \t\r]+$/, "", t)
-            # DispatchGate.Normalize:118-119 — only `# ` and `## ` end a machine section, so a `### ` inside one
+            # only `# ` and `## ` end a machine section, so a `### ` inside one
             # does not turn it back on and one under it does not turn it off
             if (t ~ /^# / || t ~ /^## /) { skip = (t == "## Attempts" || t == "## Tool failures") }
             if (!skip) { out = out lines[i] "\n" }
@@ -924,8 +924,8 @@ guard_bash() {
     with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
   cd_reset
-  # T-036: a `dotnet test` with no wall-clock cap hung a session until the watchdog stalled it — 20 minutes of
-  # dead time and no trace of which test hung. The deterministic twin of _shared/test-budget.md: every command
+  # T-036: a `dotnet test` with no wall-clock cap hung a session for 20 minutes of dead time, with no trace of
+  # which test hung. The deterministic twin of _shared/test-budget.md: every command
   # segment that runs `dotnet test` carries a `timeout` in the same segment. A quoted mention is prose, not a run.
   if printf '%s' "$sc" | grep -Eq '(^|[[:space:]])dotnet[[:space:]]+test([[:space:]]|$)'; then
     set -f

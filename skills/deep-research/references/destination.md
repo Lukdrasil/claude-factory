@@ -16,7 +16,7 @@ reads or archives it.
 ## The commit
 
 `git` works on cwd, and cwd is the product clone whenever the state clone is
-`../state`, so the whole block runs from the state clone the preconditions resolved:
+`$WORK_DIR/state`, so the whole block runs from the state clone the preconditions resolved:
 
 ```sh
 (

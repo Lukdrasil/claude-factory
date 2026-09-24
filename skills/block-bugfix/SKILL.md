@@ -1,6 +1,6 @@
 ---
 name: block-bugfix
-description: Fixing a defect in a worker session: reproduce with a test, smallest possible fix, WIP push, self-reporting progress and status into the state repo. Started by the controller after dispatch with the path to the task file.
+description: Fixing a defect in a standalone session: reproduce with a test, smallest possible fix, WIP push, self-reporting progress and status into the state repo. Started with the path to the task file.
 ---
 
 # block-bugfix

@@ -1,33 +1,30 @@
 ---
 name: block-triage
-description: Triaging one forge issue into a draft os-task in the state repo, deciding archetype, tier and complexity and writing a new draft with status draft (a roadmap-edited draft with status triaged). Started by the controller after dispatching a triage task; can also be run by hand with an issue URL.
+description: Triaging one forge issue into a draft task in the state repo, deciding archetype, tier and complexity and writing a new draft with status draft. Started with the path to a triage task file; can also be run by hand with an issue URL.
 ---
 
 # block-triage
 
 Plugin root: `${CLAUDE_PLUGIN_ROOT}`; this skill's directory is `<plugin-root>/skills/block-triage`.
 
-Turn one source into **one draft os-task**: a new draft with `status: draft`, a roadmap draft edited to
-`status: triaged`. You implement nothing and approve nothing: either to `ready` is a human action. A large
+Turn one source into **one draft task**: a new draft with `status: draft`. You implement nothing and approve
+nothing: `ready` is a human action. A large
 issue is **one** draft, not five; a suggested split is a sentence under `## Internal`, never more tasks.
 
 ## Sources
 
 - **A forge issue**, the URL in the dispatched task's `## Context`, `<key>` its frontmatter `repo:`.
-- **A roadmap draft**, the line `- draft: repos/<key>/tasks/<id>.md` instead of a URL: the source is that
-  existing draft. Read it, skip steps 2, 5 and 7, and instead of creating a file **edit that draft** with the
-  **Edit** tool, filling its body from the template without `## Issue update`, setting tier, complexity and
-  archetype, and finally writing `status: triaged` into its frontmatter. Edit only the draft it names.
 - **The source can be a merge request**, `- mr: <url>` in `## Context` or an MR linked from the issue: read
   `references/mr-source.md`, and the draft becomes a review task.
 
 Started by hand with a URL or `<repo-key>#<number>` instead of a task path, read `references/manual-mode.md`
-first. The rest is the worker procedure.
+first. The rest is the procedure for a triage task file.
 
 ## Preconditions
 
-- cwd **is** the state clone and there is no product clone, so everything you need comes out of the forge,
-  never the filesystem, and the clone stays read-only towards the state repo.
+- There is no product clone, so everything you need comes out of the forge, never the filesystem. The state
+  clone is `$WORK_DIR/state` and stays read-only towards the state repo except through `state-report.sh` and
+  `task-new.sh`.
 - The dispatched task file is read in full; the issue's repo is already in `repos.yml`.
 
 ## Steps
@@ -53,14 +50,12 @@ first. The rest is the worker procedure.
    draft, never something you carry out. A source you cannot decide an archetype for is `blocked`, with the
    question in the progress file as `## Question`.
 5. Check no task in `repos/*/tasks/*.md` already references this issue; one that does **is** the result.
-6. Write the draft body from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, then create the task. The
-   writer depends on one switch, `DASHBOARD_URL`: empty or unset (the standalone posture, and the ordinary
-   case) means `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>`; set means the Task
-   API per `references/draft-api.md`, which is the only reason to open that file.
+6. Write the draft body from `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-template.sh task`, then create the task with
+   `sh ${CLAUDE_PLUGIN_ROOT}/bin/task-new.sh --repo <key> --file <markdown>`.
 7. Append the draft's `## Issue update` to the issue description per `references/issue.md`; a failed write
    is not fatal.
 8. Commit the progress file and self-report `review` per `references/self-report.md`; `mr_url` stays `null`.
 
-**Done when** the draft exists with `status: draft` (a roadmap draft `status: triaged`), `plan_hash`, `owner`
+**Done when** the draft exists with `status: draft`, `plan_hash`, `owner`
 and `mr_url` `null`, its path and validator run under `## Evidence`, and the triage task reports `review`,
 `blocked` or `failed`.

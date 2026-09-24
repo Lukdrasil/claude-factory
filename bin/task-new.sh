@@ -1,7 +1,7 @@
 #!/bin/sh
 # Writes a new task straight into a state clone, which in the standalone posture (ADR-0050) is how every task
-# comes into being: the id and slug computed the way TaskWriter computes them, the frontmatter validated against
-# docs/design/task-format.md (TaskSchema + TaskWriter.Validate), then one commit. A clone without an origin
+# comes into being: the id one more than the highest id taken, the slug from the title, the frontmatter
+# validated by the node check below, then one commit. A clone without an origin
 # stays local. A clone with an origin syncs first and pushes after: the id is one more than the highest id
 # taken, so two machines on one state remote could otherwise both hand out the same number — a push the
 # remote refuses drops the commit, syncs again, recomputes the id and tries again, three times at most
@@ -9,9 +9,9 @@
 #
 #   task-new.sh --repo <key> [--parent T-NNN] [--slug <slug>] [--status claimed --owner <owner>] [--state <dir>] --file <markdown>
 #
-# cwd = the state clone unless --state. Prints {"id":…,"file":…} like POST /api/tasks; a refusal is exit 1 with
-# the reason on stderr and nothing written. `--status claimed --owner` is the one divergence from the API: a
-# block a standalone session cuts for itself is born claimed by that session.
+# cwd = the state clone unless --state. Prints {"id":…,"file":…}; a refusal is exit 1 with the reason on stderr
+# and nothing written. `--status claimed --owner` is for a block a session cuts for itself: it is born claimed
+# by that session.
 set -eu
 
 repo='' parent='' slug='' status=draft owner='' state='' file=''
@@ -138,7 +138,7 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   if(f.status!=="draft")fail("a new task may only be created as draft");
   if(f.archetype==="research"){
     const b=body(s);const m=/(?:^|`)\s*(test-filter|test|build|mutation)\b/m.exec(section(b,"## Acceptance"));
-    if(m)fail(`\`archetype: research\` cannot satisfy this \`## Acceptance\`: \`${m[1]}\` is a toolset command that only passes by committing product-repo state (docs/design/toolset.md), and a research task is read-only towards the product repo (block-research, ADR-0016). Fold it into the dependent task that commits, or cut a separate committing task; do not switch archetype.`);
+    if(m)fail(`\`archetype: research\` cannot satisfy this \`## Acceptance\`: \`${m[1]}\` is a toolset command that only passes by committing product-repo state, and a research task is read-only towards the product repo (block-research, ADR-0016). Fold it into the dependent task that commits, or cut a separate committing task; do not switch archetype.`);
     const docs=section(b,"## Docs").trim().replace(/^[`.]+|[`.]+$/g,"").trim();
     if(docs.length&&docs.toLowerCase()!=="none"&&!section(b,"## Context").includes("architecture-docs"))
       fail("`archetype: research` cannot satisfy this `## Docs`: a research task may not write into the product repo (block-research, ADR-0016). The one carve-out is the architecture-docs handoff, and only when `## Context` carries `- skill: architecture-docs`; otherwise write `none` here.");

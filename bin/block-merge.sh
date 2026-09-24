@@ -75,7 +75,7 @@ if [ -z "$branch" ]; then
   [ -n "$branch" ] || branch="block/$id"
 fi
 
-# see: docs/design/toolset.md and bin/block-verify.sh, the same reader for a command's binding cell
+# see: bin/block-verify.sh, the same reader for a command's binding cell
 binding_of() { # <toolset file> <command name>
   [ -f "$1" ] || return 0
   awk -F '|' -v want="$2" '

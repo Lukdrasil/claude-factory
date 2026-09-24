@@ -113,8 +113,7 @@ progress=''
 if [ -f "$1" ]; then progress_file=$1; progress=$(cat "$1"); fi
 
 # ---------------------------------------------------------------------------
-# The session's own clone is the writer (ADR-0050). The checks are TaskReport.Check / CheckMrUrl and
-# TaskTransitions.Agent, the edits Frontmatter.SetField / AppendSection.
+# The session's own clone is the writer (ADR-0050).
 die1() { printf 'state-report: the report of %s was refused: %s\n' "$id" "$1" >&2; exit 1; }
 # E3: one report at a time per state clone, from the read of the committed status to the push — two sessions
 # that both read `claimed` and both wrote `in_progress` is the race the lock closes (state_lock, lib-tasks.sh).
@@ -151,18 +150,17 @@ if [ "$send_status" = 1 ]; then
             esac ;;
     *) die1 "agent may not set $status — a session reports review|blocked|failed|tests_ready|in_progress|changes_requested, or done on a block whose MR is merged" ;;
   esac
-  # TaskTransitions.Agent (ClaudeOs.Dashboard/State/TaskTransitions.cs), plus the one standalone divergence of
-  # ADR-0050: `ready → in_progress`, the claim a session makes for itself where there is no orchestrator to
-  # claim for it, and the T-186 divergence below: a triage, ops or research task reaches `closed` from
+  # The agent transitions, with `ready → in_progress` for the claim a session makes for itself (ADR-0050), and
+  # the T-186 case below: a triage, ops or research task reaches `closed` from
   # `review`, `in_progress` or `blocked` because no MR and no watcher will ever close it for the session.
-  # Everything else, done and ready and back, is a human's or the watchdog's.
+  # Everything else, done and ready and back, is a human's.
   if [ -n "$committed" ] && [ "$committed" != "$status" ]; then
     case "$committed:$status" in
       claimed:in_progress|ready:in_progress|tests_ready:in_progress) ;;
       in_progress:review|in_progress:blocked|in_progress:failed|in_progress:tests_ready) ;;
       review:changes_requested|changes_requested:review|changes_requested:in_progress|review:done) ;;
       review:closed|in_progress:closed|blocked:closed) ;;
-      *) die1 "agent may not set $status from $committed — $committed is what the state root has for $id, and $committed → $status is not an agent transition (TaskTransitions.Agent). Report a status you may reach from there, or leave it to the human who owns this one." ;;
+      *) die1 "agent may not set $status from $committed: $committed is what the state root has for $id, and $committed → $status is not an agent transition. Report a status you may reach from there, or leave it to the human who owns this one." ;;
     esac
   fi
   case "$current" in
@@ -179,7 +177,7 @@ if [ -n "$mr_url" ]; then
   case "$mr_url" in http://*|https://*) ;; *) die1 "mr_url must be an http(s) URL" ;; esac
 fi
 
-# the lines go under their sections the way the dashboard writes them: at the end of the section, which is
+# the lines go under their sections: at the end of the section, which is
 # created at the end of the file when missing; one array element per line of the argument
 if [ -n "$attempts$tool_failures" ]; then
   A=$attempts T=$tool_failures node -e '
