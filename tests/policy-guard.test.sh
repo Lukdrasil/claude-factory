@@ -15,8 +15,11 @@ sha=0123456789abcdef0123456789abcdef01234567
 
 mkdir -p "$W/state/repos/cf/tasks" "$W/cf/T-900" "$W/cf/T-900-01" "$W/cf/T-900-02" "$W/cf/.harness/T-900" \
   "$C/cf" "$C/userorg"
-printf 'cf: {url: "https://forge.test/cf.git", default_branch: main, path: "%s"}\nuserorg: {url: "https://forge.test/u.git", default_branch: main, path: "%s"}\n' \
-  "$C/cf" "$C/userorg" > "$W/state/repos.yml"
+printf 'cf: {url: "https://forge.test/cf.git", default_branch: main, path: "%s"}\nuserorg: {url: "https://forge.test/u.git", default_branch: main, path: "%s"}\ndemo: {url: "https://forge.test/demo.git", default_branch: main, path: "%s"}\n' \
+  "$C/cf" "$C/userorg" "$W/src/ui-demo" > "$W/state/repos.yml"
+git init -q "$W/src/ui-demo"
+git -C "$W/src/ui-demo" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$W/src/ui-demo" worktree add -q "$W/src/ui-demo-wt" 2>/dev/null
 task() { # <id> <branch> <owner sid> <phase>
   printf -- '---\nid: %s\nrepo: cf\nbranch: %s\nstatus: in_progress\narchetype: bugfix\nphase: %s\nowner: factory@host:%s\n---\n\n# Goal\nx\n' \
     "$1" "$2" "$4" "$3" > "$W/state/repos/cf/tasks/$1.md"
@@ -201,5 +204,16 @@ try 2 'git commit -m x -- <a directory without a slash> in the state clone' "$W/
 try 0 'cd /tmp && cd /tmp/scratch, then a relative write, from the registered clone' "$C/cf" coord 'cd /tmp && cd /tmp/scratch && echo x > y'
 try 0 'cd /tmp/scratch && a pipe into a relative redirect, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && make | sort > out.txt'
 try 0 'cd /tmp/scratch && a quoted ; and ( in a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && echo "a; b (c)" > y'
+
+# T-264-01: a registered clone under the work root takes the standalone posture, not the catch-all's own dir
+try 0 'the coordinator runs git -C <parent> rev-parse from a registered clone under the work root' "$W/src/ui-demo" coord \
+  "git -C $PAR rev-parse HEAD"
+try 0 'the coordinator cats <parent>/README.md from a registered clone under the work root' "$W/src/ui-demo" coord \
+  "cat $PAR/README.md"
+try 2 'a worktree of a registered clone under the work root keeps the catch-all' "$W/src/ui-demo-wt" coord \
+  "cat $PAR/README.md"
+try 2 'a block writes into a sibling block, T-264 regression' "$BLK" blk "echo x > $W/cf/T-900-02/x"
+try 2 'a write from the state clone to outside it and outside /tmp, T-264 regression' "$W/state" coord \
+  'echo x > /opt/outside.txt'
 
 exit $fail
