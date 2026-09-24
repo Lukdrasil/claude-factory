@@ -47,12 +47,12 @@ check 'session of a unit with no record exits 1'  0 '^1$' "$rc"
 check 'session of a unit with no record writes nothing' 1 'T-ECS-12-lead' "$(tabs ecs T-ECS-12)"
 
 # reattach after a herdr restart: the agents are unnamed, found by the recorded pane and session id
+task ecs T-ECS-12-02 in_progress
 ht record T-ECS-12-lead tab-3 pane-3 sid-3
 ht record T-ECS-12-02 tab-4 pane-4 sid-4
 ht record T-ECS-12-grill tab-5 pane-5 sid-5
 ht record T-ECS-12-decompose tab-6 pane-6 sid-6
 ht record T-ECS-12-triage tab-7 pane-7 sid-7
-task ecs T-ECS-12-02 in_progress
 mkdir -p "$state/.capacity/implementer" "$state/.capacity/sessions"
 printf 'role=implementer\nsession=\nunit=T-ECS-12-02\nat=1\n' > "$state/.capacity/implementer/T-ECS-12-02"
 printf 'role=sessions\nsession=\nunit=T-ECS-12-02\nat=1\n' > "$state/.capacity/sessions/T-ECS-12-02"
@@ -80,10 +80,10 @@ check 'reattach prints a unit with no agent gone' 0 '^T-ECS-12-triage gone$' "$o
 
 # a legacy id keeps its t-, and a closed record is not reattached
 task demo T-264 in_progress
+task demo T-264-01 in_progress
 ht record T-264-grill tab-8 pane-8 sid-8
 ht record T-264-01 tab-9 pane-9 sid-9
 printf 'T-264-01 tab-9 closed\n' >> "$tmp/factory/demo/.harness/T-264/herdr-tabs"
-task demo T-264-01 in_progress
 herdr_agent - idle pane-8 sid-8
 herdr_agent - idle pane-9 sid-9
 : > "$log"
