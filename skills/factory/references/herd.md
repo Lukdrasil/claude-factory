@@ -41,7 +41,7 @@ back in a return value, so every claim is one you rerun.
 | 10 session worktree | monitor | `worktree-add.sh` |
 | 11 block work | sessions | `session-monitor.sh --task <id> --wave N`, one tab per block |
 | 11 block gates | monitor | the red rerun, `block-verify.sh`, `block-merge.sh --verify`, `block-mr.sh` |
-| 12, 12b acceptance, duplication | monitor | the parent's acceptance verbatim, `dup-check.sh` |
+| 12, 12b acceptance, duplication | monitor | the parent's acceptance verbatim; `git diff origin/<base>...<branch> > <harness>/review.diff`, then `dup-check.sh <harness>/review.diff <worktree>`, never a task id |
 | 13 review | monitor | `factory-reviewer` as a subagent, because its verdict belongs in your context |
 | 14, 15, 16 MR, report, knowledge | monitor | as in solve |
 
@@ -67,6 +67,9 @@ The rule behind the split: anything that writes the change is a session, anythin
    the human.
 6. `<id> agent <state> -> gone` with the status unchanged is a session that died without reporting. Rerun
    `solve-next.sh` and dispatch it again; two deaths in a row is `_shared/blocked-question.md`.
+7. After each wave, close the herdr tab of every unit at `done` or `closed`: the tab is labelled with the
+   unit's id in `herdr tab list --workspace $HERDR_WORKSPACE_ID`, and `herdr tab close <tab_id>` closes it.
+   Then post one line per active task, `<id> <status> <next step>`, so the human never has to ask.
 
 ## `review` is not the end
 

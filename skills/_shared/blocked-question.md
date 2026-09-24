@@ -12,7 +12,7 @@ section **under 100 words and 12 lines** — a longer question is a question you
 The answer comes back as one line in the task's `## Context`, naming an option by number:
 
 ```markdown
-**Answer (YYYY-MM-DD): option 2** — <optional one line>
+**Answer (YYYY-MM-DD): option 2**, <optional one line>
 ```
 
 An answer that picks an option and leaves the rest of the task contradicting it re-dispatches straight

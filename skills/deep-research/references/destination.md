@@ -21,7 +21,7 @@ reads or archives it.
 ```sh
 (
   cd <state clone> || exit 1
-  git add <path to the report> && git commit -m "research: <topic>"
+  git add <path to the report> && git commit -m "research: <topic>" -- <path to the report>
   git pull --rebase --autostash -X theirs && git push
 )
 ```
