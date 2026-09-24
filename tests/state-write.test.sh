@@ -134,7 +134,7 @@ rc=0
 out=$(PATH="$tmp/fakebin:$PATH" FIRST_PUSH="$tmp/two/first-push.sh" \
   sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/two/draft.md" 2>"$tmp/two/err") || rc=$?
 check '2. task-new exits 1' 1 "$rc"
-check '2. the refusal is reported on stderr' yes "$(grep -q '^task-new: .*HEAD' "$tmp/two/err" && echo yes || echo no)"
+check '2. the refusal is reported on stderr' yes "$(grep -q '^task-new: .*moved past' "$tmp/two/err" && echo yes || echo no)"
 check '2. the foreign commit is still HEAD' 'a foreign commit' "$(git -C "$st" log -1 --format=%s)"
 check '2. the own commit is kept under it' 'chore(T-002): new draft task' "$(git -C "$st" log -1 --format=%s HEAD~1)"
 check '2. the own task file is kept' yes \

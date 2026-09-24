@@ -2,10 +2,13 @@
 # Writes a new task straight into a state clone, which in the standalone posture (ADR-0050) is how every task
 # comes into being: the id and slug computed the way TaskWriter computes them, the frontmatter validated against
 # docs/design/task-format.md (TaskSchema + TaskWriter.Validate), then one commit. A clone without an origin
-# stays local. A clone with an origin syncs first and pushes after: the id is one more than the highest id
-# taken, so two machines on one state remote could otherwise both hand out the same number — a push the
-# remote refuses drops the commit, syncs again, recomputes the id and tries again, three times at most
-# (the ADR-0012 recipe; the third failure leaves the commit in the clone, unpushed, and says so).
+# stays local. A clone with an origin syncs first and pushes after, all under the state lock of lib-tasks.sh:
+# the id is one more than the highest id taken, so two machines on one state remote could otherwise both hand
+# out the same number. After a push the remote refuses it fetches: when its commit is already upstream (another
+# session in this clone pushed it) the task landed and its id is printed. Otherwise it drops only its own commit
+# with `reset --keep`, which keeps every uncommitted edit, and only while HEAD is still that commit, syncs,
+# recomputes the id and tries again, three times at most (the ADR-0012 recipe; the third failure, or a HEAD
+# that moved, leaves the commit in the clone, unpushed, and says so).
 #
 #   task-new.sh --repo <key> [--parent T-NNN] [--slug <slug>] [--status claimed --owner <owner>] [--state <dir>] --file <markdown>
 #
@@ -183,24 +186,19 @@ case "$lrc" in
   *) die "the state lock could not be taken in $state; is it a git clone?" ;;
 esac
 
-undo_own_commit() {
-  [ "$(git -C "$state" log -1 --format=%s HEAD)" = "chore($id): new $status task" ] \
-    && [ "$(git -C "$state" diff-tree --no-commit-id --name-only -r HEAD)" = "$rel" ] \
-    || die "the push was refused and HEAD of $state is no longer the commit of $id (another writer committed on top); nothing was undone, $rel is committed but not pushed"
-  git -C "$state" reset -q --soft HEAD~1
-  git -C "$state" reset -q -- "$rel"
-  rm -f -- "$state/$rel"
-}
-
 try=0
 while :; do
   sync_state
   assign_and_commit
   [ "$has_origin" = 1 ] || break
+  sha=$(git -C "$state" rev-parse HEAD)
   git -C "$state" push -q >/dev/null 2>&1 && break
+  git -C "$state" fetch -q >/dev/null 2>&1 || :
+  git -C "$state" merge-base --is-ancestor "$sha" '@{u}' 2>/dev/null && break
   try=$((try + 1))
-  [ "$try" -lt 3 ] || die "the push to the state remote failed 3 times — $rel is committed in $state but not pushed"
-  # the remote moved under us (another machine may hold this id now): drop the commit, sync, recompute
-  undo_own_commit
+  [ "$try" -lt 3 ] || die "the push to the state remote failed 3 times; $rel is committed in $state but not pushed"
+  [ "$(git -C "$state" rev-parse HEAD)" = "$sha" ] \
+    || die "the push was refused and $state moved past $id's commit; $rel is committed there but not pushed, nothing was reset"
+  git -C "$state" reset -q --keep HEAD~1
 done
 printf '{"id":"%s","file":"%s"}\n' "$id" "$rel"
