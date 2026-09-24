@@ -27,10 +27,12 @@ task T-900-02 block/T-900-02 blk2 tests
 task T-901 feat/T-901 other null
 task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
+printf 'x\n' > "$C/cf/README.md"
+dash=''
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER ${dash:+DASHBOARD_URL=$dash} HOME="$H" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -77,7 +79,7 @@ try 2 'cd rel, then a relative write' "$BLK" blk 'cd rel && echo x > y'
 try 2 'cd -, then a relative write' "$BLK" blk 'cd - && echo x > y'
 try 2 'cd $D, then a relative write' "$BLK" blk 'cd $D && echo x > y'
 try 0 'cd ~, then a relative write' "$C/cf" coord 'cd ~ && echo x > notes.txt'
-try 0 'cd rel, then cd /tmp, then a relative write' "$C/cf" coord 'cd rel && cd /tmp && echo x > y'
+try 2 'cd rel, then cd /tmp, then a relative write' "$C/cf" coord 'cd rel && cd /tmp && echo x > y'
 
 # the denies the fixes keep
 try 2 'a force push' "$BLK" blk 'git push --force origin block/T-900-01'
@@ -159,14 +161,45 @@ try 2 'cd /tmp && true;, then a relative redirect into the registered clone' "$C
 try 2 'a subshell cd whose ) closes a later segment, then a relative redirect into the registered clone' "$C/cf" coord '(true; cd /tmp && true); echo x > README.md'
 try 2 'a cd inside $( ), then a relative redirect into the registered clone' "$C/cf" coord 'echo $(true; cd /tmp && pwd) > README.md'
 try 0 'cd /tmp/scratch && true &&, then a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && true && echo x > y'
-try 0 'a closed (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord '(true); cd /tmp/scratch && echo x > y'
-try 0 'a closed $(, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo $(pwd); cd /tmp/scratch && echo x > y'
-try 0 'a quoted (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo "("; cd /tmp/scratch && echo x > y'
+try 2 'a closed (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord '(true); cd /tmp/scratch && echo x > y'
+try 2 'a closed $(, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo $(pwd); cd /tmp/scratch && echo x > y'
+try 2 'a quoted (, then cd /tmp/scratch && a relative write, from the registered clone' "$C/cf" coord 'echo "("; cd /tmp/scratch && echo x > y'
 try 0 'cd "$d", then make | tee on an absolute file' "$BLK" blk 'cd "$d" && make | tee /tmp/b.log'
 try 0 'cd sub, then git checkout x' "$BLK" blk 'cd sub && git checkout x'
 try 2 'cd "$d", then sed -i on a relative file' "$BLK" blk 'cd "$d" && sed -i s/a/b/ x.md'
 try 2 'git commit -m "a -- b" -- with no path, in the state clone' "$W/state" coord 'git commit -m "a -- b" --'
 try 0 'git commit -m "a -- b" -- with a path, in the state clone' "$W/state" coord 'git commit -m "a -- b" -- repos/x/tasks/T-1.md'
 try 0 'git commit -m x -- with a quoted path, in the state clone' "$W/state" coord 'git commit -m x -- "repos/cf/tasks/T-900.md"'
+
+# T-228-08: a cd replaces the base only in a plain chain of `cd <abs>` && simple commands. In every other shape, and
+# after a cd the guard cannot resolve, a relative target is judged against the hook cwd and every cd target seen.
+try 2 'cd <clones dir> && cd cf, then git checkout -- README.md' "$C/cf" coord "cd $C && cd cf && git checkout -- README.md"
+try 2 'cd <clones dir> && cd cf, then tee README.md' "$C/cf" coord "cd $C && cd cf && tee README.md"
+try 2 'cd /tmp && pushd <clone>, then a relative redirect' "$C/cf" coord "cd /tmp && pushd $C/cf && echo x > README.md"
+try 2 'pushd . && cd /tmp && popd, then a relative redirect' "$C/cf" coord 'pushd . && cd /tmp && popd && echo x > README.md'
+try 2 'cd /tmp && builtin cd -, then a relative redirect' "$C/cf" coord 'cd /tmp && builtin cd - && echo x > README.md'
+try 2 'cd /tmp && eval cd -, then a relative redirect' "$C/cf" coord 'cd /tmp && eval cd - && echo x > README.md'
+try 2 'a case ) inside a subshell with a cd, then a relative redirect' "$C/cf" coord '(case a in a) ;; esac; cd /tmp && true) && echo x > README.md'
+try 2 'cd /tmp && CDPATH=<clones dir> cd cf, then a relative redirect' "$C/cf" coord "cd /tmp && CDPATH=$C cd cf && echo x > README.md"
+try 2 'an escaped ) inside a subshell with a cd, then a relative redirect' "$C/cf" coord '(echo \); cd /tmp && true) && echo x > README.md'
+try 2 'cd /tmp && command cd <clone>, then a relative redirect' "$C/cf" coord "cd /tmp && command cd $C/cf && echo x > README.md"
+try 2 'cd /tmp && . ./env.sh, then a relative redirect' "$C/cf" coord 'cd /tmp && . ./env.sh && echo x > README.md'
+try 2 'cd /a; cd /b; then a relative redirect' "$C/cf" coord 'cd /a; cd /b; echo x > README.md'
+dash=http://dash.test
+try 2 'git push from the state clone, dashboard posture' "$W/state" coord 'git push'
+try 2 'cd /tmp && cd - && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp && cd - && git push'
+try 2 'cd /nonexistent && true; git push from the state clone, dashboard posture' "$W/state" coord 'cd /nonexistent && true; git push'
+try 2 'cd <state clone>; git push from the registered clone, dashboard posture' "$C/cf" coord "cd $W/state; git push"
+try 0 'cd /tmp/scratch && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp/scratch && git push'
+dash=''
+try 2 'git -C ~/<state clone> commit -m x' "$C/cf" coord 'git -C ~/factory/state commit -m x'
+try 0 'git -C ~/<state clone> commit -m x -- <file>' "$C/cf" coord 'git -C ~/factory/state commit -m x -- repos/cf/tasks/T-900.md'
+try 2 'git commit -m x -- . in the state clone' "$W/state" coord 'git commit -m x -- .'
+try 2 'git commit -m x -- :/ in the state clone' "$W/state" coord 'git commit -m x -- :/'
+try 2 'git commit -m x -- repos/ in the state clone' "$W/state" coord 'git commit -m x -- repos/'
+try 2 'git commit -m x -- <a directory without a slash> in the state clone' "$W/state" coord 'git commit -m x -- repos/cf/tasks'
+try 0 'cd /tmp && cd /tmp/scratch, then a relative write, from the registered clone' "$C/cf" coord 'cd /tmp && cd /tmp/scratch && echo x > y'
+try 0 'cd /tmp/scratch && a pipe into a relative redirect, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && make | sort > out.txt'
+try 0 'cd /tmp/scratch && a quoted ; and ( in a relative write, from the registered clone' "$C/cf" coord 'cd /tmp/scratch && echo "a; b (c)" > y'
 
 exit $fail
