@@ -9,6 +9,11 @@
 # The `Issues` file is what `issue-finder` answered: its `closes #12` / `refs #30` lines become the `Issues`
 # line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
 #
+# A task whose blocks went through block MRs (3.4 of the agent-org plan) gets a `## Blocks` section after the
+# description: one `- [<block goal>](<mr_url>), risk <level>` line per block with an mr_url, in id order, the
+# level from the block's `.harness/<block>/arch.md` or `not rated` when the auditor wrote none. The list grows
+# with the task, so it is not counted in the 120 words.
+#
 # It is not create-only. When the MR or PR is already open, the freshly built description is compared with the
 # one the forge carries and pushed with `gh pr edit --body-file` / `glab mr update --description-file` when
 # they differ, so a body is fixed by fixing the progress file and running this again. Why: MR !414 went out
@@ -113,6 +118,25 @@ desc="$desc_dir/mr.md"
 words=$(wc -w < "$desc" | tr -d '[:space:]')
 [ "$words" -le 120 ] \
   || die "the description is $words words and the contract caps it at 120; shorten $progress"
+
+# the block MRs of the task, each with the risk its architecture audit rated; the audits sit beside this task's
+# own stamp folder, in <root>/<key>/.harness/<block>/
+blocks=$(task_files "$key" | while IFS= read -r f; do
+  b=$(task_fields "$f" id)
+  if is_block_of "$id" "$b"; then printf '%s\n' "$b"; fi
+done | sort_ids)
+listed=''
+for b in $blocks; do
+  bf=$(task_of "$b")
+  bu=$(task_fields "$bf" mr_url)
+  case "$bu" in http://*|https://*) ;; *) continue ;; esac
+  bgoal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$bf")
+  brisk=$(task_fields "${desc_dir%/*}/$b/arch.md" risk)
+  case "$brisk" in low|medium|high) ;; *) brisk='not rated' ;; esac
+  listed="$listed- [${bgoal:-$b}]($bu), risk $brisk
+"
+done
+if [ -n "$listed" ]; then printf '\n## Blocks\n%s' "$listed" >> "$desc"; fi
 
 base=''
 if [ -f "$state/repos.yml" ]; then
