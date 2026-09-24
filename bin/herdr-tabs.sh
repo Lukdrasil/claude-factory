@@ -59,15 +59,16 @@ field() { sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n1 | sed 's/[[:space:]]*#.
 
 resolve() { # <unit> -> tid, key, dir
   case "$1" in
-    T-[0-9][0-9][0-9]|T-[0-9][0-9][0-9]-[0-9][0-9]) tid=$1 ;;
-    T-[0-9][0-9][0-9]-[a-z]*) tid=${1%%-[a-z]*} ;;
-    *) die "'$1' is not a task, block or step id" ;;
-  esac
+    *-[a-z]*) tid=${1%%-[a-z]*}; is_parent_id "$tid" ;;
+    *) tid=$1; is_task_id "$tid" ;;
+  esac || die "'$1' is not a task, block or step id"
   task=$(task_of "$tid" || :)
   [ -n "$task" ] || die "$1 resolves to no task file under $state/repos/*/tasks"
   key=${task#"$state/repos/"}
   key=${key%%/*}
-  dir="$root/$key/.harness/${tid%-[0-9][0-9]}"
+  parent=$tid
+  if is_block_id "$tid"; then parent=${tid%-*}; fi
+  dir="$root/$key/.harness/$parent"
 }
 
 last() { # <unit>
@@ -127,7 +128,7 @@ case "$verb" in
     command -v herdr >/dev/null 2>&1 || exit 0
     for u; do close_one "$u"; done ;;
   sweep)
-    case "$1" in T-[0-9][0-9][0-9]) ;; *) die "'$1' is not a parent task id of the shape T-NNN" ;; esac
+    is_parent_id "$1" || die "'$1' is not a parent task id of the shape T-NNN"
     command -v herdr >/dev/null 2>&1 || exit 0
     resolve "$1"
     [ -f "$dir/herdr-tabs" ] || exit 0

@@ -292,9 +292,11 @@ if [ -n "$parent" ]; then
   fi
 else
   if [ "$mode" = herdr ] && [ -z "$dry" ]; then
-    for rec in "$root"/*/.harness/T-[0-9][0-9][0-9]/herdr-tabs; do
+    for rec in "$root"/*/.harness/T-*/herdr-tabs; do
       [ -f "$rec" ] || continue
-      sh "$bin/herdr-tabs.sh" sweep "$(basename -- "$(dirname -- "$rec")")" --state "$state" >&2 || :
+      p=$(basename -- "$(dirname -- "$rec")")
+      is_parent_id "$p" || continue
+      sh "$bin/herdr-tabs.sh" sweep "$p" --state "$state" >&2 || :
     done
   fi
   for task in "$state"/repos/*/tasks/*.md; do
@@ -345,7 +347,8 @@ while IFS='	' read -r id cwd model claimid prompt; do
   # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
   # claim, so a unit whose tab is still at work is neither claimed nor started twice
   if [ "$mode" = herdr ] && [ -z "$dry" ]; then
-    t=$(printf '%s' "$id" | cut -c1-5)
+    t=${id%%-[a-z]*}
+    if is_block_id "$t"; then t=${t%-*}; fi
     kept=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-grill" "$t-plan-check" "$t-decompose" \
       --state "$state" | awk -v u="$id" '$1 == u && $2 == "kept"')
     if [ -n "$kept" ]; then
