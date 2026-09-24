@@ -150,12 +150,17 @@ async function stage(q, button, text) {
     ok(step === '4', `current: ${step}`);
   });
 
+  await check('the row of T-003 counts no waiting ask: its one session in herdr is gone', async () => {
+    const text = await page.locator('table tr', { hasText: 'T-003' }).first().innerText();
+    ok(!/waiting/.test(text), `row: ${text}`);
+  });
+
   await check('the row of T-002 marks step 11 as current', async () => {
     const step = await currentStep(page, 'T-002');
     ok(step === '11', `current: ${step}`);
   });
 
-  await check('the counter shows 4 waiting on you: not the sent q1, not the answered q2, not outside herdr', async () => {
+  await check('the counter shows 4 waiting on you: not the sent q1, not the answered q2, not outside herdr, not the gone g1', async () => {
     await until('the counter', () => counter(page).isVisible());
     const text = await counter(page).innerText();
     ok(/(^|\D)4(\D|$)/.test(text), `counter: ${text}`);

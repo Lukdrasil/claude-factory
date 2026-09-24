@@ -39,6 +39,7 @@ session --session s1 --step 'Step 4 of 16: grill T-001'
 session --session s2 --pane w1:p2 --flow solve --task T-002 --step 'Step 11 of 16: wave 1 implement, from T-002-01'
 session --session s3 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 session --session s4 --pane w1:p4 --flow doctor --task none --step 'doctor'
+session --session s5 --pane w1:p5 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 
 put() { # <sid> <ask> <task> <flow> <mtime>, stdin: the markdown
   { printf -- '---\nask: %s\ntask: %s\nflow: %s\nstep: fixture\nstatus: open\n---\n\n' "$2" "$3" "$4"; cat; } \
@@ -131,6 +132,14 @@ put s4 d1 none doctor '2026-09-24 10:00' <<'EOF'
 
 Docker is running. herdr is running. promptSuggestionEnabled is false.
 EOF
+put s5 g1 T-003 solve '2026-09-24 09:10' <<'EOF'
+❓ **Q1** - **Which gone answer?**: the session of this ask has ended.
+  **A** the queued one
+  **B** the other one
+
+➡️ **A**: the relay queues it.
+EOF
+printf 'gone\n' > "$ui/sessions/s5/agent"
 touch -d '2026-09-24 09:00' "$ui/sessions/s1/asks/q1.md"
 touch -d '2026-09-24 10:02' "$ui/sessions/s1/asks/q3.md"
 mkdir -p "$ui/sessions/s1/answers"
