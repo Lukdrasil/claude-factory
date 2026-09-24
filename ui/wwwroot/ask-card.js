@@ -96,7 +96,7 @@ export function renderAsk(ask, staged) {
   if (live) {
     const text = compose(parsed, staged.items);
     h += `<footer class="ask-f">${staged.error ? `<span class="bad">${esc(staged.error)}</span>` : ''}`
-      + `<output>${esc(text)}</output><button class="btn primary" data-act="send" ${text ? '' : 'disabled'}>Send</button></footer>`;
+      + `<output>${esc(text)}</output><button class="btn primary" data-act="send" ${text && !staged.sending ? '' : 'disabled'}>Send</button></footer>`;
   }
   el.innerHTML = h;
   return el;
