@@ -41,7 +41,7 @@ remote=$(git -C "$clone" remote get-url origin 2>/dev/null || :)
 [ -n "$remote" ] || die "$clone has no origin remote, so there is no forge to create the issue on"
 
 host=$(printf '%s' "$remote" | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#[:/].*##')
-repo=$(printf '%s' "$remote" | sed -e 's#^\([a-zA-Z+]*://[^/]*\):[0-9][0-9]*/#\1/#' -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#^[^:/]*[:/]##' -e 's#/*$##' -e 's#\.git$##')
+repo=$(printf '%s' "$remote" | sed -e 's#^\([a-zA-Z+]*://[^/]*\):[0-9]\{1,\}/#\1/#' -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#^[^:/]*[:/]##' -e 's#/*$##' -e 's#\.git$##')
 
 case "$host" in
   github.com)
