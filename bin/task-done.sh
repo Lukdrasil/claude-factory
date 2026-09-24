@@ -54,7 +54,8 @@ done
 # setf, state_commit, state_lock and state_unlock: the one frontmatter writer, the one commit and the one lock
 . "$(dirname -- "$0")/lib-tasks.sh"
 
-parent=$(grep -lx "id: $id" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1)
+parent=$(task_of "$id")
+case "$parent" in */archive/*) die "task $id is archived in $parent, it is already finished" ;; esac
 [ -n "${parent:-}" ] && [ -f "$parent" ] || die "no task file with 'id: $id' in $state/repos/*/tasks/"
 
 archetype=$(sed -n 's/^archetype:[[:space:]]*//p' "$parent" | head -n1 | sed 's/[[:space:]]*#.*//')
@@ -70,7 +71,7 @@ else
 fi
 
 # every block of this parent: T-NNN-NN task files, sorted for a stable diff
-blocks=$(grep -HxE "id: $id-[0-9]{2,}" "$state"/repos/*/tasks/*.md 2>/dev/null \
+blocks=$(task_files | while IFS= read -r f; do grep -HxE "id: $id-[0-9]{2,}" "$f"; done \
   | sed 's/^\(.*\):id: \(.*\)$/\2 \1/' | sort_ids | cut -d' ' -f2- || :)
 
 # E3: the whole critical section, from the write to the commit, under the one lock per state clone that

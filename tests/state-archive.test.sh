@@ -112,6 +112,14 @@ rc=0
 sh "$bin/state-archive.sh" T-001 --state "$st" >"$tmp/out" 2>&1 || rc=$?
 check 'an archived parent again exits 0' 0 "$rc"
 check 'and says it is archived' yes "$(has "$tmp/out" 'already archived')"
+rc=0
+sh "$bin/task-done.sh" T-001 --state "$st" >"$tmp/out" 2>&1 || rc=$?
+check 'task-done on an archived parent exits 1' 1 "$rc"
+check 'and names the archive' yes "$(has "$tmp/out" 'is archived')"
+rc=0
+(cd "$st" && sh "$bin/state-report.sh" --task T-001 --no-status) >"$tmp/out" 2>&1 || rc=$?
+check 'state-report on an archived task exits 2' 2 "$rc"
+check 'and names the archive' yes "$(has "$tmp/out" 'is archived')"
 
 # --- what stays live ---------------------------------------------------------------------
 before=$(git -C "$st" rev-parse HEAD)

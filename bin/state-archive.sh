@@ -231,10 +231,9 @@ if [ -n "$target" ]; then
   line=$(families "$target")
   case "$line" in
     '')
-      set -- "$state"/repos/*/archive/*/tasks/*.md
-      if [ -e "$1" ] && grep -qx "id: $target" "$@" 2>/dev/null; then
-        printf 'state-archive: %s is already archived\n' "$target"; exit 0
-      fi
+      case "$(task_of "$target")" in
+        */archive/*) printf 'state-archive: %s is already archived\n' "$target"; exit 0 ;;
+      esac
       die "no task file with 'id: $target' in $state/repos/*/tasks/" ;;
     no*) die "$target stays live: $(printf '%s' "$line" | cut -f3)" ;;
   esac

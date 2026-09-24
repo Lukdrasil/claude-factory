@@ -93,7 +93,8 @@ state=$(resolve_state_dir "$PWD")
 
 # the file is chosen by the `id:` line, not by an `<id>-*.md` glob: with hierarchical ids a child `T-005-01-…`
 # sorts before its parent `T-005-…` (`0` < a letter) and the glob would hand back the wrong task.
-task=$(grep -lx "id: $id" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1)
+task=$(task_of "$id")
+case "$task" in */archive/*) die2 "task $id is archived in $task, there is nothing left to report" ;; esac
 [ -n "${task:-}" ] && [ -f "$task" ] || die2 "no task file with 'id: $id' in $state/repos/*/tasks/"
 
 status=''
