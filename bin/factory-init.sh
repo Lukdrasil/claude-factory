@@ -70,12 +70,12 @@ printf '%s\n' \
   'ui_port: 7171' > "$tmp/factory.yml"
 # an existing factory.yml keeps every key and gains the ui: asked for and a ui_port: when it has none
 if [ "$need_curation" = 0 ]; then
-  awk -v ui="$ui" '
-    /^ui:/ && !seen { sub(/^ui:[ \t]*[^ \t#]*/, "ui: " ui); seen = 1 }
+  awk -v ui="$ui" -v cur="$cur_ui" '
+    /^ui:/ && !seen { if (cur != ui) sub(/^ui:[ \t]*[^ \t#]*/, "ui: " ui); seen = 1 }
     /^ui_port:/ { port = 1 }
     { print }
     END { if (!seen) print "ui: " ui; if (!port) print "ui_port: 7171" }' "$state/factory.yml" > "$tmp/factory.yml"
-  cmp -s "$state/factory.yml" "$tmp/factory.yml" || need_ui=1
+  { [ "$cur_ui" = "$ui" ] && grep -q '^ui_port:' "$state/factory.yml"; } || need_ui=1
 fi
 
 # the settings file with env.WORK_DIR set, and with ui: docker promptSuggestionEnabled false, every other key kept;
