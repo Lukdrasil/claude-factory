@@ -247,19 +247,6 @@ state_write() { # <state> <message> <path>...
   return "$sw_rc"
 }
 
-# The push recipe of ADR-0012, three tries of pull-rebase and push, shared by task-done.sh and task-approve.sh.
-# A clone with no origin stays local and is not an error (task-new.sh has the same rule). Returns 1 when the
-# third try still failed; the commits stay in the clone.
-state_push() { # <state>
-  git -C "$1" remote get-url origin >/dev/null 2>&1 || return 0
-  sp_n=0
-  until git -C "$1" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 && git -C "$1" push -q >/dev/null 2>&1; do
-    sp_n=$((sp_n + 1))
-    [ "$sp_n" -lt 3 ] || return 1
-    sleep 1
-  done
-}
-
 # one flat string field of the hook stdin (session_id, cwd, transcript_path) without a JSON parser; a Windows
 # path arrives with `\\` and possibly `\/`, both unescaped here
 hook_field() { # <json> <field>
