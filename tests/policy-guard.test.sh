@@ -268,6 +268,9 @@ try 0 '>&2 names no file, from the registered clone' "$C/cf" coord 'echo x >&2'
 try 0 '2>&- names no file, from the registered clone' "$C/cf" coord 'echo x 2>&-'
 try 0 '>& 2 names no file, from the registered clone' "$C/cf" coord 'echo x >& 2'
 try 0 '>&- names no file, from the registered clone' "$C/cf" coord 'echo x >&-'
+try 2 "\$\$ before a single-quoted backslash is the PID and a plain quote, then a redirect into the registered clone" "$C/cf" coord \
+  "echo \$\$${q}\\${q} > README.md"
+try 2 '>&/abs outside the work dir, from a block' "$BLK" blk 'echo x >&/opt/outside.txt'
 
 # T-254-02: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, and the
 # deny names bin/issue-create.sh, which adds it
