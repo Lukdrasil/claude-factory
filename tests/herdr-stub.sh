@@ -7,8 +7,11 @@
 # live too. `tab get` and `agent get` answer from the live tabs and agents the way herdr 0.8.2 does, `tab close`
 # ends a live tab and its agent, and a tab or agent that is not live is `tab_not_found` or `agent_not_found` on
 # stderr with exit 1.
+#
+# `herdr_tab_reply <tab_id> <exit> <text>` makes `tab get` of that tab answer <text>, on stdout with exit 0 and
+# on stderr otherwise. `HERDR_STUB_CREATE`, when set, is the reply of `tab create` instead of the default.
 herdr_stub() { # <dir>
-  mkdir -p "$1/bin" "$1/tabs" "$1/agents"
+  mkdir -p "$1/bin" "$1/tabs" "$1/agents" "$1/replies"
   cat > "$1/bin/herdr" <<'EOF'
 #!/bin/sh
 for a; do
@@ -17,8 +20,15 @@ done >> "$HERDR_STUB_LOG"
 echo >> "$HERDR_STUB_LOG"
 d=$HERDR_STUB_DIR
 case "$1 $2" in
-  'tab create') printf '{"result":{"tab":{"tab_id":"tab-1"},"root_pane":{"pane_id":"pane-1"}}}\n' ;;
+  'tab create')
+    if [ -n "${HERDR_STUB_CREATE+x}" ]; then printf '%s\n' "$HERDR_STUB_CREATE"; exit 0; fi
+    printf '{"result":{"tab":{"tab_id":"tab-1"},"root_pane":{"pane_id":"pane-1"}}}\n' ;;
   'tab get')
+    if [ -f "$d/replies/$3" ]; then
+      rc=$(head -n1 "$d/replies/$3")
+      if [ "$rc" -eq 0 ]; then tail -n +2 "$d/replies/$3"; else tail -n +2 "$d/replies/$3" >&2; fi
+      exit "$rc"
+    fi
     [ -f "$d/tabs/$3" ] || { printf '{"error":{"code":"tab_not_found","message":"tab %s not found"},"id":"cli:tab:get"}\n' "$3" >&2; exit 1; }
     read -r st fo ag < "$d/tabs/$3"
     printf '{"id":"cli:tab:get","result":{"tab":{"agent_status":"%s","focused":%s,"pane_count":1,"tab_id":"%s"},"type":"tab_info"}}\n' "$st" "$fo" "$3" ;;
@@ -45,4 +55,7 @@ EOF
 herdr_tab() { # <tab_id> <agent_status> <focused> [<agent name>]
   printf '%s %s %s\n' "$2" "$3" "${4:-}" > "$HERDR_STUB_DIR/tabs/$1"
   [ -z "${4:-}" ] || printf '%s\n' "$2" > "$HERDR_STUB_DIR/agents/$4"
+}
+herdr_tab_reply() { # <tab_id> <exit> <text>
+  printf '%s\n%s\n' "$2" "$3" > "$HERDR_STUB_DIR/replies/$1"
 }
