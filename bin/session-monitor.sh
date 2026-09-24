@@ -46,6 +46,11 @@
 # task this dispatch claimed and one a session picked up by hand. A claim the state clone refuses is a warning,
 # not a failure: the session still starts, and its own first heartbeat is the claim that counts.
 #
+# Every unit carries the session name `<emoji> <repo> <id>` of `herdr-tabs.sh name`: the tab label and the
+# `claude --name` of a herdr spawn, and the `--name` of a printed manual line. The herdr agent name stays the
+# lowercased id. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh record`,
+# `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`.
+#
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
 # the task cannot be resolved and when no mode was named, 2 when herdr was asked for and a spawn failed.
