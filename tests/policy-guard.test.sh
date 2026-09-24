@@ -248,6 +248,30 @@ try 2 'with HOME unset, a redirect to ~/y' "$BLK" blk 'echo x > ~/y'
 try 2 'with HOME unset, tee ~/y' "$BLK" blk 'tee ~/y < /dev/null'
 home=$H
 
+# T-264-07: a `'` after an unquoted `$` opens an ANSI-C span, where `\'` is an escaped quote and the span closes only
+# at an unescaped `'`. A plain `'…'` and a `'` after an escaped `\$` keep no escapes. `>&word` writes the file word,
+# only `>&N` and `>&-` name no file.
+try 2 "echo \$'\\'' into the registered clone" "$C/cf" coord "echo \$${q}\\${q}${q} > README.md"
+try 2 "printf \$'it\\'s' into the registered clone" "$C/cf" coord "printf \$${q}it\\${q}s${q} > README.md"
+try 0 'a > inside an ANSI-C span with an escaped quote, then a redirect to /tmp, from the registered clone' "$C/cf" coord \
+  "echo \$${q}a\\${q}> README.md${q} > /tmp/y"
+try 2 "an ANSI-C span ending in an escaped backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo \$${q}a\\\\${q} > README.md"
+try 2 "a plain single-quoted backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo ${q}\\${q} > README.md"
+try 2 "an escaped \$ before a single-quoted backslash, then a relative redirect into the registered clone" "$C/cf" coord \
+  "echo \\\$${q}\\${q} > README.md"
+try 2 "a redirect to \$'README.md' in the registered clone" "$C/cf" coord "echo x > \$${q}README.md${q}"
+try 2 '>&README.md into the registered clone' "$C/cf" coord 'echo x >&README.md'
+try 2 '>& README.md into the registered clone' "$C/cf" coord 'echo x >& README.md'
+try 0 '>&2 names no file, from the registered clone' "$C/cf" coord 'echo x >&2'
+try 0 '2>&- names no file, from the registered clone' "$C/cf" coord 'echo x 2>&-'
+try 0 '>& 2 names no file, from the registered clone' "$C/cf" coord 'echo x >& 2'
+try 0 '>&- names no file, from the registered clone' "$C/cf" coord 'echo x >&-'
+try 2 "\$\$ before a single-quoted backslash is the PID and a plain quote, then a redirect into the registered clone" "$C/cf" coord \
+  "echo \$\$${q}\\${q} > README.md"
+try 2 '>&/abs outside the work dir, from a block' "$BLK" blk 'echo x >&/opt/outside.txt'
+
 # T-254-02: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, and the
 # deny names bin/issue-create.sh, which adds it
 try 2 'gh issue create without a label' "$C/cf" coord 'gh issue create --title "fix: x" --body-file /tmp/b.md'
