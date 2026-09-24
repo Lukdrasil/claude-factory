@@ -4,7 +4,7 @@ Read alongside step 4 of `<plugin-root>/skills/logging-decisions/SKILL.md`. Over
 first, because it is what hides the real problems.
 
 ```
-# Logging review — <scope>
+# Logging review: <scope>
 Summary: the signal-to-noise ratio and the biggest risk, in two or three sentences.
 Findings, grouped as over-levelled, under-levelled, sensitive data, blanket catch, console output in
 production, unactionable data, missing precursor warnings. Each finding: file:line, the current level,
