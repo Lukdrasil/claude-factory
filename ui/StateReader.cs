@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 
-public sealed record TaskRow(string Id, string Status, string Archetype, string Tier, string Repo, string Owner, string Goal);
+public sealed record TaskRow(
+    string Id, string Status, string Archetype, string Tier, string Repo, string Owner, string Goal, string Request, string Priority);
 
 public sealed record TaskDetail(
     TaskRow Task,
@@ -13,87 +15,190 @@ public sealed record TaskDetail(
     string? Verdicts,
     string? Progress,
     List<string> Timeline,
-    TaskHtml Html);
+    TaskHtml Html,
+    string Request,
+    string Priority);
 
 public sealed record TaskHtml(string Body, string? Plan, string? Grill, string? Verdicts, string? Progress);
 
 public sealed record Toolset(string Repo, string Text);
 
-public sealed record SetupInfo(string Root, string? ReposYml, List<Toolset> Toolsets, string? DoctorNotice);
+public sealed record SetupInfo(
+    string Root,
+    string? ReposYml,
+    List<Toolset> Toolsets,
+    string? DoctorNotice,
+    List<DoctorStep> Steps,
+    string DoctorAt,
+    CapacityInfo Capacity,
+    List<PassInfo> Passes);
 
 /// <summary>
 /// The state repo mounted read-only at /state: task frontmatter, plans, grill files, verdicts, progress and the
-/// git log of a task file.
+/// git log of a task file. A task that is not live is read from <c>repos/&lt;key&gt;/archive/&lt;YYYY-MM&gt;/tasks/</c>, the
+/// order of <c>task_of</c>.
 /// </summary>
 public sealed partial class StateReader(string root)
 {
-    public List<TaskRow> Tasks() => TaskFiles().Select(File.ReadAllText).Select(Row).ToList();
+    /// <summary>One task file with its cached frontmatter; archived when it sits under <c>repos/&lt;key&gt;/archive/</c>.</summary>
+    sealed record Entry(string File, Dictionary<string, string> Fields, string Text, bool Archived)
+    {
+        public string Id => Fields.GetValueOrDefault("id", "");
+    }
+
+    public List<TaskRow> Tasks()
+    {
+        var live = Entries(archive: false);
+        var byId = ById(live);
+        return live.Select(e => Row(e, byId)).ToList();
+    }
 
     public TaskDetail? Task(string id)
     {
-        var file = TaskFiles().FirstOrDefault(f => Frontmatter.Read(f).GetValueOrDefault("id") == id);
-        if (file is null)
+        var all = Entries(archive: true);
+        var byId = ById(all);
+        if (!byId.TryGetValue(id, out var entry))
         {
             return null;
         }
-        var text = File.ReadAllText(file);
-        var fields = Frontmatter.Parse(text);
-        var body = Frontmatter.Body(text);
-        var repoDir = Path.GetDirectoryName(Path.GetDirectoryName(file))!;
+        var file = entry.File;
+        var body = Frontmatter.Body(entry.Text);
+        var home = Path.GetDirectoryName(Path.GetDirectoryName(file))!;
+        var repoDir = entry.Archived ? Path.GetDirectoryName(Path.GetDirectoryName(home))! : home;
+        string[] dirs = entry.Archived ? [home, repoDir] : [repoDir];
         var slug = PlanSlug().Match(body) is { Success: true } m ? m.Groups[1].Value : null;
         var plan = slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md");
         var grill = (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id);
-        var verdicts = slug is null ? null : ReadOrNull(repoDir, "verdicts", $"{slug}.md");
-        var progress = ReadOrNull(repoDir, "progress", $"{id}.md");
+        var verdicts = slug is null ? null : FirstOrNull(dirs, "verdicts", $"{slug}.md");
+        var progress = FirstOrNull(dirs, "progress", $"{id}.md");
+        var row = Row(entry, byId);
         return new TaskDetail(
-            Row(text),
-            fields,
+            row,
+            entry.Fields,
             body,
-            Tasks().Where(t => t.Id.StartsWith(id + "-", StringComparison.Ordinal)).ToList(),
+            byId.Values.Where(e => e.Id.StartsWith(id + "-", StringComparison.Ordinal)).Select(e => Row(e, byId)).ToList(),
             plan,
             grill,
             verdicts,
             progress,
             Timeline(Path.GetRelativePath(root, file)),
             new TaskHtml(Md.ToHtml(body), plan is null ? null : Md.ToHtml(plan), grill is null ? null : Md.ToHtml(grill),
-                verdicts is null ? null : Md.ToHtml(verdicts), progress is null ? null : Md.ToHtml(progress)));
+                verdicts is null ? null : Md.ToHtml(verdicts), progress is null ? null : Md.ToHtml(progress)),
+            row.Request,
+            row.Priority);
     }
 
-    public SetupInfo Setup(UiHome home) => new(
-        Environment.GetEnvironmentVariable("FACTORY_ROOT") ?? Path.GetDirectoryName(root) ?? root,
-        ReadOrNull(root, "repos.yml"),
-        Directory.Exists(Path.Combine(root, "repos"))
-            ? Directory.EnumerateDirectories(Path.Combine(root, "repos"))
-                .Where(d => File.Exists(Path.Combine(d, "toolset.md")))
-                .Select(d => new Toolset(Path.GetFileName(d), File.ReadAllText(Path.Combine(d, "toolset.md"))))
-                .ToList()
-            : [],
-        home.LastDoctorNotice());
+    public SetupInfo Setup(UiHome home)
+    {
+        var (steps, at) = home.Doctor();
+        return new(
+            Environment.GetEnvironmentVariable("FACTORY_ROOT") ?? Path.GetDirectoryName(root) ?? root,
+            ReadOrNull(root, "repos.yml"),
+            Directory.Exists(Path.Combine(root, "repos"))
+                ? Directory.EnumerateDirectories(Path.Combine(root, "repos"))
+                    .Where(d => File.Exists(Path.Combine(d, "toolset.md")))
+                    .Select(d => new Toolset(Path.GetFileName(d), File.ReadAllText(Path.Combine(d, "toolset.md"))))
+                    .ToList()
+                : [],
+            home.LastDoctorNotice(),
+            steps,
+            at,
+            CapacityInUse(Leases()),
+            Passes());
+    }
 
-    IEnumerable<string> TaskFiles()
+    /// <summary>Live task files in path order, then with <paramref name="archive"/> the archived ones in path order.</summary>
+    IEnumerable<string> TaskFiles(bool archive)
     {
         var repos = Path.Combine(root, "repos");
-        return Directory.Exists(repos)
-            ? Directory.EnumerateDirectories(repos)
-                .Select(d => Path.Combine(d, "tasks"))
-                .Where(Directory.Exists)
-                .SelectMany(d => Directory.EnumerateFiles(d, "*.md"))
-                .Order(StringComparer.Ordinal)
-            : [];
+        if (!Directory.Exists(repos))
+        {
+            return [];
+        }
+        var keys = Directory.EnumerateDirectories(repos).ToList();
+        var live = keys
+            .Select(d => Path.Combine(d, "tasks"))
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.md"))
+            .Order(StringComparer.Ordinal);
+        if (!archive)
+        {
+            return live;
+        }
+        var archived = keys
+            .Select(d => Path.Combine(d, "archive"))
+            .Where(Directory.Exists)
+            .SelectMany(Directory.EnumerateDirectories)
+            .Select(d => Path.Combine(d, "tasks"))
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.EnumerateFiles(d, "*.md"))
+            .Order(StringComparer.Ordinal);
+        return live.Concat(archived);
     }
 
-    static TaskRow Row(string text)
+    /// <summary>The task files that can be read, a file that vanished between the listing and the read skipped.</summary>
+    List<Entry> Entries(bool archive)
     {
-        var f = Frontmatter.Parse(text);
+        var list = new List<Entry>();
+        foreach (var file in TaskFiles(archive))
+        {
+            try
+            {
+                var (text, fields) = Frontmatter.Load(file);
+                var parts = Path.GetRelativePath(root, file).Split(Path.DirectorySeparatorChar);
+                list.Add(new Entry(file, fields, text, parts.Length > 3 && parts[2] == "archive"));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        return list;
+    }
+
+    /// <summary>Entries by id, the first file of an id winning, so a live task hides an archived one of the same id.</summary>
+    static Dictionary<string, Entry> ById(List<Entry> entries)
+    {
+        var byId = new Dictionary<string, Entry>(StringComparer.Ordinal);
+        foreach (var e in entries)
+        {
+            byId.TryAdd(e.Id, e);
+        }
+        return byId;
+    }
+
+    static TaskRow Row(Entry e, Dictionary<string, Entry> byId)
+    {
+        var f = e.Fields;
         var owner = f.GetValueOrDefault("owner", "");
         return new TaskRow(
-            f.GetValueOrDefault("id", ""),
+            e.Id,
             f.GetValueOrDefault("status", ""),
             f.GetValueOrDefault("archetype", ""),
             f.GetValueOrDefault("tier", ""),
             f.GetValueOrDefault("repo", ""),
             owner is "" or "null" ? "-" : owner,
-            Goal(Frontmatter.Body(text)));
+            Goal(Frontmatter.Body(e.Text)),
+            RequestOf(f),
+            PriorityOf(e, byId));
+    }
+
+    static string RequestOf(Dictionary<string, string> fields) =>
+        fields.GetValueOrDefault("request", "") is var r && r is not ("" or "null") ? r : "";
+
+    /// <summary>The task's own <c>priority:</c>; a block without one shows its parent's; otherwise P2.</summary>
+    static string PriorityOf(Entry e, Dictionary<string, Entry> byId)
+    {
+        var own = e.Fields.GetValueOrDefault("priority", "");
+        if (Priority().IsMatch(own))
+        {
+            return own;
+        }
+        if (BlockId().Match(e.Id) is { Success: true } m && byId.TryGetValue(m.Groups[1].Value, out var parent)
+            && parent.Fields.GetValueOrDefault("priority", "") is var p && Priority().IsMatch(p))
+        {
+            return p;
+        }
+        return "P2";
     }
 
     static string Goal(string body) =>
@@ -119,10 +224,14 @@ public sealed partial class StateReader(string root)
         return File.Exists(path) ? File.ReadAllText(path) : null;
     }
 
+    static string? FirstOrNull(string[] dirs, string folder, string name) =>
+        dirs.Select(d => ReadOrNull(d, folder, name)).FirstOrDefault(text => text is not null);
+
+    /// <summary>The git log of one file, followed across renames so an archived task keeps the history before its move.</summary>
     List<string> Timeline(string relative)
     {
         var git = new ProcessStartInfo("git") { RedirectStandardOutput = true };
-        foreach (var arg in new[] { "-C", root, "log", "--format=%h%x09%aI%x09%s", "--", relative })
+        foreach (var arg in new[] { "-C", root, "log", "--follow", "--format=%h%x09%aI%x09%s", "--", relative })
         {
             git.ArgumentList.Add(arg);
         }
@@ -139,13 +248,78 @@ public sealed partial class StateReader(string root)
         }
     }
 
+    /// <summary>
+    /// Task and request ids in the order of <c>sort_ids</c>: segment by segment, digits by value and before letters,
+    /// letters bytewise, a prefix first, so legacy ids come before alias ids and a parent before its blocks.
+    /// </summary>
+    public static int CompareIds(string? a, string? b)
+    {
+        var x = (a ?? "").Split('-');
+        var y = (b ?? "").Split('-');
+        for (var i = 0; i < Math.Min(x.Length, y.Length); i++)
+        {
+            var xd = x[i].Length > 0 && x[i].All(char.IsAsciiDigit);
+            var yd = y[i].Length > 0 && y[i].All(char.IsAsciiDigit);
+            var c = (xd, yd) switch
+            {
+                (true, true) => CompareNumbers(x[i], y[i]),
+                (true, false) => -1,
+                (false, true) => 1,
+                _ => string.CompareOrdinal(x[i], y[i]),
+            };
+            if (c != 0)
+            {
+                return c;
+            }
+        }
+        return x.Length.CompareTo(y.Length);
+    }
+
+    static int CompareNumbers(string a, string b)
+    {
+        a = a.TrimStart('0');
+        b = b.TrimStart('0');
+        return a.Length != b.Length ? a.Length.CompareTo(b.Length) : string.CompareOrdinal(a, b);
+    }
+
     [GeneratedRegex(@"plans/([A-Za-z0-9._-]+)-plan-ready\.md")]
     private static partial Regex PlanSlug();
+
+    [GeneratedRegex(@"^P[0-3]\z")]
+    private static partial Regex Priority();
+
+    [GeneratedRegex(@"^T-(?:[0-9]{3,}|[A-Z]{2,4}-[0-9]+)\z")]
+    private static partial Regex ParentId();
+
+    [GeneratedRegex(@"^(T-(?:[0-9]{3,}|[A-Z]{2,4}-[0-9]+))-[0-9]{2,}\z")]
+    private static partial Regex BlockId();
 }
 
 public static class Frontmatter
 {
-    public static Dictionary<string, string> Read(string path) => Parse(File.ReadAllText(path));
+    sealed record Parsed(DateTime Mtime, long Length, string Text, Dictionary<string, string> Fields);
+
+    static readonly ConcurrentDictionary<string, Parsed> Cache = new(StringComparer.Ordinal);
+
+    public static Dictionary<string, string> Read(string path) => Load(path).Fields;
+
+    /// <summary>
+    /// The text of a file and its parsed frontmatter, cached by path and read again once the file's mtime or
+    /// length moves. The fields are shared between callers and never changed.
+    /// </summary>
+    public static (string Text, Dictionary<string, string> Fields) Load(string path)
+    {
+        var info = new FileInfo(path);
+        var (mtime, length) = (info.LastWriteTimeUtc, info.Length);
+        if (Cache.TryGetValue(path, out var hit) && hit.Mtime == mtime && hit.Length == length)
+        {
+            return (hit.Text, hit.Fields);
+        }
+        var text = File.ReadAllText(path);
+        var parsed = new Parsed(mtime, length, text, Parse(text));
+        Cache[path] = parsed;
+        return (parsed.Text, parsed.Fields);
+    }
 
     /// <summary>The flat <c>key: value</c> lines between the opening and closing <c>---</c>, a trailing <c> #</c> comment cut.</summary>
     public static Dictionary<string, string> Parse(string text)

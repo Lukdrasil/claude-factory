@@ -23,6 +23,9 @@ app.MapGet("/api/board", (StateReader state) => Api.Board(state));
 app.MapGet("/api/tasks/{id}", (string id, StateReader state) => Api.TaskDetail(id, state));
 app.MapGet("/api/sessions", (UiHome home) => Results.Ok(home.Sessions()));
 app.MapGet("/api/setup", (StateReader state, UiHome home) => Api.Setup(state, home));
+app.MapGet("/api/requests", (StateReader state) => Results.Ok(state.Requests()));
+app.MapGet("/api/requests/{id}", (string id, StateReader state) => Api.RequestDetail(id, state));
+app.MapGet("/api/org", (StateReader state, UiHome home) => Results.Ok(state.Org(home)));
 app.MapPost("/api/answers/{sid}", (string sid, AnswerRequest req, UiHome home) => Api.PostAnswer(sid, req, home));
 app.MapGet("/visual", (HttpContext ctx, UiHome home) => Api.Visual(ctx, home));
 app.Run();
@@ -76,6 +79,9 @@ static class Api
         state.Task(id) is { } task ? Results.Ok(task) : Results.NotFound();
 
     public static IResult Setup(StateReader state, UiHome home) => Results.Ok(state.Setup(home));
+
+    public static IResult RequestDetail(string id, StateReader state) =>
+        state.Request(id) is { } request ? Results.Ok(request) : Results.NotFound();
 
     public static IResult PostAnswer(string sid, AnswerRequest req, UiHome home) =>
         home.WriteAnswer(sid, req.Ask, req.Text) switch
@@ -152,5 +158,9 @@ static class Api
 [JsonSerializable(typeof(TaskDetail))]
 [JsonSerializable(typeof(SetupInfo))]
 [JsonSerializable(typeof(List<SessionInfo>))]
+[JsonSerializable(typeof(List<RequestRow>))]
+[JsonSerializable(typeof(RequestDetail))]
+[JsonSerializable(typeof(OrgInfo))]
+[JsonSerializable(typeof(DoctorFile))]
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 partial class UiJson : JsonSerializerContext;

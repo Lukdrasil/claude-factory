@@ -232,7 +232,8 @@ public sealed class MountScannerTests : IAsyncDisposable
                 into.Enqueue(path);
             }
         }
-        var readers = new[] { Task.Run(() => Read(first)), Task.Run(() => Read(second)) };
+        var ct = TestContext.Current.CancellationToken;
+        var readers = new[] { Task.Run(() => Read(first), ct), Task.Run(() => Read(second), ct) };
         await Task.Delay(Baseline, TestContext.Current.CancellationToken);
         var before = scanner.Scans;
 
