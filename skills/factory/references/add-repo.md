@@ -23,6 +23,10 @@ clone or with `--repo <clone-dir>`; a registered clone with a toolset is `nothin
   registered without a toolset: tell the user and offer to write `repos/<key>/toolset.md` by hand, using the
   command vocabulary of `toolsets/dotnet.md` in this plugin. Completion: the user knows the key
   and whether a toolset exists.
+- **Emoji, optional.** An `emoji:` in the repo's `repos.yml` line (`<key>: {url: …, path: …, emoji: 🦊}`) is
+  the repo's mark in the session name `<emoji> <key> <id>` that `session-monitor.sh` gives every herdr tab and
+  `claude --name`. Without it the repo gets a fixed pick out of sixteen by the key, the same on every run;
+  set one when two repos pick the same. Completion: the user was offered it.
 - **Check the toolset.** Open `<root>/state/repos/<key>/toolset.md` and compare the bindings with what the
   repo runs (solution path, test filter syntax). Edit the rows that lie, delete the rows the repo cannot
   bind, commit in the state repo. Completion: no `{{…}}` placeholder left and every remaining row is a

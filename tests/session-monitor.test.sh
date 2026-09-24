@@ -206,4 +206,70 @@ out=$(cat "$claimed")
 check 'the dispatch claims in_progress'  '^status: in_progress$'
 check 'the dispatch claims a pending owner' "^owner: factory@.*:pending-T-001\$"
 
+# the session name `<emoji> <repo> <id>` on the tab and in `claude --name`, and the tab record of each spawn,
+# over a second state repo: `demo` carries an `emoji:`, `plain` does not
+. "$(dirname -- "$0")/herdr-stub.sh"
+herdr_stub "$tmp/stub"
+hroot="$tmp/h"
+hstate="$hroot/state"
+mkdir -p "$hstate/repos/demo/tasks" "$hstate/repos/plain/tasks" \
+  "$hroot/demo/T-101" "$hroot/plain/T-102" "$hroot/demo/T-103-01"
+printf 'spawn: manual\n' > "$hstate/factory.yml"
+printf 'demo: { path: %s, emoji: 🦊 }\nplain: { path: %s }\n' "$tmp/clone" "$tmp/clone" > "$hstate/repos.yml"
+leaf() { # <id> <repo>
+  printf -- '---\nid: %s\nrepo: %s\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(%s): a leaf\n' \
+    "$1" "$2" "$2" > "$hstate/repos/$2/tasks/$1.md"
+}
+leaf T-101 demo
+leaf T-102 plain
+printf -- '---\nid: T-103\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: green\ncomplexity: low\n---\n\n# Goal\nfeat(demo): a parent\n' \
+  > "$hstate/repos/demo/tasks/T-103.md"
+printf -- '---\nid: T-103-01\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): a block\n\nDesign (approved in the grill):\n\n### `src/g.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+  > "$hstate/repos/demo/tasks/T-103-01.md"
+
+out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn herdr --state "$hstate" 2>/dev/null)
+check 'a herdr spawn of a leaf goes out'        '^T-101 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'the tab carries the session name'        '^tab create .*--label "🦊 demo T-101"'
+check 'claude carries the session name'         '^agent start t-101 .* -- .*--name "🦊 demo T-101"'
+out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
+check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
+
+out=$(sh "$bin/session-monitor.sh" --task T-103 --spawn herdr --state "$hstate" 2>/dev/null)
+check 'a herdr spawn of a block goes out'       '^T-103-01 spawned '
+out=$(cat "$hroot/demo/.harness/T-103/herdr-tabs" 2>/dev/null)
+check 'a block lands in its parent tab record'  '^T-103-01 tab-1 pane-1$'
+
+out=$(sh "$bin/session-monitor.sh" --task T-101 --step grill --spawn herdr --state "$hstate" 2>/dev/null)
+check 'a herdr spawn of a step goes out'        '^T-101-grill spawned '
+out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
+check 'a step lands in its task tab record'     '^T-101-grill tab-1 pane-1$'
+
+: > "$HERDR_STUB_LOG"
+out=$(sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/null)
+check '--all spawns the unit of the other repo' '^T-102 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check '--all names the tab by its repo'         '^tab create .*--label "[^ ]* plain T-102"'
+check '--all names the claude session too'      '^agent start t-102 .* -- .*--name "[^ ]* plain T-102"'
+out=$(cat "$hroot/plain/.harness/T-102/herdr-tabs" 2>/dev/null)
+check '--all records its tab'                   '^T-102 tab-1 pane-1$'
+
+out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn manual --state "$hstate" 2>/dev/null)
+check 'the manual line carries the session name' 'claude --model [^ ]* --name "🦊 demo T-101" "First take ownership of T-101'
+
+out=$(sh "$bin/herdr-tabs.sh" name T-101 --state "$hstate" 2>/dev/null)
+check 'an emoji: in repos.yml wins'             '^🦊 demo T-101$'
+first=$(sh "$bin/herdr-tabs.sh" name T-102 --state "$hstate" 2>/dev/null)
+second=$(sh "$bin/herdr-tabs.sh" name T-102 --state "$hstate" 2>/dev/null)
+out=$first
+check 'a repo with no emoji: still gets one'    '^[^ ][^ ]* plain T-102$'
+if [ -n "$first" ] && [ "$first" = "$second" ]; then printf 'PASS two runs pick the same emoji\n'
+else printf 'FAIL two runs picked %s and %s\n' "$first" "$second"; fail=1; fi
+
+if sh "$bin/herdr-tabs.sh" name T-999 --state "$hstate" >/dev/null 2>&1; then
+  printf 'FAIL an unresolvable unit was named\n'; fail=1
+else
+  printf 'PASS an unresolvable unit exits 1\n'
+fi
+
 exit $fail

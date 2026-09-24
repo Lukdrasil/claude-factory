@@ -46,6 +46,11 @@
 # task this dispatch claimed and one a session picked up by hand. A claim the state clone refuses is a warning,
 # not a failure: the session still starts, and its own first heartbeat is the claim that counts.
 #
+# Every unit carries the session name `<emoji> <repo> <id>` of `herdr-tabs.sh name`: the tab label and the
+# `claude --name` of a herdr spawn, and the `--name` of a printed manual line. The herdr agent name stays the
+# lowercased id. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh record`,
+# `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-NNN>/herdr-tabs`.
+#
 # One line per unit on stdout: `<id> <state-word> <cwd>`, where the state word is `spawned`, `printed` or
 # `skipped`. Exit 0 when every unit was dispatched or printed, 1 with the reason on stderr when the state or
 # the task cannot be resolved and when no mode was named, 2 when herdr was asked for and a spawn failed.
@@ -327,22 +332,25 @@ while IFS='	' read -r id cwd model claimid prompt; do
   # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
+  label=$(sh "$bin/herdr-tabs.sh" name "$id" --state "$state")
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
-    printf '  cd %s && claude --model %s "%s"\n' "$cwd" "$model" "$prompt"
+    printf '  cd %s && claude --model %s --name "%s" "%s"\n' "$cwd" "$model" "$label" "$prompt"
     continue
   fi
   # herdr agent names are [a-z][a-z0-9_-]{0,31} and unique among live agents
   name=$(printf '%s' "$id" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
   # the tab belongs to the caller's own workspace, not to whatever another client has focused
-  set -- tab create --cwd "$cwd" --label "$id" --no-focus
+  set -- tab create --cwd "$cwd" --label "$label" --no-focus
   [ -z "$workspace" ] || set -- "$@" --workspace "$workspace"
-  pane=$(herdr "$@" | json result.root_pane.pane_id)
+  created=$(herdr "$@" || :)
+  pane=$(printf '%s' "$created" | json result.root_pane.pane_id)
   if [ -z "$pane" ]; then
     echo "session-monitor: herdr tab create gave no pane id for $id" >&2
     rc=2; continue
   fi
-  if ! herdr agent start "$name" --kind claude --pane "$pane" -- --model "$model" >/dev/null; then
+  sh "$bin/herdr-tabs.sh" record "$id" "$(printf '%s' "$created" | json result.tab.tab_id)" "$pane" --state "$state"
+  if ! herdr agent start "$name" --kind claude --pane "$pane" -- --model "$model" --name "$label" >/dev/null; then
     echo "session-monitor: herdr agent start failed for $id in pane $pane" >&2
     rc=2; continue
   fi
