@@ -150,6 +150,11 @@ port=$(cat "$ui/port" 2>/dev/null)
 token=$(cat "$ui/token" 2>/dev/null)
 ready "$port" || { bad "the server never answered / on $port: $(docker logs "$name" 2>&1 | tail -n 20)"; exit 1; }
 
+url=$(sh "$bin/ui-ask.sh" --session s2 < "$ui/sessions/s2/asks/c1.md")
+touch -d '2026-09-24 10:03' "$ui/sessions/s2/asks/c1.md"
+is 'ui-ask.sh prints the link of c1 with the port and the token' "$url" "http://127.0.0.1:$port/?ask=s2/c1#token=$token"
+printf '%s\n' "$url" > "$ui/c1.url"
+
 browser "$repo/tests/ui-page.test.js"
 rc=$?
 cat "$tmp/browser.out"
