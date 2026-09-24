@@ -28,8 +28,8 @@ that used to sit in that key lives here instead.
 
 ## policy-guard rules
 
-The Bash rules of `bin/policy-guard.sh` that T-228 changed. `tests/policy-guard.test.sh` replays each one,
-together with every deny they keep.
+The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label rule T-254 added.
+`tests/policy-guard.test.sh` replays each one, together with every deny they keep.
 
 - **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
   break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
