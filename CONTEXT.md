@@ -13,3 +13,5 @@ The terms of this repo, one line each. A term here means exactly this in code, s
   `herdr agent prompt`. Avoid: listener, watcher, poller.
 - **UI home**: `~/.claude-factory/ui` (`$FACTORY_UI_HOME`), mounted at `/ui`, one folder per session under
   `sessions/`. Avoid: session folder for the whole.
+- **drawer**: the right-hand panel of the pipeline page for one task or for setup, holding its open asks and its
+  context. Avoid: modal, sidebar.
