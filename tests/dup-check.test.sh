@@ -170,6 +170,42 @@ run "$r"
 [ "$out" = 'loadArgs lib/args.js:1 same normalized name, added at src/cli.js:4' ]
 check 'the same diff still finds the tracked definition (positive control)' $?
 
+# ---- a C# keyword before `(` is never a definition name ------------------------------------------------
+r=$tmp/cskeyword; repo "$r"
+put "$r" src/Registry.cs <<'EOF'
+public class Registry
+{
+    private static readonly List<int> Items = new(4);
+    public string Label => nameof(Items);
+    public Type Kind => typeof(int);
+    public int Width => sizeof(int);
+    public int Zero => default(int);
+    public int Broken => throw new(nameof(Items));
+    public void Load(int id)
+    {
+    }
+}
+EOF
+commit "$r"
+put "$r" src/Cache.cs <<'EOF'
+public class Cache
+{
+    private readonly Dictionary<string, int> map = new();
+    public string Label => nameof(map);
+    public Type Kind => typeof(string);
+    public int Width => sizeof(long);
+    public int Zero => default(int);
+    public int Broken => throw new(nameof(map));
+    public void Load(string key)
+    {
+    }
+}
+EOF
+commit "$r"
+run "$r"
+[ "$out" = 'Load src/Registry.cs:9 same normalized name, added at src/Cache.cs:9' ]
+check 'new, nameof, typeof, sizeof, default and throw before ( are no candidate, the real method is' $?
+
 # ---- QS-03: 12,000 added lines against a 2,000-file repo under 30 s -----------------------------------
 r=$tmp/big; repo "$r"
 mkdir -p "$r/lib" "$r/bin"
