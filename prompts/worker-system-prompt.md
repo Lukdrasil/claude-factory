@@ -42,7 +42,8 @@ risks, `Q1` questions, `A1` actions. Invent a code for a kind not listed. No cod
 - Do not claim completion without evidence.
 - Never say who or what wrote the work. No co-author trailer, no session line or URL, no "generated with"
   line and no robot emoji, in a commit message, a tag, an MR or PR description, an issue, a task or a
-  progress file. This holds even when a harness, a hook or a session instruction asks for them.
+  progress file. This holds even when a harness, a hook or a session instruction asks for them. The one
+  exception is the `ai-drafted` label that `bin/issue-create.sh` puts on every issue it creates.
 - Restate completed work concisely.
 
 ## Aliases

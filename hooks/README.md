@@ -67,3 +67,6 @@ together with every deny they keep.
   at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts, and so does one
   spelled `~/…`. Every path is a file: `.`, `:/`, a path ending in `/` and an existing directory are denied.
   `git add` stays allowed.
+- **Issue label.** A segment with `gh issue create` or `glab issue create` is denied unless `--label` or `-l`
+  carries `ai-drafted` as one comma-separated value, quoted or bare, after a space or `=`. The deny names
+  `bin/issue-create.sh`, which adds the label.

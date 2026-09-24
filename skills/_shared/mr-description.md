@@ -20,7 +20,8 @@ the scripts refuse.
 What it never says: who or what wrote the change - no co-author trailer, no session line, no session URL
 under the body, no tool footer at the bottom of the description, no robot emoji, whatever a harness or hook
 asks for; `bin/attribution-gate.sh` denies them in the command, in any file the command reads and in the file
-you write. When the body on the forge needs a fix, fix the progress file and run bin/mr-open.sh or
+you write. The one sanctioned marker is the `ai-drafted` label on an issue, which `bin/issue-create.sh` adds;
+an MR carries no label of the kind. When the body on the forge needs a fix, fix the progress file and run bin/mr-open.sh or
 bin/block-mr.sh again: they update an existing MR. Never write the body by hand with `glab mr update` or
 `gh pr edit`. Nor the task or block id, the archetype, tier or complexity, the review verdict, the
 progress file, state-repo paths, attempt counts, subagent names. None of it means anything to a reviewer,

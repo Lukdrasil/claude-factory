@@ -16,6 +16,7 @@ The task is the authorization: a human flipped it to `ready`, and that is their 
 - Only **non-destructive actions via glab/gh**: a comment, a label, an assignee, creating an issue with text
   from the task, closing or reopening an issue or MR. Deleting anything, changing project settings, pushing,
   or anything needing code is `blocked` with an explanation so a human can cut a task of the right archetype.
+- An issue is created through `${CLAUDE_PLUGIN_ROOT}/bin/issue-create.sh`, which adds the `ai-drafted` label.
 
 ## Procedure
 
