@@ -31,7 +31,7 @@ plan_hash: 3b0c1e...
 - `cut-check` rewrites the same file: it recomputes the hash, sets the current `verdict`, replaces its own
   section and leaves the `plan-check` section standing. The frontmatter reflects the latest invocation.
 - The `## cut-check` section opens with the scope it ran under and then the findings. The format does not
-  change by one character, so `architect-gate.sh`, `decompose` and `grill` read the same
+  change by one character, so `architect_verdict` in `bin/lib-tasks.sh`, `decompose` and `grill` read the same
   fields they read before.
 - **Staleness**: editing plan-ready.md changes its hash, and the gate and decompose recompute it, so a
   mismatch counts as no verdict. After editing the plan, re-run the invocation.
