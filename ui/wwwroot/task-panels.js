@@ -1,6 +1,6 @@
 import { esc } from './ask-card.js';
 
-const RAIL = [['3', 'triage'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut check'], ['9', 'approve'],
+const RAIL = [['3', 'triage'], ['3b', 'chart'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut check'], ['9', 'approve'],
   ['10', 'worktree'], ['11', 'blocks'], ['12', 'acceptance'], ['12b', 'duplication'], ['13', 'review'], ['14', 'MR'],
   ['15', 'self-report'], ['16', 'knowledge review'], ['', 'done']];
 

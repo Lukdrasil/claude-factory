@@ -593,6 +593,223 @@ async function stage(q, button, text) {
     ok(b.some((l) => /\brun ui-up\.sh then ui-down\.sh\b/.test(l)), `option B reads ${JSON.stringify(opts[1].text)}`);
   });
 
+  // --- the org: tabs, requests, priority, capacity, Map and Plan, against the shapes of the wave-2 API -------------
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  await check('the header offers the tabs Pipeline, Map, Plan, Org, Memory and Setup in that order, Pipeline selected', async () => {
+    await fresh(page);
+    await until('the tabs', async () => (await page.getByRole('tab').count()) === 6);
+    const tabs = await page.getByRole('tab').evaluateAll((ts) => ts.map((t) => `${t.textContent.trim()}${t.getAttribute('aria-selected') === 'true' ? '*' : ''}`));
+    ok(tabs.join(' ') === 'Pipeline* Map Plan Org Memory Setup', `tabs: ${tabs.join(' ')}`);
+  });
+
+  await check('the row of T-001 shows its repo claude-factory as a chip right after its id', async () => {
+    const chip = await page.locator('table tr', { hasText: 'T-001' }).first().locator('.id').first()
+      .evaluate((id) => id.nextElementSibling && id.nextElementSibling.matches('.chip') && id.nextElementSibling.textContent.trim());
+    ok(chip === 'claude-factory', `next to the id: ${JSON.stringify(chip)}`);
+  });
+
+  await check('without /api/requests and /api/org the grid still shows, the Map tab reads No request yet and no error shows', async () => {
+    await page.getByRole('tab', { name: 'Map' }).click();
+    await until('No request yet', async () => /No request yet/.test(await page.locator('#app').innerText()));
+    await page.getByRole('tab', { name: 'Pipeline' }).click();
+    await until('the grid', async () => (await taskRowIds(page)).length >= 4);
+    ok(!(await page.locator('.error').count()), `error: ${await page.locator('.error').allInnerTexts()}`);
+  });
+
+  const row = (id, status, repo, goal, request, priority) => ({ id, status, archetype: 'feature', tier: 'yellow', repo, owner: '', goal, request, priority });
+  const BOARD = [
+    row('T-ECS-14', 'draft', 'ecs', 'feat(rotation): rotation metrics', 'R-20260925-1', 'P3'),
+    row('T-ECS-12', 'draft', 'ecs', 'feat(rotation): rotate a stored credential on request', 'R-20260925-1', 'P1'),
+    row('T-ECS-12-01', 'draft', 'ecs', 'feat(rotation): versioned secret write', 'R-20260925-1', 'P1'),
+    row('T-264', 'ready', 'claude-factory', 'fix(ui): a legacy task without a request', '', 'P2'),
+    row('T-BFF-3', 'draft', 'bff', 'feat(proxy): expose credential rotation', 'R-20260925-1', 'P1'),
+    row('T-ART-21', 'in_progress', 'arthurcore', 'feat(jobs): bounded retry with backoff', 'R-20260924-2', 'P0'),
+  ];
+  const REQUESTS = [
+    { id: 'R-20260925-1', status: 'planned', destination: 'Rotate a stored credential on request through the bff.', priority: 'P1', parents: ['T-ECS-12', 'T-BFF-3', 'T-ECS-14'], archived: false },
+    { id: 'R-20260924-2', status: 'running', destination: 'Retry policy for arthurcore jobs.', priority: 'P0', parents: ['T-ART-21'], archived: false },
+    { id: 'R-20260901-1', status: 'done', destination: 'An archived request.', priority: 'P2', parents: ['T-OLD-1'], archived: true },
+  ];
+  const ticket = (nn, title, type, status, blockedBy, repo, claimedBy, answer) => ({ nn, title, type, status, blockedBy, repo, claimedBy, question: title, answer });
+  const DETAIL = {
+    id: 'R-20260925-1', status: 'planned', destination: 'Rotate a stored credential on request through the bff.',
+    notes: 'Both repos release together.', terms: '- **Rotation**: a new secret version. Avoid: renewal', archived: false,
+    decisions: [{ title: 'Rotation API of the vault', file: '01-rotation-api-of-the-vault.md', gist: 'Versioned secrets.' },
+      { title: 'Who may rotate', file: '02-who-may-rotate.md', gist: 'The owning org admin.' }],
+    outOfScope: [{ title: 'Scheduled rotation', file: '05-scheduled-rotation.md', gist: 'The destination is rotation on request.' }],
+    fog: 'How the bff shows a <b>rotation</b> in progress.',
+    tickets: [
+      ticket('01', 'Rotation API of the vault', 'research', 'resolved', [], 'ecs', '', 'Versioned secrets.'),
+      ticket('02', 'Who may rotate', 'grilling', 'resolved', [], 'all', '', 'The owning org admin.'),
+      ticket('03', 'Rotation trigger', 'grilling', 'claimed', ['01'], 'ecs', 'chart_ecs-12', ''),
+      ticket('04', 'Error contract toward the bff', 'grilling', 'open', ['03'], 'all', '', ''),
+      ticket('05', 'Scheduled rotation', 'grilling', 'dropped', [], 'all', '', 'The destination is rotation on request.'),
+      ticket('06', 'Audit log format', 'research', 'open', [], 'ecs', '', ''),
+    ],
+    frontier: ['06'],
+    parents: [
+      { id: 'T-ECS-12', repo: 'ecs', priority: 'P1', status: 'draft', goal: 'feat(rotation): rotate a stored credential on request',
+        acceptance: 'dotnet test --filter Rotation', blocks: [
+          { id: 'T-ECS-12-01', status: 'draft', goal: 'feat(rotation): versioned secret write', acceptance: 'dotnet test --filter Rotation.Write' },
+          { id: 'T-ECS-12-02', status: 'done', goal: 'feat(rotation): grace period', acceptance: 'dotnet test --filter Rotation.Grace' }] },
+      { id: 'T-BFF-3', repo: 'bff', priority: 'P1', status: 'draft', goal: 'feat(proxy): expose credential rotation', acceptance: 'npm test -- rotation', blocks: [] },
+      { id: 'T-ECS-14', repo: 'ecs', priority: 'P3', status: 'draft', goal: 'feat(rotation): rotation metrics', acceptance: '', blocks: [] },
+    ],
+  };
+  const DETAIL2 = { ...DETAIL, id: 'R-20260924-2', status: 'running', destination: 'Retry policy for arthurcore jobs.', notes: '', terms: '',
+    decisions: [], outOfScope: [], fog: '', tickets: [], frontier: [],
+    parents: [{ id: 'T-ART-21', repo: 'arthurcore', priority: 'P0', status: 'in_progress', goal: 'feat(jobs): bounded retry with backoff', acceptance: 'dotnet test --filter Retry', blocks: [] }] };
+  const ORG = { capacity: { sessions: { used: 9, cap: 10 }, roles: [{ role: 'repo-lead', used: 2, cap: 3 }, { role: 'implementer', used: 4, cap: 4 },
+    { role: 'researcher', used: 1, cap: null }] }, leases: [], leads: [], ceo: null };
+
+  async function mocked(routes) { // {path: body, or null for a 404}: a new page with those /api answers
+    const p = await context.newPage();
+    for (const [route, body] of Object.entries(routes)) {
+      await p.route(`**${route}`, (r) => (body === null ? r.fulfill({ status: 404, body: '' })
+        : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })));
+    }
+    await p.goto(`${BASE}/#${TOKEN}`);
+    return p;
+  }
+  const org = await mocked({ '/api/board': BOARD, '/api/requests': REQUESTS, '/api/requests/R-20260925-1': DETAIL,
+    '/api/requests/R-20260924-2': DETAIL2, '/api/org': ORG });
+
+  await check('the grid groups the rows under one header row per request, best priority first, then the rows without a request', async () => {
+    const seq = await until('the grouped rows', async () => {
+      const s = await org.locator('table').first().evaluate((table) => [...table.querySelectorAll('tbody tr')].map((r) => {
+        if (r.querySelector('th[scope="rowgroup"]')) return `req:${(r.textContent.match(/R-\d+-\d+/) || ['none'])[0]}`;
+        return (r.querySelector('.id') || { textContent: '?' }).textContent.trim();
+      }));
+      return s.length >= 9 && s;
+    });
+    ok(seq.join(' ') === 'req:R-20260924-2 T-ART-21 req:R-20260925-1 T-ECS-12 T-ECS-12-01 T-BFF-3 T-ECS-14 req:none T-264',
+      `rows: ${seq.join(' ')}`);
+  });
+
+  await check('the header row of R-20260925-1 shows its id, priority P1, status planned and its destination', async () => {
+    const text = await org.locator('tr', { has: org.locator('th[scope="rowgroup"]', { hasText: 'R-20260925-1' }) }).innerText();
+    for (const s of ['R-20260925-1', 'P1', 'planned', 'Rotate a stored credential on request through the bff.']) ok(text.includes(s), `no ${s} in: ${text}`);
+  });
+
+  await check('every task row carries its priority in the Prio column and its repo as a chip right after its id', async () => {
+    const got = await org.locator('table').first().evaluate((table) => {
+      const heads = [...table.querySelectorAll('thead th')].map((th) => th.textContent.trim().split(/\s+/)[0]);
+      const prio = heads.indexOf('Prio');
+      return [...table.querySelectorAll('tbody tr')].filter((r) => !r.querySelector('th[scope="rowgroup"]') && !r.classList.contains('sub'))
+        .map((r) => `${r.querySelector('.id').textContent.trim()}:${r.querySelector('.id').nextElementSibling?.textContent.trim()}:${r.children[prio]?.textContent.trim()}`);
+    });
+    ok(got.join(' ') === 'T-ART-21:arthurcore:P0 T-ECS-12:ecs:P1 T-BFF-3:bff:P1 T-ECS-14:ecs:P3 T-264:claude-factory:P2', `rows: ${got.join(' ')}`);
+  });
+
+  await check('the capacity strip of the Pipeline tab shows sessions and every role as used/cap, a role without a cap as used/-', async () => {
+    const items = await until('the capacity strip', async () => {
+      const t = await org.locator('[data-capacity] [data-role]').allInnerTexts();
+      return t.length && t.map((s) => s.replace(/\s+/g, ' ').trim());
+    });
+    ok(items.join(', ') === 'sessions 9/10, repo-lead 2/3, implementer 4/4, researcher 1/-', `strip: ${items.join(', ')}`);
+  });
+
+  await check('with /api/org missing the capacity strip reads the capacity of /api/setup', async () => {
+    const p = await context.newPage();
+    await p.route('**/api/org', (r) => r.fulfill({ status: 404, body: '' }));
+    await p.route('**/api/setup', async (r) => {
+      const res = await r.fetch();
+      await r.fulfill({ response: res, json: { ...(await res.json()), capacity: { sessions: { used: 3, cap: 10 }, roles: [] } } });
+    });
+    await p.goto(`${BASE}/#${TOKEN}`);
+    const items = await until('the capacity strip', async () => {
+      const t = await p.locator('[data-capacity] [data-role]').allInnerTexts();
+      return t.length && t.map((s) => s.replace(/\s+/g, ' ').trim());
+    }).finally(() => p.close());
+    ok(items.join(', ') === 'sessions 3/10', `strip: ${items.join(', ')}`);
+  });
+
+  await check('the Map tab lists every request newest first, the archived one marked, R-20260925-1 selected', async () => {
+    await org.getByRole('tab', { name: 'Map' }).click();
+    const list = await until('the request list', async () => {
+      const t = await org.locator('[data-request]').evaluateAll((bs) => bs.map((b) => `${b.dataset.request}${b.getAttribute('aria-pressed') === 'true' ? '*' : ''}${/archived/.test(b.textContent) ? ' archived' : ''}`));
+      return t.length === 3 && t;
+    });
+    ok(list.join(', ') === 'R-20260925-1*, R-20260924-2, R-20260901-1 archived', `requests: ${list.join(', ')}`);
+  });
+
+  await check('the Map tab shows the destination with the id, priority and status of R-20260925-1', async () => {
+    const text = await until('the destination', async () => {
+      const t = await org.locator('[data-map] .dest').innerText();
+      return /Rotate a stored credential/.test(t) && t;
+    });
+    for (const s of ['R-20260925-1', 'P1', 'planned']) ok(text.includes(s), `no ${s} in: ${text}`);
+  });
+
+  await check('the Map tab shows the open and claimed tickets with type, blockers, repo and claimer, only 06 marked frontier', async () => {
+    const col = org.locator('[data-map] [data-col="open"]');
+    const tickets = await col.locator('[data-ticket]').evaluateAll((ts) => ts.map((t) => `${t.dataset.ticket}${/frontier/.test(t.textContent) ? '*' : ''}`));
+    ok(tickets.join(' ') === '03 04 06*', `open tickets: ${tickets.join(' ')}`);
+    const t03 = await col.locator('[data-ticket="03"]').innerText();
+    for (const s of ['Rotation trigger', 'grilling', 'claimed', 'chart_ecs-12', '01', 'ecs']) ok(t03.includes(s), `no ${s} in 03: ${t03}`);
+  });
+
+  await check('the Map tab shows the decisions so far with their gist, the fog as text and out of scope with its reason', async () => {
+    const dec = await org.locator('[data-map] [data-col="decisions"]').innerText();
+    for (const s of ['Rotation API of the vault', 'Versioned secrets.', 'Who may rotate', 'The owning org admin.']) ok(dec.includes(s), `no ${s} in: ${dec}`);
+    const fog = await org.locator('[data-map] [data-col="fog"]').innerText();
+    ok(fog.includes('How the bff shows a <b>rotation</b> in progress.'), `fog: ${fog}`);
+    const out = await org.locator('[data-map] [data-col="out"]').innerText();
+    ok(out.includes('Scheduled rotation') && out.includes('The destination is rotation on request.'), `out of scope: ${out}`);
+  });
+
+  await check('selecting R-20260924-2 loads its map', async () => {
+    await org.locator('[data-request="R-20260924-2"]').click();
+    await until('the destination of R-20260924-2', async () => /Retry policy for arthurcore jobs\./.test(await org.locator('[data-map] .dest').innerText()));
+    await org.locator('[data-request="R-20260925-1"]').click();
+    await until('the destination of R-20260925-1', async () => /Rotate a stored credential/.test(await org.locator('[data-map] .dest').innerText()));
+  });
+
+  await check('the Plan tab shows the destination, the decisions and out of scope of the selected request', async () => {
+    await org.getByRole('tab', { name: 'Plan' }).click();
+    const text = await until('the plan', async () => {
+      const t = await org.locator('[data-plan]').innerText();
+      return /Rotate a stored credential/.test(t) && t;
+    });
+    for (const s of ['R-20260925-1', 'Rotation API of the vault', 'Versioned secrets.', 'Scheduled rotation', 'The destination is rotation on request.']) {
+      ok(text.includes(s), `no ${s} in: ${text.slice(0, 600)}`);
+    }
+  });
+
+  await check('the Plan checklist lists the parents per repo, ecs then bff, each with its blocks, status and acceptance', async () => {
+    const got = await org.locator('[data-checklist]').evaluate((ck) => ({
+      repos: [...ck.querySelectorAll('[data-plan-repo]')].map((r) => r.dataset.planRepo),
+      items: [...ck.querySelectorAll('[data-item]')].map((li) => li.dataset.item),
+      ecs12: ck.querySelector('[data-item="T-ECS-12"]')?.textContent || '',
+      grace: ck.querySelector('[data-item="T-ECS-12-02"]')?.textContent || '',
+    }));
+    ok(got.repos.join(' ') === 'ecs bff', `repos: ${got.repos.join(' ')}`);
+    ok(got.items.join(' ') === 'T-ECS-12 T-ECS-12-01 T-ECS-12-02 T-ECS-14 T-BFF-3', `items: ${got.items.join(' ')}`);
+    for (const s of ['rotate a stored credential on request', 'dotnet test --filter Rotation', 'P1', 'draft']) ok(got.ecs12.includes(s), `no ${s} in: ${got.ecs12}`);
+    for (const s of ['grace period', 'dotnet test --filter Rotation.Grace', 'done']) ok(got.grace.includes(s), `no ${s} in: ${got.grace}`);
+  });
+
+  await check('the Plan checklist is read-only: no input, button or editable element, and the approval is the CEO\'s confirm ask', async () => {
+    const n = await org.locator('[data-checklist]').locator('input, textarea, select, button, [contenteditable]').count();
+    ok(n === 0, `${n} controls in the checklist`);
+    ok(!(await org.locator('[data-plan]').getByRole('button', { name: /approve/i }).count()), 'an approve button');
+    ok(/confirm ask/i.test(await org.locator('[data-plan]').innerText()), 'no word of the CEO\'s confirm ask');
+  });
+
+  await check('at 390x844 no tab scrolls the page sideways', async () => {
+    await org.setViewportSize({ width: 390, height: 844 });
+    const wide = [];
+    for (const name of ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup']) {
+      await org.getByRole('tab', { name }).click();
+      await org.waitForTimeout(300);
+      const over = await org.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      if (over > 0) wide.push(`${name} by ${over} px`);
+    }
+    ok(!wide.length, wide.join(', '));
+  });
+  await org.close();
+
   await browser.close();
   process.exit(failed);
 })().catch((e) => {
