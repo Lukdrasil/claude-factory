@@ -106,7 +106,7 @@ What is broken or missing today, and for whom. Two to five sentences.
 |---|---|---|
 
 ## Goals
-- <goal> — the change in the world, not the feature that delivers it
+- <goal>: the change in the world, not the feature that delivers it
 
 ## Success metrics
 | Metric | Today | Target | How it is measured |
@@ -184,7 +184,7 @@ template_version: 2
 
 State: in progress · Requirements: FR-01, FR-04
 
-## S1 — Pay by card
+## S1: Pay by card
 As a <role> I want <capability> so that <outcome>.
 
 **Acceptance criteria**
@@ -409,10 +409,10 @@ template_version: 2
 ## Mapping
 | Container | Artifact | Runtime unit | Scaling |
 |---|---|---|---|
-| API | `ghcr.io/org/api` image | container app, 2–10 replicas | CPU > 70% |
+| API | `ghcr.io/org/api` image | container app, 2-10 replicas | CPU > 70% |
 
 ## Configuration and secrets
-Where configuration comes from and where secrets are kept — names and locations, never values.
+Where configuration comes from and where secrets are kept: names and locations, never values.
 ```
 
 **Done when** every container from `03-containers.md` appears in the mapping, and the deployment
@@ -450,9 +450,9 @@ supersedes the glossary-in-state placement of ADR-0040.
 template_version: 2
 ---
 
-# CONTEXT — glossary
+# CONTEXT: glossary
 
-<One line: whose language this is.> Terms and meanings only — no implementation.
+<One line: whose language this is.> Terms and meanings only, no implementation.
 
 | Term | Meaning |
 |---|---|

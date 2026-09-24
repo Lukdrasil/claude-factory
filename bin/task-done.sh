@@ -13,24 +13,36 @@
 # `owner:` goes to null in the same commit either way. A terminal task has no owner, and leaving one set is what
 # made the Stop hook's owner-based lookup re-report a finished task until its round budget ran out.
 #
-#   task-done.sh <T-NNN> [--state <dir>]      cwd = the state clone unless --state
+# `--close "<reason>"` (T-228 A8) ends any task in `closed`, a block too, with no mr_url check: the reason goes
+# into the commit message and a `**closed** <reason>` line of the task's progress file.
+#
+# After the push the task's leftovers go (T-228 Q2, Q16): the worktree `$WORK_DIR/<key>/<id>` of the task and
+# of each block when `git status --porcelain` is empty, and the local branch (the parent's `branch:`,
+# `block/<id>` for a block) when a remote-tracking ref contains its tip, read without a fetch. Whatever stays
+# is one `skipped: <what> <reason>` line on stdout. Remote branches are never touched.
+#
+#   task-done.sh <T-NNN|T-NNN-NN> [--close "<reason>"] [--state <dir>]      cwd = the state clone unless --state
 #
 # Exit 1 with the reason when an MR archetype has no mr_url; nothing written. Exit 2 when the commit landed but
-# the push to the state root did not, the same meaning state-report.sh gives that code.
+# the push to the state root did not, the same meaning state-report.sh gives that code. A leftover is not an
+# error.
 set -eu
 
-id='' state=''
+id='' state='' reason=''
 die() { printf 'task-done: %s\n' "$1" >&2; exit 1; }
 die2() { printf 'task-done: %s\n' "$1" >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    --close)
+      case "${2:-}" in ''|-*) die "--close needs a reason" ;; esac
+      reason=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one task id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: task-done.sh <T-NNN> [--state <dir>]"
+[ -n "$id" ] || die "usage: task-done.sh <T-NNN|T-NNN-NN> [--close \"<reason>\"] [--state <dir>]"
 [ -n "$state" ] || state=$(pwd)
 [ -d "$state/.git" ] || die "$state is not a state clone - run from one or pass --state <dir>"
 
@@ -41,12 +53,16 @@ parent=$(grep -lx "id: $id" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1)
 [ -n "${parent:-}" ] && [ -f "$parent" ] || die "no task file with 'id: $id' in $state/repos/*/tasks/"
 
 archetype=$(sed -n 's/^archetype:[[:space:]]*//p' "$parent" | head -n1 | sed 's/[[:space:]]*#.*//')
-case "$archetype" in
-  triage|ops|research) terminal=closed ;;
-  *) terminal=done
-     mr_url=$(sed -n 's/^mr_url:[[:space:]]*//p' "$parent" | head -n1)
-     [ "$mr_url" != null ] && [ -n "$mr_url" ] || die "task $id has no mr_url, and a $archetype task ends in done only after its MR is validated" ;;
-esac
+if [ -n "$reason" ]; then
+  terminal=closed
+else
+  case "$archetype" in
+    triage|ops|research) terminal=closed ;;
+    *) terminal=done
+       mr_url=$(sed -n 's/^mr_url:[[:space:]]*//p' "$parent" | head -n1)
+       [ "$mr_url" != null ] && [ -n "$mr_url" ] || die "task $id has no mr_url, and a $archetype task ends in done only after its MR is validated" ;;
+  esac
+fi
 
 # every block of this parent: T-NNN-NN task files, sorted for a stable diff
 blocks=$(grep -lx "id: $id-[0-9][0-9]" "$state"/repos/*/tasks/*.md 2>/dev/null | sort || :)
@@ -82,16 +98,55 @@ if [ -n "$blocks" ]; then
   IFS=$oldifs
 fi
 
-state_commit "$state" "chore($id): $from → $terminal, blocks included" "$@" \
+key=${parent#"$state/repos/"}
+key=${key%%/*}
+
+message="chore($id): $from → $terminal, blocks included"
+if [ -n "$reason" ]; then
+  progress="$state/repos/$key/progress/$id.md"
+  mkdir -p "$(dirname -- "$progress")"
+  [ -f "$progress" ] || printf '# %s\n' "$id" > "$progress"
+  [ -z "$(tail -c1 "$progress")" ] || printf '\n' >> "$progress"
+  printf '**closed** %s\n' "$reason" >> "$progress"
+  set -- "$@" "${progress#"$state/"}"
+  message="$message: $reason"
+fi
+
+state_commit "$state" "$message" "$@" \
   || die2 "the $terminal of $id could not be committed in $state"
 
-# the push recipe of ADR-0012, three tries, the same one state-report.sh uses in the standalone posture; a clone
-# with no origin stays local (task-new.sh has the same rule) and is not an error
-if git -C "$state" remote get-url origin >/dev/null 2>&1; then
-  n=0
-  until git -C "$state" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 && git -C "$state" push -q >/dev/null 2>&1; do
-    n=$((n + 1))
-    [ "$n" -lt 3 ] || die2 "the push to the state root failed 3 times: $id is $terminal in $state but not pushed"
-    sleep 1
-  done
+state_push "$state" || die2 "the push to the state root failed 3 times: $id is $terminal in $state but not pushed"
+state_unlock
+
+cleanup() { # <task file>
+  cu_id=$(sed -n 's/^id:[[:space:]]*//p' "$1" | head -n1)
+  case "$cu_id" in
+    T-*-[0-9][0-9]) cu_branch="block/$cu_id" ;;
+    *) cu_branch=$(sed -n 's/^branch:[[:space:]]*//p' "$1" | head -n1) ;;
+  esac
+  cu_wt="$WORK_DIR/$key/$cu_id"
+  if [ -e "$cu_wt" ]; then
+    if [ -n "$(git -C "$cu_wt" status --porcelain 2>/dev/null)" ]; then
+      printf 'skipped: %s has uncommitted changes\n' "$cu_wt"
+    elif ! git -C "$cu_wt" symbolic-ref -q HEAD >/dev/null 2>&1 \
+       && [ -z "$(git -C "$cu_wt" branch -r --contains HEAD 2>/dev/null)" ]; then
+      printf 'skipped: %s is on a detached HEAD no remote-tracking ref contains\n' "$cu_wt"
+    elif ! git -C "$clone" worktree remove "$cu_wt" >/dev/null 2>&1; then
+      printf 'skipped: %s git worktree remove refused it\n' "$cu_wt"
+    fi
+  fi
+  case "$cu_branch" in ''|null|'~') return 0 ;; esac
+  git -C "$clone" show-ref --verify --quiet "refs/heads/$cu_branch" || return 0
+  if [ -e "$cu_wt" ]; then
+    printf 'skipped: %s is checked out in %s, which stays\n' "$cu_branch" "$cu_wt"
+  elif [ -z "$(git -C "$clone" branch -r --contains "refs/heads/$cu_branch" 2>/dev/null)" ]; then
+    printf 'skipped: %s is not pushed, no remote-tracking ref contains its tip\n' "$cu_branch"
+  elif ! git -C "$clone" branch -D "$cu_branch" >/dev/null 2>&1; then
+    printf 'skipped: %s git branch -D refused it\n' "$cu_branch"
+  fi
+}
+
+clone=$(yml_field "$key" path)
+if [ -n "${WORK_DIR:-}" ] && [ -n "$clone" ] && git -C "$clone" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  printf '%s\n%s\n' "$parent" "$blocks" | while IFS= read -r task; do [ -z "$task" ] || cleanup "$task"; done
 fi

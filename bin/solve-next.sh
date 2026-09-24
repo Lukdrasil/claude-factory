@@ -19,7 +19,8 @@
 # directory of the run.
 #
 # The state a step is read off, in the order the steps are tried: no `tier` is step 3, no plan-ready file is
-# step 4, a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
+# step 4 (the one whose frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
+# and a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
 # wave plan in the progress file is step 8, a parent that is not `in_progress` is step 9, no session worktree
 # is step 10, a block that is not `done` is step 11, every block done is step 12, no `## Duplication` in the
 # progress file is step 12b, no `## Review` in it is step 13, no `mr_url` is step 14, a parent that is not
@@ -129,25 +130,19 @@ if [ -z "$tier" ] || [ -z "$archetype" ]; then
   exit 0
 fi
 
-slug=$(grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' "$task" 2>/dev/null | head -n1 | sed 's|^plans/||; s|-plan-ready\.md$||' || :)
+slug=''
+for f in "$state/repos/$key/plans/"*-plan-ready.md; do
+  [ -f "$f" ] && [ "$(fm "$f" task)" = "$id" ] || continue
+  slug=${f##*/}; slug=${slug%-plan-ready.md}
+  break
+done
+[ -n "$slug" ] || slug=$(grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' "$task" 2>/dev/null | head -n1 | sed 's|^plans/||; s|-plan-ready\.md$||' || :)
 plan="$state/repos/$key/plans/$slug-plan-ready.md"
 
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
-  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists, named in the parent's ## Context."
+  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
   cmd "cat $plugin/skills/grill/SKILL.md"
   cmd "cat $task"
-  exit 0
-fi
-
-product=$(clone_path "$key")
-verdict="$state/repos/$key/verdicts/$slug.md"
-
-# why: architect-gate.sh denies the block writes of step 8 without a verdict whose plan_hash still matches, so
-# why: the curation is the next step and not a note beside a later one
-if [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
-  emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan."
-  cmd "cat $plugin/skills/architect-review/SKILL.md"
-  cmd "sha256sum $plan"
   exit 0
 fi
 
@@ -161,6 +156,19 @@ for f in "$state"/repos/*/tasks/*.md; do
   esac
 done
 blocks=$(printf '%s' "$blocks" | sort)
+
+product=$(clone_path "$key")
+verdict="$state/repos/$key/verdicts/$slug.md"
+
+# why: architect-gate.sh denies the block writes of step 8 without a verdict whose plan_hash still matches, so
+# why: the curation is the next step and not a note beside a later one; decompose deletes the verdict once it
+# why: writes the blocks, so a parent with blocks is past this step
+if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
+  emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan."
+  cmd "cat $plugin/skills/architect-review/SKILL.md"
+  cmd "sha256sum $plan"
+  exit 0
+fi
 
 if [ -z "$blocks" ]; then
   emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on and parallel_group."

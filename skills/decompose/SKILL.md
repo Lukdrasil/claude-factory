@@ -45,7 +45,10 @@ human's job.
    plan edit and a rerun.
 3. Run the `cut-check` invocation of `architect-review` over the generated files, per `references/writing.md`.
 4. Write the tasks with `task-new.sh` in manifest order, rewriting `depends_on` from the ordinals to the
-   returned ids, per `references/writing.md`, then delete the verdict file and push that deletion.
+   returned ids, per `references/writing.md`, then delete the verdict file and push that deletion. When the
+   plan has a `task:`, run `sh ${CLAUDE_PLUGIN_ROOT}/bin/dag-check.sh <task> --state <state clone>` over the
+   written blocks before step 5: a refusal (a block that claims no path, two blocks claiming one path with no
+   edge between them) is a plan edit and a rerun, never a cut shown to the human.
 5. Show the human one line per block: id, title, tier, archetype, depends_on, file path. For a `red` block,
    say that `spec-critic` comes before the flip to `ready`.
 6. Recommend closing the source task; that flip is a human's.

@@ -25,3 +25,45 @@ that used to sit in that key lives here instead.
   cache sat at 0.12.0). Bump the version in `.claude-plugin/plugin.json` with any change to the hooks.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
   name. `tests/hooks-wiring.test.sh` enforces both.
+
+## policy-guard rules
+
+The Bash rules of `bin/policy-guard.sh` that T-228 changed. `tests/policy-guard.test.sh` replays each one,
+together with every deny they keep.
+
+- **Segments.** A command is judged one segment at a time, and a segment ends at `;`, `|`, `&` or a line
+  break outside quotes only. A `&&` inside a printf argument or a commit message is data. Heredoc bodies are
+  dropped before any scan, the push checks included, unless the body is fed to `sh`, `bash`, `zsh` or `eval`.
+- **cd tracking.** An allowlist. A `cd` replaces the cwd the later segments are judged against only when the
+  whole command has this shape: one or more leading segments `cd <path>`, where the path is absolute, `~`,
+  `~/x` or empty (through `$HOME`), with no option, then simple commands. Every separator is `&&`, and a `|`
+  appears only inside a later segment. Outside quotes there is no `(`, `)`, `$(`, backtick, `;`, `||`,
+  background `&` or line break. No word is `pushd`, `popd`, `builtin`, `command`, `eval`, `source` or `exec`,
+  no segment starts with `.`, and no assignment (`CDPATH=` included) is prefixed to a `cd`. In every other
+  shape the cwd stays the hook's, and the target of every `cd` or `pushd` seen, even behind `builtin`,
+  `command`, `eval`, `exec` or an assignment, joins a set of bases. A relative target is denied when it is a
+  protected target under any base. A `cd` to an existing path whose resolved spelling (`pwd -P`) differs from its
+  text, such as a symlink, ends the shape for the rest of the command, and the hook cwd stays among the bases.
+  A `cd` the guard cannot resolve (a relative path, `-`, a variable, `..`, a quoted path, a target containing `)`, a bare `pushd` or `popd`) turns the shape off for the rest of the
+  command, keeps the hook cwd among the bases, and denies a relative write target: a redirect target, an
+  in-place editor's operand containing a `/`, or the file operand of `sed -i`/`perl -i`. A command word is
+  never one. An absolute target is judged as any absolute target.
+- **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
+  guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.
+- **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
+  with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
+  with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
+  script, quoted or not, and is skipped. The last operand is judged as a file even when it does not exist yet.
+- **Reads into blocks.** The session that owns a parent task (its `owner:`) may run `git -C <block worktree>
+  log|diff|status|show`, `cat` and `ls` in the worktrees of that parent's blocks. A block session may `cat`
+  its own brief, `.harness/<parent>/brief-<block>.md`. A segment holding `$(`, a backtick, `<(` or `>(` runs a
+  command of its own and is never a read. Nothing else changes: a write into a block, a read by any other
+  session and a read of a sibling's brief stay denied.
+- **Pinned lease.** `git push --force-with-lease[=<branch>[:<sha>]] [-u] origin <branch>` is allowed on the
+  session's own task branch. The parent's owner pushes the parent branch as `git -C <parent worktree> push
+  --force-with-lease=<branch>:<sha> origin <branch>`, where `<branch>` is that task's `branch:`. A lease on
+  the default branch or on any other branch is denied.
+- **State-clone commits.** In `$WORK_DIR/state`, reached by the cwd, a `cd` or `-C`, `git commit` must name
+  at least one path after `--`, and `-a`/`--all` is denied. A quoted `-C` directory counts, and so does one
+  spelled `~/…`. Every path is a file: `.`, `:/`, a path ending in `/` and an existing directory are denied.
+  `git add` stays allowed.

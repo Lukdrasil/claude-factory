@@ -5,8 +5,10 @@ product repo. The branch is `docs/architecture-<bootstrap|audit>-<YYYY-MM-DD>`, 
 `docs/**`, `CONTEXT.md` and `README.md` and nothing else.
 
 - **Task mode**: the forge flow in `## Output` of `<plugin-root>/skills/_shared/session-contract.md`. Rebase
-  on the base branch, `git push --force-with-lease origin <branch>`, create the MR through `gh` or `glab` only when there is not one
-  already, write the web URL into `mr_url`.
+  on the base branch, `git push --force-with-lease=<branch>:<sha> origin <branch>` with `<sha>` the
+  `origin/<branch>` tip read before the rebase, create the MR through `gh` or `glab` only when there is not one
+  already, write the web URL into `mr_url`. A lease push goes only to a working branch: a block's own branch,
+  or the parent's `branch:` for the parent's owner; never the default branch or any other.
 - **Local session**: push the branch, then create the MR with `gh` or `glab` when
   `sh <plugin-root>/bin/forge.sh hosts` shows you signed in to the host of `git remote get-url origin`.
 - **Fallbacks**, in order: not signed in to that host, push the branch and tell the human the MR is theirs to

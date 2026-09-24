@@ -8,6 +8,20 @@
 # sorts before its parent `T-005-…` (`0` < a letter) and the glob would hand back the wrong task.
 task_of() { grep -lx "id: $1" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1; }
 
+# one field of the repos.yml line of a repo in $state (ADR-0013 revision): `<key>: {url: …, default_branch: …,
+# path: …}`, written by factory-add-repo.sh, in the flat or the indented spelling
+yml_field() { # <key> <field>
+  [ -f "$state/repos.yml" ] || return 0
+  awk -v want="$1" -v field="$2" '
+    /^[A-Za-z0-9_-]+:/ { key = $1; sub(/:$/, "", key) }
+    key == want && match($0, field "[ \t]*:[ \t]*") {
+      v = substr($0, RSTART + RLENGTH)
+      sub(/[ \t]*[,}].*$/, "", v); sub(/[ \t]+#.*$/, "", v)
+      gsub(/^["'"'"']|["'"'"']$/, "", v)
+      if (v != "") { print v; exit }
+    }' "$state/repos.yml"
+}
+
 # the tasks whose `owner:` ends in this session's id — `factory@<host>:<session_id>`, the whole id after the
 # last colon (ADR-0050); one id per line, sorted
 owned_task_ids() { # <session id>
@@ -94,6 +108,19 @@ state_unlock() {
     *) rm -rf "$STATE_LOCK_HELD" ;;
   esac
   STATE_LOCK_HELD=''
+}
+
+# The push recipe of ADR-0012, three tries of pull-rebase and push, shared by task-done.sh and task-approve.sh.
+# A clone with no origin stays local and is not an error (task-new.sh has the same rule). Returns 1 when the
+# third try still failed; the commits stay in the clone.
+state_push() { # <state>
+  git -C "$1" remote get-url origin >/dev/null 2>&1 || return 0
+  sp_n=0
+  until git -C "$1" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 && git -C "$1" push -q >/dev/null 2>&1; do
+    sp_n=$((sp_n + 1))
+    [ "$sp_n" -lt 3 ] || return 1
+    sleep 1
+  done
 }
 
 # one flat string field of the hook stdin (session_id, cwd, transcript_path) without a JSON parser; a Windows

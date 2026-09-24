@@ -35,10 +35,10 @@ Write the report in this shape and make it your final message, nothing else:
 ## Review
 
 ### Verdict
-`ok` | `changes needed` — one sentence why, with the counts of blocking and suggestion findings.
+`ok` | `changes needed`: one sentence why, with the counts of blocking and suggestion findings.
 
 ### Findings
-- **[blocking|suggestion]** <axis> `path/file.ext:line` — what is wrong and what to do about it.
+- **[blocking|suggestion]** <axis> `path/file.ext:line`: what is wrong and what to do about it.
 
 ### Verified
 - one line per axis you checked and found clean

@@ -1234,7 +1234,7 @@ A single `DbContext` is not thread-safe: never fire concurrent async queries on 
 ### B3.11 Holding a lock across `await`
 ```csharp
 // bad
-lock (_gate) { await DoWorkAsync(); }              // CS1996 — will not compile
+lock (_gate) { await DoWorkAsync(); }              // CS1996: will not compile
 // good
 await _semaphore.WaitAsync(ct);
 try { await DoWorkAsync(ct); } finally { _semaphore.Release(); }
