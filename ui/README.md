@@ -7,14 +7,15 @@ as the host uid:gid with two mounts:
 | mount | mode | what |
 |---|---|---|
 | `/state` | read-only | the factory state repo |
-| `/ui` | read-write | the UI home: `token`, `port`, `sessions/<sid>/` with `session.md`, `asks/`, `answers/`, `relay`, `delivered`, `visual.html`, `visual.md` |
+| `/ui` | read-write | the UI home: `token`, `port`, `sessions/<sid>/` with `session.md`, `asks/`, `answers/`, `relay`, `delivered`, `agent`, `visual.html`, `visual.md` |
 
 The container listens on 8080 and is published only on `127.0.0.1`.
 
 ## API
 
-Every `/api/*` request needs the header `X-Factory-Token` equal to `/ui/token`, otherwise 401. `/` and its
-static files are served without it.
+Every request whose `Host` is not `127.0.0.1:<port>` or `localhost:<port>`, with the port in `/ui/port` read per
+request, is answered 403 before anything else. Every `/api/*` request needs the header `X-Factory-Token` equal to
+`/ui/token`, otherwise 401. `/` and its static files are served without it.
 
 | route | what |
 |---|---|
@@ -36,15 +37,18 @@ file under its mount every 250 ms. It skips a folder it cannot read and hidden e
 `GET /visual?sid=<sid>&token=<token>` is the one route outside `/api` that needs the token, as a query parameter,
 since an iframe sends no header. It serves `sessions/<sid>/visual.html` byte for byte as `text/html` with
 `Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:`,
-so a visual's script can read the token in its URL but cannot send it anywhere. It answers 401 for a missing or
+so a visual's script can read the token in its URL. The CSP stops its requests but not a navigation of its own
+frame, which can carry the token to another origin. The Host check is what keeps a name rebound to 127.0.0.1
+from reaching the API with it. It answers 401 for a missing or
 wrong token, 400 for a missing sid or one outside `[A-Za-z0-9-]+`, and 404 without `visual.html`.
 
-`sent` is true once an answer file names the ask. `held` is the reason in `sessions/<sid>/relay` while the relay
+`sent` is true once an answer file newer than the ask file names the ask and is not a `Q<n> redraw`, so an ask
+rewritten under the same id reads open again. `held` is the reason in `sessions/<sid>/relay` while the relay
 holds one of the ask's answers, otherwise null.
 
 ## The page
 
-`/#<token>` serves the pipeline page from `wwwroot/`: plain JS modules, system fonts, nothing from another origin
+`/#token=<token>`, the URL `ui-up.sh` prints, serves the pipeline page from `wwwroot/`: plain JS modules, system fonts, nothing from another origin
 and no build step. The token in the URL fragment goes into the `X-Factory-Token` header of every `/api` call, the
 change stream included, so the page reads `/api/stream` with `fetch`, not `EventSource`. Without a token it shows
 no task.
