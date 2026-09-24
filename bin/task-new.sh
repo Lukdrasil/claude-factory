@@ -173,6 +173,25 @@ printf '%s\n' "$res" | sed '1,2d' > "$state/$rel"
 state_commit "$state" "chore($id): new $status task" "$rel" || die "the new task could not be committed in $state"
 }
 
+# T-248: the state clone is one working tree shared by every session on the machine. The sync, the id, the
+# commit and the push run under the one lock state-report.sh and task-done.sh take, so two runs cannot hand
+# out one id, and a refused push undoes only this run's own commit and file, never another session's work.
+state_lock "$state" && lrc=0 || lrc=$?
+case "$lrc" in
+  0) trap state_unlock EXIT ;;
+  1) die "another session holds the state lock of $state, waited ${STATE_LOCK_WAIT:-30} s; nothing was written, run it again" ;;
+  *) die "the state lock could not be taken in $state; is it a git clone?" ;;
+esac
+
+undo_own_commit() {
+  [ "$(git -C "$state" log -1 --format=%s HEAD)" = "chore($id): new $status task" ] \
+    && [ "$(git -C "$state" diff-tree --no-commit-id --name-only -r HEAD)" = "$rel" ] \
+    || die "the push was refused and HEAD of $state is no longer the commit of $id (another writer committed on top); nothing was undone, $rel is committed but not pushed"
+  git -C "$state" reset -q --soft HEAD~1
+  git -C "$state" reset -q -- "$rel"
+  rm -f -- "$state/$rel"
+}
+
 try=0
 while :; do
   sync_state
@@ -182,6 +201,6 @@ while :; do
   try=$((try + 1))
   [ "$try" -lt 3 ] || die "the push to the state remote failed 3 times — $rel is committed in $state but not pushed"
   # the remote moved under us (another machine may hold this id now): drop the commit, sync, recompute
-  git -C "$state" reset -q --hard HEAD~1
+  undo_own_commit
 done
 printf '{"id":"%s","file":"%s"}\n' "$id" "$rel"

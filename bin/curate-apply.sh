@@ -130,6 +130,17 @@ commit() { # <message> <path>…
   fi
 }
 
+# T-248: a decision, from the queue lookup to its commit, under the one lock per state clone (state_lock,
+# lib-tasks.sh), so two decisions cannot collide on git's index or number one ADR twice
+if [ "$cmd" != list ]; then
+  state_lock "$state" && lrc=0 || lrc=$?
+  case "$lrc" in
+    0) trap state_unlock EXIT ;;
+    1) die "another session holds the state lock of $state, waited ${STATE_LOCK_WAIT:-30} s; nothing was written, run it again" ;;
+    *) die "the state lock could not be taken in $state; is it a git clone?" ;;
+  esac
+fi
+
 case "$cmd" in
   list)
     [ -z "$proposal" ] || die "list takes no proposal"
