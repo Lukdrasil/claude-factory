@@ -155,7 +155,7 @@ blocks=$(printf '%s' "$blocks" | sort_ids)
 product=$(clone_path "$key")
 verdict="$state/repos/$key/verdicts/$slug.md"
 
-# why: architect-gate.sh denies the block writes of step 8 without a verdict whose plan_hash still matches, so
+# why: task-new.sh refuses the block writes of step 8 without a verdict whose plan_hash still matches, so
 # why: the curation is the next step and not a note beside a later one; decompose deletes the verdict once it
 # why: writes the blocks, so a parent with blocks is past this step
 if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
@@ -292,7 +292,7 @@ if [ -n "$pending" ]; then
 fi
 
 if [ -n "$waiting" ]; then
-  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block through task-new.sh with depends_on on that block."
+  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block with depends_on on that block: the template written to $harness/extra.md and filled in, an architect-review cut-check over that one block, task-new.sh --parent, and the verdict removed and pushed afterwards when the registered clone has docs/architecture/, as decompose does."
   for b in $waiting; do
     bf=$(task_of "$b" || :)
     [ -n "$bf" ] || continue
@@ -303,7 +303,15 @@ if [ -n "$waiting" ]; then
   cmd "$bin/mr-watch.sh $id --interval 300 --state $state"
   cmd "$bin/mr-watch.sh $id --comments <block-id> --state $state"
   cmd "$bin/state-report.sh --task <block-id> --set-status changes_requested --message 'chore(<block-id>): changes requested'"
-  cmd "$bin/task-template.sh block > $harness/extra.md && $bin/task-new.sh --repo $key --parent $id --file $harness/extra.md --state $state"
+  cmd "mkdir -p $harness"
+  cmd "$bin/task-template.sh block > $harness/extra.md"
+  cmd "cat $plugin/skills/architect-review/SKILL.md $plugin/skills/architect-review/references/cut-check.md"
+  cmd "$bin/task-new.sh --repo $key --parent $id --file $harness/extra.md --state $state"
+  if [ -n "$product" ] && [ -d "$product/docs/architecture" ]; then
+    cmd "git -C $state rm -q repos/$key/verdicts/$slug.md"
+    cmd "git -C $state commit -q -m 'chore($id): extra block written, verdict removed'"
+    cmd "git -C $state push -q"
+  fi
   exit 0
 fi
 

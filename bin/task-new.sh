@@ -49,6 +49,19 @@ case "$status" in
   *) die "--status may only be claimed (with --owner); a new task is draft otherwise" ;;
 esac
 
+# T-249 F1: a block write is held to the architect verdict of the plan it names, before anything is synced or
+# committed; the block id is not allocated yet, so the quick-verdict lookup by id stays the Write branch's alone.
+# Top-level writes are not checked (Q7).
+if [ -n "$parent" ]; then
+  av_rc=0
+  av_msg=$(architect_verdict "$repo" "$(plan_slug < "$file")" '') || av_rc=$?
+  case "$av_rc" in
+    0) ;;
+    2) printf 'task-new: %s\n' "$av_msg" >&2 ;;
+    *) die "$av_msg" ;;
+  esac
+fi
+
 has_origin=0
 git -C "$state" remote get-url origin >/dev/null 2>&1 && has_origin=1
 # the ids other machines already took, before this one picks the next; never fatal, an unreachable remote
