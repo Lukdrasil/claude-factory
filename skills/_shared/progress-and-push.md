@@ -7,6 +7,8 @@ ADR-0049; `../state` only where the clone really is a sibling of your worktree).
 Read mid-flight: **under 200 words**, one line per bullet, the state in the first line. Cite
 `path/file.ext:line` or a SHA instead of retelling; what you considered and declined stays out.
 `worktree-add.sh` creates the file, so it exists before your first snapshot: Read it before you Write or Edit it.
+When the task has a `## Checklist`, `## Remaining` arrives seeded with its steps as `- [ ] <step>`; a finished
+step moves to `## Done` as `- [x] <step>`.
 
 ```markdown
 # <id>: <task title>
