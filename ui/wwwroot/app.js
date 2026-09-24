@@ -1,6 +1,6 @@
 import { groupOf, renderPipeline, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
-import { compose, parseAsk } from './ask-card.js';
+import { compose } from './ask-card.js';
 import { renderSetupStrip } from './setup.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
@@ -118,7 +118,7 @@ function next() {
 
 async function send(key, staged) {
   const [sid, ask] = key.split('/');
-  const text = compose(parseAsk(allAsks().find((a) => keyOf(a) === key).body), staged.items);
+  const text = compose(allAsks().find((a) => keyOf(a) === key).view, staged.items);
   staged.sending = true;
   render();
   try {
@@ -129,7 +129,7 @@ async function send(key, staged) {
     });
     delete S.staged[key];
   } catch (err) {
-    staged.error = `Not sent: ${err.message}`;
+    staged.error = `Couldn't send: ${err.message}. Your answer is kept, try Send again.`;
     staged.sending = false;
   }
   render();
