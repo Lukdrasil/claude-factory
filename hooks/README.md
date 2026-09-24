@@ -50,8 +50,9 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
   never one. An absolute target is judged as any absolute target.
 - **Redirect targets.** The word after a `>`, `>>`, `2>` or `&>` outside quotes is a write target. A `>`
   inside a quoted span is data, a `\"` or `\'` outside quotes is an escaped character that opens no span, and
-  a `\"` inside `"…"` does not close it. `>&N`, `>(`, `=>`, `<>` and `->` name no file. A target quoted as a
-  whole (`> "README.md"`) is judged without its quotes. A bare `~` or `~/x` is expanded through `$HOME` and
+  a `\"` inside `"…"` does not close it. An ANSI-C span `$'…'` closes only at an unescaped `'`, so `\'` inside
+  it is data. `>&N`, `>&-`, `>(`, `=>`, `<>` and `->` name no file, while `>&word` writes the file `word`. A
+  target quoted as a whole (`> "README.md"` or `> $'README.md'`) is judged without its quotes. A bare `~` or `~/x` is expanded through `$HOME` and
   denied when `HOME` is unset, while a quoted `"~/x"` is relative to the cwd, as the shell writes it.
 - **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
   guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.

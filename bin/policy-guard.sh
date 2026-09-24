@@ -718,7 +718,7 @@ split_segs() { # <command> [lead]
     function emit() { if (seg != "") print (lead != "" ? code " " : "") seg; seg = "" }
     { s = s (NR > 1 ? "\n" : "") $0 }
     END {
-      n = length(s); q = ""; seg = ""; sep = ""; code = "-"
+      n = length(s); q = ""; seg = ""; sep = ""; code = "-"; gt = 0
       for (i = 1; i <= n; i++) {
         ch = substr(s, i, 1)
         if (q != "") {
@@ -726,10 +726,13 @@ split_segs() { # <command> [lead]
           if (ch == q) q = ""
           seg = seg (ch == "\n" ? " " : ch); continue
         }
+        if (ch == "&" && gt) { seg = seg ch; gt = 0; continue }
+        gt = 0
         if (ch == ";" || ch == "|" || ch == "&" || ch == "\n") { sep = sep ch; continue }
         if (sep != "") { emit(); code = (sep == "&&" ? "a" : (sep == "|" ? "p" : (sep == "||" ? "r" : "o"))); sep = "" }
         if (ch == "\\") { seg = seg ch substr(s, ++i, 1); continue }
         if (ch == "\047" || ch == "\"") q = ch
+        if (ch == ">") gt = 1
         seg = seg ch
       }
       emit()
@@ -748,35 +751,39 @@ redirect_targets() { # <segment>
       for (i = 1; i <= n; i++) {
         ch = substr(s, i, 1)
         if (q != "") {
-          if (ch == "\\" && q == "\"") { i++; continue }
-          if (ch == q) q = ""
+          if (ch == "\\" && q != "\047") { i++; continue }
+          if (ch == substr(q, length(q), 1)) q = ""
           continue
         }
         if (ch == "\\") { i++; continue }
+        if (ch == "$" && substr(s, i + 1, 1) == "\047") { q = "$\047"; i++; continue }
         if (ch == "\047" || ch == "\"") { q = ch; continue }
         if (ch != ">") continue
         pc = (i > 1 ? substr(s, i - 1, 1) : "")
         if (substr(s, i + 1, 1) == ">") i++
         if (pc == "=" || pc == "<" || pc == "-") continue
         nc = substr(s, i + 1, 1)
-        if (nc == "&" || nc == "(") continue
+        if (nc == "(") continue
         j = i + 1
+        if (nc == "&") j++
         while (j <= n && substr(s, j, 1) ~ /[ \t]/) j++
         w = ""; wq = ""; lead = ""
         for (; j <= n; j++) {
           c = substr(s, j, 1)
           if (wq != "") {
-            if (c == "\\" && wq == "\"") { w = w substr(s, ++j, 1); continue }
-            if (c == wq) { wq = ""; continue }
+            if (c == "\\" && wq != "\047") { w = w substr(s, ++j, 1); continue }
+            if (c == substr(wq, length(wq), 1)) { wq = ""; continue }
             w = w c; continue
           }
           if (c ~ /[ \t\n;|&<>()]/) break
           if (c == "\\") { w = w substr(s, ++j, 1); continue }
+          if (c == "$" && substr(s, j + 1, 1) == "\047") { if (w == "") lead = 1; wq = "$\047"; j++; continue }
           if (c == "\047" || c == "\"") { if (w == "") lead = 1; wq = c; continue }
           w = w c
         }
         i = j - 1
         if (w == "") continue
+        if (nc == "&" && w ~ /^([0-9]+|-)$/) continue
         if (lead && substr(w, 1, 1) == "~") w = "./" w
         print w
       }
@@ -1110,7 +1117,9 @@ guard_bash() {
   # a PR body) is data, and one right after `=`, `-` or `<` is an arrow or `<>`, never a redirect — every one of
   # them was denied as a write into the cwd, the registered clone, on a read-only command. T-264-02:
   # redirect_targets reads the targets with split_segs's quote tracking, escapes included, so a quote in a grep
-  # pattern no longer pairs with a later one and an escaped `\"` no longer hides a real redirect. A target quoted
+  # pattern no longer pairs with a later one and an escaped `\"` no longer hides a real redirect. T-264-07: an
+  # ANSI-C span `$'…'` closes only at an unescaped `'`, and `>&word` is a file unless the word is digits or `-`;
+  # split_segs keeps the `&` of `>&` in the segment. A target quoted
   # as a whole (`> "README.md"`) is read without its quotes, and a quoted `~` stays relative to the cwd. A bare
   # `~` or `~/x` is expanded through $HOME, and with HOME unset it is denied. A `$VAR/…` target is unknown here
   # and resolving it against the cwd is a guess, not a rule.

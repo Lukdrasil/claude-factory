@@ -63,6 +63,7 @@ A **new file** of your own — a research report, an ADR or memory proposal, a p
 ```sh
 git -C "$WORK_DIR/state" add repos/<key>/research/<id>-<slug>.md
 git -C "$WORK_DIR/state" commit -m "research: <id>" -- repos/<key>/research/<id>-<slug>.md
-git -C "$WORK_DIR/state" remote get-url origin >/dev/null 2>&1 &&
+if git -C "$WORK_DIR/state" remote get-url origin >/dev/null 2>&1; then
   git -C "$WORK_DIR/state" pull --rebase --autostash -X theirs && git -C "$WORK_DIR/state" push
+fi
 ```
