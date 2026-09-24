@@ -107,6 +107,19 @@ if [ "$rc" -ne 0 ] && [ ! -e "$asks/bare.md" ]; then
 else
   flunk "a ❓ line that is not a ❓ **Q<n>** - **Title** header exits non-zero and writes nothing (exit $rc)"
 fi
+flush=$(body_md flush <<'EOF'
+❓ **Q1** - **Which store?**: where the rows live.
+**A** SQLite
+**B** Postgres
+EOF
+)
+out=$(printf '%s\n' "$flush" | sh "$bin/ui-ask.sh" --session "$sid" 2>&1); rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$asks/flush.md" ]; then
+  pass "an unindented **A** option exits non-zero and writes nothing"
+else
+  flunk "an unindented **A** option exits non-zero and writes nothing (exit $rc)"
+fi
+has "the refusal says an option is indented, never a - **A** bullet" 'indent' "$out"
 round=$(body_md round <<'EOF'
 ❓ **Q1** - **Which store?**: where the rows live.
   **A** SQLite
