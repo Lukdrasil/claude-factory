@@ -185,6 +185,12 @@ async function confirmYes(page, name, key) {
     holds(text, [/triage/i, /grill/i, /approve/i, /\bMR\b/, /\bdone\b/i]);
   });
 
+  await check('the rail of T-021 has step 3b chart between 3 triage and 4 grill', async () => {
+    const steps = await rail(page).locator('li').allInnerTexts();
+    const at = steps.map((s) => s.trim()).join(' | ');
+    ok(/(^| \| )3 triage \| 3b chart \| 4 grill( \| |$)/.test(at), `rail: ${at}`);
+  });
+
   await check('the rail of T-021 marks step 9, approve, the step its session reports, as current', async () => {
     holds(await current(page), [/(^|\D)9(\D|$)/, /approve/i]);
   });
@@ -372,6 +378,26 @@ async function confirmYes(page, name, key) {
 
   await check('the rail of T-026 marks step 3, triage, as current', async () => {
     holds(await current(page), [/(^|\D)3(\D|$)/, /triage/i]);
+  });
+
+  // --- T-028 at step 3b: charting its request map, a column and a rail step of its own ----------------------------
+  await check('the grid row of T-028 marks the column 3b chart, the step its session reports, with its session s28', async () => {
+    await fresh(page);
+    const row = page.locator('table tr', { hasText: 'T-028' }).first();
+    await until('the row of T-028', () => row.isVisible());
+    const at = await until('the current cell of T-028', async () => {
+      const i = await row.locator('td').evaluateAll((tds) => tds.findIndex((td) => td.getAttribute('aria-current') === 'step'));
+      return i > 0 && i;
+    });
+    const head = (await page.locator('table thead th').nth(at).innerText()).replace(/\s+/g, ' ').trim();
+    ok(head === '3b chart', `current under the column ${JSON.stringify(head)}`);
+    ok(/\bs28\b/.test(await row.locator('td[aria-current="step"]').innerText()), 'no s28 chip in the current cell');
+  });
+
+  await openTask(page, 'T-028');
+
+  await check('the rail of T-028 marks step 3b, chart, as current', async () => {
+    holds(await current(page), [/^\s*3b chart\s*$/]);
   });
 
   await browser.close();

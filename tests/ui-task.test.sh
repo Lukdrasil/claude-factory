@@ -229,6 +229,10 @@ for w in 1:idle 2:working 3:done 4:gone 5:blocked; do
   printf '%s\n' "$agent" > "$ui/sessions/s27w$n/agent"
 done
 
+# --- T-028 at step 3b: a parent of a request whose map is still being charted ------------------------------------
+goal 'feat(fx): the fixture task of a request in its chart' | task T-028 ready 'request: R-20260925-1' 'priority: P1'
+session --session s28 --pane w2:p28 --flow solve --task T-028 --step 'Step 3b of 16: chart R-20260925-1'
+
 # --- T-026 at step 3: its session registered by solve-next.sh --ui alone, no hand-written session.md -------------
 printf -- '---\nid: T-026\nrepo: claude-factory\nstatus: ready\n---\n\n# Goal\nfeat(fx): the fixture task solve-next registered\n' \
   > "$st/tasks/T-026-fixture.md"
