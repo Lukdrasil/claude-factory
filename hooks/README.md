@@ -24,8 +24,16 @@ that used to sit in that key lives here instead.
   a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR
   that does not bump it never reaches a session (incident C, 2026-09-22: three PRs shipped nothing while the
   cache sat at 0.12.0). Bump the version in `.claude-plugin/plugin.json` with any change to the hooks.
+- Capacity (agent-org plan 3.3): `capacity.sh --hook pretooluse` on `Agent` denies a subagent whose role is
+  at its cap in factory.yml `capacity:` and otherwise writes a pending lease; `--hook subagentstart` turns the
+  oldest pending lease of that session and role into the agent's own; `--hook subagentstop` releases it. The
+  leases live in `<state>/.capacity/` under their own lock, never the state lock. A role outside the table, a
+  factory.yml without `capacity:`, a missing state clone or any error of the script lets the call through with
+  nothing printed.
+- `playbook-inject.sh --hook` on `SubagentStart` hands the subagent the playbook of its role for the repo key of
+  its cwd, `repos/<key>/agents/<role>/playbook.md` in the state clone, as `additionalContext`, or nothing.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
-  name. `tests/hooks-wiring.test.sh` enforces both.
+  name. `tests/hooks-wiring.test.sh` enforces both, and that the capacity and playbook hooks sit on their events.
 
 ## policy-guard rules
 
