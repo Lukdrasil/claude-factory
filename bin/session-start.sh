@@ -4,8 +4,9 @@
 # global memory instead of their bodies, top level only, never
 # proposals/, is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
-# `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets that identity line and a
-# one-line nudge towards the factory skill's init. Exit 0 always.
+# `factory@<host>:<session_id>` owner string of ADR-0050). The state clone ($WORK_DIR/state) gets that identity
+# line and the memory passes that are due (pass-stamp.sh --due). Any other unregistered cwd gets the identity line
+# and a one-line nudge towards the factory skill's init. Exit 0 always.
 # Two lines ride along with that context: the standalone-posture line (T-187, there is no dashboard and no gate
 # that is not a command) and, when it applies, the stale-plugin warning of incident C below.
 set -u
@@ -26,6 +27,25 @@ identity_line() {
   [ -n "$host" ] || host=localhost
   printf 'Session identity: session_id %s, owner string factory@%s:%s, use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
 }
+register_ui() { # <state>: the session's answer inbox, under `ui: docker` in herdr
+  ui=$(sed -n 's/^ui:[[:space:]]*//p' "$1/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
+  if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
+    sh "$(dirname -- "$0")/ui-session.sh" --session "$sid" --pane "${HERDR_PANE_ID:-}" >/dev/null
+  fi
+}
+
+# The state clone itself, where the CEO sits (agent-org plan 3.8): the identity, and the memory passes that are
+# due (pass-stamp.sh --due), so the human can give the go for them. No repo context and no playbook here; the
+# due list is printed nowhere else.
+st_top=$(git -C "${WORK_DIR:-/nonexistent}/state" rev-parse --show-toplevel 2>/dev/null) || st_top=''
+if [ -n "$st_top" ] && [ "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" = "$st_top" ]; then
+  { if [ -n "$sid" ]; then identity_line; register_ui "$WORK_DIR/state"; fi
+    due=$(for k in daily weekly; do sh "$(dirname -- "$0")/pass-stamp.sh" --due "$k" --state "$WORK_DIR/state" 2>/dev/null; done)
+    if [ -n "$due" ]; then
+      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one as its own step session (claude-factory:memory-daily <scope>), a weekly one in the CEO session (claude-factory:memory-weekly <scope>):\n%s\n' "$due"
+    fi; } | emit
+  exit 0
+fi
 
 key=$(repo_key_of_cwd "$cwd")
 if [ -z "$key" ]; then
@@ -97,10 +117,7 @@ stale_plugin_warning() {
   # is in the hook stdin, so the session is told the exact owner string of ADR-0050 first thing.
   if [ -n "$sid" ]; then
     identity_line
-    ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
-    if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
-      sh "$(dirname -- "$0")/ui-session.sh" --session "$sid" --pane "${HERDR_PANE_ID:-}" >/dev/null
-    fi
+    register_ui "$state"
   fi
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
   # every text they had read named one and the single sentence that says otherwise lives in a skill a session

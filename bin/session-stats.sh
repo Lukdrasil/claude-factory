@@ -70,6 +70,24 @@ process.stdout.write([`${model}, ${min} min, tokens ${fmt(inTok)} in / ${fmt(out
   [ -n "$stats" ]
 }
 
+# agent-org plan 3.8: the playbook the session was briefed with, the `<!-- repos/<key>/agents/<role>/playbook.md -->`
+# marker agent-brief.sh prints before it, as the first 7 of its blob sha in the state clone, so a stats line can be
+# read against the playbook version behind it; `none` without a brief or a marker. The brief of a block is
+# spawn-plan.sh's `.harness/<parent>/brief-<block>.md` or a `.harness/<id>/brief.md`, beside the task's stamps.
+playbook_of() { # <task id>
+  pb=''
+  if resolve_session_layout "$PWD" "$1" && [ -n "$LO_STAMP" ]; then
+    for b in "$LO_STAMP/brief.md" "${LO_STAMP%/*}/${1%-*}/brief-$1.md"; do
+      [ -f "$b" ] || continue
+      pb=$(sed -n 's|^<!-- \(repos/[^ ]*/agents/[^ ]*/playbook\.md\) -->$|\1|p' "$b" | head -n1)
+      [ -z "$pb" ] || break
+    done
+  fi
+  pbsha=''
+  [ -z "$pb" ] || [ ! -f "$state/$pb" ] || pbsha=$(git -C "$state" hash-object -- "$pb" 2>/dev/null | cut -c1-7) || pbsha=''
+  printf '%s\n' "${pbsha:-none}"
+}
+
 for id in $ids; do
   task=$(task_of "$id")
   [ -n "${task:-}" ] && [ -f "$task" ] || continue
@@ -90,7 +108,7 @@ for id in $ids; do
   tier=$(sed -n 's/^tier:[[:space:]]*//p' "$task" | head -n1)
 
   # ponytail: `set --` builds the argument list so the optional --tool-failures needs no second call site
-  set -- --task "$id" --attempts "attempt ${attempt:-?}, $status, ${archetype:-?}/${tier:-?}, $stats <!-- sid:$sid -->"
+  set -- --task "$id" --attempts "attempt ${attempt:-?}, $status, ${archetype:-?}/${tier:-?}, $stats, playbook:$(playbook_of "$id") <!-- sid:$sid -->"
   if [ -n "$fails" ]; then
     set -- "$@" --tool-failures "$(printf '%s\n' "$fails" | sed "s/^/attempt ${attempt:-?}, /")"
   fi

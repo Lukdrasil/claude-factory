@@ -1,7 +1,8 @@
 #!/bin/sh
 # The proposal gate of the standalone posture (ADR-0050): approve moves a proposal to its target (the path
-# without `proposals/`, an ADR proposal numbered on the way out), reject deletes it, edit rewrites it from a
-# file; every decision exactly one commit. Nothing is pushed.
+# without `proposals/`, an ADR proposal numbered on the way out) and deletes every file its `Replaces: <path>,
+# <path>` lines name (a consolidation retires its sources in the same commit), reject deletes it, edit rewrites it
+# from a file; every decision exactly one commit. Nothing is pushed.
 #
 #   curate-apply.sh list [--state <dir>]                            the queued proposals, one relative path per line
 #   curate-apply.sh approve <proposal> [<target>] [--reason <text>] [--state <dir>]
@@ -11,8 +12,8 @@
 # Exit 1 with the reason when the proposal is not in the queue or the target is refused (it exists, is not .md,
 # carries a backslash, a Windows separator git would keep as one filename segment, has an empty/./.. segment,
 # stays under proposals/, or lies outside memory/global, repos/<key>/memory, repos/<key>/adr,
-# repos/<key>/architecture, agents/<agent>/memory); nothing written. --reason appends ", <text>" to the fixed
-# commit message.
+# repos/<key>/architecture, agents/<agent>/memory, repos/<key>/agents/<agent>/memory), or a `Replaces:` path does
+# not exist or is refused the same way; nothing written. --reason appends ", <text>" to the fixed commit message.
 set -eu
 
 cmd='' proposal='' target='' body='' state='' commit_reason=''
@@ -39,9 +40,10 @@ done
 [ -n "$state" ] || state=$(resolve_state_dir "$(pwd)")
 [ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
-# The queued proposals: the top level of the five queues, sorted bytewise.
+# The queued proposals: the top level of the six queues, sorted bytewise. The repo x agent queue is where a
+# session's lessons land (agent-org plan 3.8); the daily pass judges it.
 list() {
-  (cd "$state" && for q in repos/*/memory/proposals memory/global/proposals repos/*/adr/proposals repos/*/architecture/proposals agents/*/memory/proposals; do
+  (cd "$state" && for q in repos/*/memory/proposals memory/global/proposals repos/*/adr/proposals repos/*/architecture/proposals agents/*/memory/proposals repos/*/agents/*/memory/proposals; do
     [ -d "$q" ] || continue
     for f in "$q"/*.md; do
       [ -f "$f" ] || continue
@@ -117,7 +119,16 @@ check_target() { # <relative> → the reason on stdout, nothing when the target 
   for r in $roots; do
     case "$1" in "$r"/*) return ;; esac
   done
-  echo "the target must live under $(printf '%s' "$roots" | sed 's/ /, /g'), agents/<agent>/memory"
+  # repos/<key>/agents/<agent>/memory, the agent one segment
+  for key in $(repo_keys); do
+    case "$1" in "repos/$key/agents/"*) ct_rest=${1#"repos/$key/agents/"}; case "${ct_rest#*/}" in memory/*) return ;; esac ;; esac
+  done
+  echo "the target must live under $(printf '%s' "$roots" | sed 's/ /, /g'), agents/<agent>/memory, repos/<key>/agents/<agent>/memory"
+}
+
+replaced() { # <proposal> → the paths its `Replaces:` lines name, one per line, backticks and blanks trimmed
+  tr -d '\r' < "$state/$1" | sed -n 's/^Replaces:[[:space:]]*//p' | tr ',' '\n' \
+    | sed 's/^[[:space:]`]*//; s/[[:space:]`]*$//' | grep -v '^$' || :
 }
 
 commit() { # <message> <path>…
@@ -152,16 +163,37 @@ case "$cmd" in
     reason=$(check_target "$dst")
     [ -z "$reason" ] || die "$reason"
     [ ! -e "$state/$dst" ] || die "$dst already exists"
+    # every `Replaces:` path is checked before anything is written, so a refusal leaves the clone as it was
+    rs=$(replaced "$proposal")
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      reason=$(check_target "$r")
+      [ -z "$reason" ] || die "Replaces: $r: $reason"
+      [ -f "$state/$r" ] || die "Replaces: $r does not exist"
+    done <<EOF
+$rs
+EOF
     mkdir -p "$state/$(dirname "$dst")"
     # an agent may leave its proposal untracked; git mv refuses a path git does not know, and a pathspec git
     # knows nothing about aborts the whole commit, so stage it first and name only the paths that survive
     git -C "$state" add -- "$proposal"
     git -C "$state" mv "$proposal" "$dst"
-    if git -C "$state" cat-file -e "HEAD:$proposal" 2>/dev/null; then
-      commit "chore(proposal): approve $proposal -> $dst" "$proposal" "$dst"
-    else
-      commit "chore(proposal): approve $proposal -> $dst" "$dst"
-    fi ;;
+    set -- "$dst"
+    ! git -C "$state" cat-file -e "HEAD:$proposal" 2>/dev/null || set -- "$@" "$proposal"
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      if git -C "$state" cat-file -e "HEAD:$r" 2>/dev/null; then
+        git -C "$state" rm -q -f -- "$r"
+        set -- "$@" "$r"
+      else
+        # never committed: only the file to take away, nothing for the commit
+        git -C "$state" rm -q -f --cached --ignore-unmatch -- "$r"
+        rm -f -- "$state/$r"
+      fi
+    done <<EOF
+$rs
+EOF
+    commit "chore(proposal): approve $proposal -> $dst" "$@" ;;
   reject)
     [ -n "$proposal" ] && [ -z "$target" ] || die "usage: curate-apply.sh reject <proposal> [--state <dir>]"
     in_queue
