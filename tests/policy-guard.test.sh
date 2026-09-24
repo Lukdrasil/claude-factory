@@ -126,4 +126,28 @@ try 0 'cd rel, then an absolute write into /tmp' "$BLK" blk 'cd rel && echo x > 
 try 0 'cd rel, then a read' "$BLK" blk 'cd rel && cat y'
 try 0 'a relative write in the own worktree' "$BLK" blk 'echo x > notes.md'
 
+# T-228-06: a cd carries the cwd across && only, and a command substitution is never a read
+try 2 'cd /tmp/typo; then sed -i on a relative file of the registered clone' "$C/cf" coord 'cd /tmp/typo; sed -i s/a/b/ README.md'
+try 2 'cd /tmp || then a relative redirect into the registered clone' "$C/cf" coord 'cd /tmp || echo x > README.md'
+try 2 'cd /tmp | then a relative redirect into the registered clone' "$C/cf" coord 'cd /tmp | echo x > README.md'
+try 2 'a cd inside a subshell, then a relative redirect into the registered clone' "$C/cf" coord '(true; cd /tmp); echo x > README.md'
+try 2 'a cd inside a subshell joined by &&, then a relative redirect into the registered clone' "$C/cf" coord '(true && cd /tmp) && echo x > README.md'
+try 0 'cd /tmp/scratch && sed -i on a relative file, from the registered clone' "$C/cf" coord "cd /tmp/scratch && sed -i ${q}s/a/b/${q} x.md"
+try 2 'the coordinator cats a $(git -C <block> reset)' "$C/cf" coord "cat \$(git -C $BLK reset --hard HEAD~3)"
+try 2 'the coordinator cats a $(touch <block>/x)' "$C/cf" coord "cat \$(touch $BLK/x)"
+try 2 'the coordinator cats a backtick git -C <block> reset' "$C/cf" coord "cat \`git -C $BLK reset --hard HEAD~3\`"
+try 2 'the coordinator cats a backtick touch <block>/x' "$C/cf" coord "cat \`touch $BLK/x\`"
+try 2 'the coordinator cats a <(git -C <block> reset)' "$C/cf" coord "cat <(git -C $BLK reset --hard HEAD~3)"
+try 2 'the coordinator cats a <(touch <block>/x)' "$C/cf" coord "cat <(touch $BLK/x)"
+try 2 'the coordinator cats a >(git -C <block> reset)' "$C/cf" coord "cat >(git -C $BLK reset --hard HEAD~3)"
+try 2 'the coordinator cats a >(touch <block>/x)' "$C/cf" coord "cat >(touch $BLK/x)"
+try 0 'the coordinator runs git -C <block> log --oneline -3' "$C/cf" coord "git -C $BLK log --oneline -3"
+try 0 'the coordinator cats <block>/README.md' "$C/cf" coord "cat $BLK/README.md"
+try 2 'git -C "<state clone>" commit -m x' "$C/cf" coord "git -C \"$W/state\" commit -m x"
+try 2 'git commit -m x -- with no path, in the state clone' "$W/state" coord 'git commit -m x --'
+try 0 'cd rel, then sed -i with a quoted script on an absolute file' "$BLK" blk "cd rel && sed -i ${q}s/a/b/${q} /tmp/x.md"
+try 0 'cd rel, then sed -i with an unquoted script on an absolute file' "$BLK" blk 'cd rel && sed -i s/a/b/ /tmp/x.md'
+try 2 'cd rel, then sed -i on a relative file' "$BLK" blk "cd rel && sed -i ${q}s/a/b/${q} x.md"
+try 0 'cd rel, then sed -i on $S/x.txt' "$BLK" blk "cd rel && sed -i ${q}s/a/b/${q} \$S/x.txt"
+
 exit $fail
