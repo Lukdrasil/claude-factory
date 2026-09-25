@@ -79,9 +79,11 @@ row again.
 
 ## Steps
 
-1. Run the interview loop, keeping the gap ledger of `references/ledger.md`, which also holds the musts the
-   loop has to ask about, and close every row, dry run included. Every answered round completes with the
-   grill file `<slug>-grill.md` written.
+1. When the task file carries `request: <R-id>` and the spec does not already start with the map's export, run
+   `sh ${CLAUDE_PLUGIN_ROOT}/bin/map.sh export <R-id> <repo-key>` first: its destination, decisions and terms are
+   settled rows of the ledger, never asked again. Then run the interview loop, keeping the gap ledger of
+   `references/ledger.md`, which also holds the musts the loop has to ask about, and close every row, dry run
+   included. Every answered round completes with the grill file `<slug>-grill.md` written.
 2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
