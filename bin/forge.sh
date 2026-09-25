@@ -1,12 +1,12 @@
 #!/bin/sh
-# forge.sh — one entry point for READING issues and MRs from GitHub, GitLab and Gitea: it picks the tool
+# forge.sh, one entry point for READING issues and MRs from GitHub, GitLab and Gitea: it picks the tool
 # (gh/glab/tea) from the URL shape, so the agent does not have to try them all. Write actions deliberately do not
-# belong here — they differ enough between forges to turn the wrapper into a translator, and the skills describe them directly.
-# ponytail: routing is by URL shape, same rule as in the dashboard (ForgeParsing.MergeRequestCommand):
+# belong here, they differ enough between forges to turn the wrapper into a translator, and the skills describe them directly.
+# ponytail: routing is by URL shape:
 # github.com → gh, a path with /-/ (GitLab's marker) → glab, /<owner>/<repo>/(issues|pulls)/<n> → tea (Gitea),
 # anything else → glab. GitHub Enterprise would fall under glab; when it comes up, the host gets added here.
-# `tea api <host> <path>` is a PSEUDO-command of the forge-guard wrapper (real tea has no api command):
-# the guard curls the Gitea REST API with the stored token, so only the shapes it implements may be used here.
+# Gitea reads go through `tea api -l <login> <endpoint>`, the login being the `tea login list` row whose URL host
+# matches the URL's host.
 set -eu
 
 usage() {
@@ -14,19 +14,21 @@ usage() {
   exit 2
 }
 
-# "Logged in to <host> …" is the only reliable signal — the exit code fails on any broken instance
+# "Logged in to <host> …" is the only reliable signal, the exit code fails on any broken instance
 logged_in() { "$1" auth status 2>&1 | sed -n 's/.*Logged in to \([^ ]*\).*/\1/p' | sort -u | tr '\n' ' '; }
 
 hosts() {
   echo "glab: $(logged_in glab)"
   echo "gh: $(logged_in gh)"
-  # tea has no `auth status`; `tea login list` prints a table with the instance URLs — reduce them to hostnames
+  # tea has no `auth status`; `tea login list` prints a table with the instance URLs, reduce them to hostnames
   echo "tea: $(tea login list 2>/dev/null | grep -oE 'https?://[^ |"'"'"']+' | sed 's#https\?://##;s#/.*##' | sort -u | tr '\n' ' ')"
 }
 
+tea_login() { tea login list -o tsv 2>/dev/null | awk -F '\t' -v h="$1" 'NR > 1 { u = $2; sub(/^[a-z]+:\/\//, "", u); sub(/\/.*/, "", u); if (u == h) { print $1; exit } }'; }
+
 try() {
   if ! "$@"; then
-    { echo "forge.sh: '$*' failed — signed-in instances:"; hosts; } >&2
+    { echo "forge.sh: '$*' failed, signed-in instances:"; hosts; } >&2
     exit 3
   fi
 }
@@ -37,7 +39,7 @@ fetch_github_asset() {
   name=${u##*/}; name=${name%%\?*}
   if ! ct=$(curl -fsSL -o "$dir/$name" -w '%{content_type}' "$u" 2>/dev/null); then
     rm -f "$dir/$name"
-    echo "asset skipped: $u (download failed — the API does not hand out private GitHub attachments)" >&2
+    echo "asset skipped: $u (download failed, the API does not hand out private GitHub attachments)" >&2
     return 0
   fi
   case "$name" in
@@ -54,8 +56,8 @@ fetch_github_asset() {
   echo "$dir/$name"
 }
 
-# Attachments from the issue output ($2) into a directory ($1). GitLab through the guarded `glab api` (GitLab >= 17.2,
-# forge-guard endpoint #272), GitHub through curl on a signed URL (private repos do not work — skipped).
+# Attachments from the issue output ($2) into a directory ($1). GitLab through `glab api` (GitLab >= 17.2),
+# GitHub through curl on a signed URL (private repos do not work, skipped).
 # One failed attachment is not fatal: whatever downloaded is printed as a local path.
 download_assets() {
   dir=$1; src=$2; path=$3; host=$4
@@ -68,6 +70,11 @@ download_assets() {
     done
   else
     proj=$(printf '%s' "$path" | sed 's#/#%2F#g')
+    # why: glab api --hostname refuses a host:port ("invalid hostname"), GITLAB_HOST takes it
+    case "$host" in
+      *:*) set -- env GITLAB_HOST="$host" glab api ;;
+      *) set -- glab api --hostname "$host" ;;
+    esac
     for a in $(grep -oE '(/-/project/[0-9]+)?/uploads/[a-f0-9]+/[^)"\\[:space:]]+' "$src" | sort -u); do
       found=1
       file=${a##*/}
@@ -77,13 +84,13 @@ download_assets() {
         *) p=$proj ;;
       esac
       # prefix from the secret: pasted screenshots on GitLab are all called image.png
-      # (dest, not out — the caller holds out as a temp file with the issue output and a trap deletes it)
+      # (dest, not out, the caller holds out as a temp file with the issue output and a trap deletes it)
       dest="$dir/$(printf '%.8s' "$secret")-$file"
-      if glab api --hostname "$host" "projects/$p/uploads/$secret/$file" > "$dest" 2>/dev/null; then
+      if "$@" "projects/$p/uploads/$secret/$file" > "$dest" 2>/dev/null; then
         echo "$dest"
       else
         rm -f "$dest"
-        echo "asset skipped: $a (glab api failed — GitLab < 17.2, or missing permissions)" >&2
+        echo "asset skipped: $a (glab api failed, GitLab < 17.2, or missing permissions)" >&2
       fi
     done
   fi
@@ -108,11 +115,14 @@ case "$cmd" in
     host=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://\([^/]*\)/.*#\1#p')
     [ -n "$host" ] || { echo "forge.sh: cannot parse URL: $2" >&2; exit 2; }
     # project and number from the URL: glab takes the host from the URL only for the main object, and the comments then
-    # hit gitlab.com (401 on self-hosted). The only thing that keeps both on one instance is -R <host>/<project>.
+    # hit gitlab.com (401 on self-hosted). The only thing that keeps both on one instance is -R, and as a URL,
+    # <scheme>://<host>/<project>: a bare <host>/<group>/<repo> whose host glab does not know (localhost, a host:port)
+    # is read as a gitlab.com path. The host keeps its port; glab takes the protocol from its own config.
     # Side effect: /-/work_items/<iid> works too, which is how GitLab 17 links issues.
     path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\(.*\)/-/[a-z_]*/[0-9].*#\1#p')
+    repo="${2%%://*}://$host/$path"
     iid=$(printf '%s' "$2" | sed -n 's#.*/-/[a-z_]*/\([0-9][0-9]*\).*#\1#p')
-    # Gitea shape: exactly /<owner>/<repo>/(issues|pulls)/<n> — an issue URL says issues, an MR URL says pulls
+    # Gitea shape: exactly /<owner>/<repo>/(issues|pulls)/<n>, an issue URL says issues, an MR URL says pulls
     case "$cmd" in issue) seg=issues ;; *) seg=pulls ;; esac
     gpath=$(printf '%s' "$2" | sed -n "s#^[a-zA-Z+]*://[^/]*/\([^/][^/]*/[^/][^/]*\)/$seg/[0-9].*#\1#p")
     gnum=$(printf '%s' "$2" | sed -n "s#^[a-zA-Z+]*://[^/]*/[^/][^/]*/[^/][^/]*/$seg/\([0-9][0-9]*\).*#\1#p")
@@ -128,18 +138,20 @@ case "$cmd" in
       esac
     elif [ -n "$gpath" ] && [ -n "$gnum" ] && [ -z "$iid" ]; then
       gitea=1
-      # the detail and the comments are two API calls; the comments always live under issues/<n>/comments — for pulls too
+      login=$(tea_login "$host")
+      [ -n "$login" ] || { { echo "forge.sh: no tea login for $host, signed-in instances:"; hosts; } >&2; exit 3; }
+      # the detail and the comments are two API calls; the comments always live under issues/<n>/comments, for pulls too
       case "$cmd" in
-        issue) { try tea api "$host" "repos/$gpath/issues/$gnum"; echo; echo "--- comments ---"; try tea api "$host" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;
-        mr) { try tea api "$host" "repos/$gpath/pulls/$gnum"; echo; echo "--- comments ---"; try tea api "$host" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;
+        issue) { try tea api -l "$login" "repos/$gpath/issues/$gnum"; echo; echo "--- comments ---"; try tea api -l "$login" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;
+        mr) { try tea api -l "$login" "repos/$gpath/pulls/$gnum"; echo; echo "--- comments ---"; try tea api -l "$login" "repos/$gpath/issues/$gnum/comments"; } > "$out" ;;
       esac
     else
       [ -n "$path" ] && [ -n "$iid" ] \
         || { echo "forge.sh: cannot take the project and number from the URL: $2" >&2; exit 2; }
       # glab keeps the detail and the comments in two calls; make the separator visible in the output
       case "$cmd" in
-        issue) { try glab issue view "$iid" -R "$host/$path" -F json; echo; echo "--- comments ---"; try glab issue view "$iid" -R "$host/$path" --comments; } > "$out" ;;
-        mr) { try glab mr view "$iid" -R "$host/$path" -F json; echo; echo "--- comments ---"; try glab mr view "$iid" -R "$host/$path" --comments; } > "$out" ;;
+        issue) { try glab issue view "$iid" -R "$repo" -F json; echo; echo "--- comments ---"; try glab issue view "$iid" -R "$repo" --comments; } > "$out" ;;
+        mr) { try glab mr view "$iid" -R "$repo" -F json; echo; echo "--- comments ---"; try glab mr view "$iid" -R "$repo" --comments; } > "$out" ;;
       esac
     fi
     cat "$out"
@@ -148,10 +160,8 @@ case "$cmd" in
       echo
       echo "--- assets ---"
       if [ -n "$gitea" ]; then
-        # ponytail: the guard has no attachment endpoint yet; when it grows one (repos/…/issues/…/assets),
-        # download here the way download_assets does for the other forges.
         echo "(gitea attachments not supported yet)"
-        echo "forge.sh: gitea attachments are not downloaded — the forge-guard has no attachment endpoint yet" >&2
+        echo "forge.sh: gitea attachments are not downloaded yet" >&2
       else
         download_assets "$assets" "$out" "$path" "$host"
       fi

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Deterministic inventory for the triage investigation (T-013): every migration, API contract, typed HTTP
-# client registration and configured URL a code-changing task's chain might touch — one line per match,
+# client registration and configured URL a code-changing task's chain might touch, one line per match,
 # `LC_ALL=C sort`, paths relative to the repo. An empty repo prints nothing and exits 0.
 #
 #   investigate-inventory.sh <repo-dir> [--toolset <toolset.md>]
@@ -28,7 +28,7 @@ done
 [ -n "$repo" ] || die "<repo-dir> is required"
 [ -d "$repo" ] || die "$repo is not a directory"
 
-# same awk shape docs/design/toolset.md uses for test-globs, over a different frontmatter key
+# same awk shape policy-guard.sh uses for test-globs, over a different frontmatter key
 extract() { awk -v key="$2:" '$0 == key { g=1; next }
      g && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/"/, ""); print; next }
      g { exit }' "$1"; }

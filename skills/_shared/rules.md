@@ -17,7 +17,12 @@ yourself before you record it.
 
 **Self-report.** At the end you write two things, once: the progress snapshot of
 `<plugin-root>/skills/_shared/progress-and-push.md` and one status, both through
-`<plugin-root>/bin/state-report.sh`. Never `done`, `ready`, `in_progress` or `stalled`.
+`<plugin-root>/bin/state-report.sh`. Never `done` or `ready`.
+
+**A full role waits.** An `Agent` call denied with `role <r> is full` means every slot of that role is
+taken. Run `<plugin-root>/bin/capacity.sh wait <r>` (it polls up to 9 minutes, so give the Bash call a 600000 ms
+timeout), then call the same agent again. When the wait times out, write a blocked question
+(`<plugin-root>/skills/_shared/blocked-question.md`). Never do the role's work yourself instead.
 
 **Hooks refuse, they do not remind.** A test write once the phase is `implement`, a comment with no class
 prefix, an em dash or en dash, a self-report with no fresh evidence: the deny message carries the fix.

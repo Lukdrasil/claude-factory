@@ -15,7 +15,9 @@ decision branches into the decisions that hang off it.
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the
 questions you can ask _now_ without guessing at answers you have not heard yet. Ask the whole frontier in one
-round, numbered, each with lettered options and your recommendation, then wait.
+round, numbered, each with lettered options and your recommendation, then wait. Every round goes through
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`, so with the UI on it is an ask the browser shows, not only terminal
+text.
 
 ```
 ❓ **Q3** - **<question title>** (after Q1, Q2): <question body: what hangs on it, possibly several paragraphs>
@@ -31,7 +33,7 @@ round, numbered, each with lettered options and your recommendation, then wait.
 
 Two to four options; a question with no sensible options has none and the recommendation is a sentence. The
 `(after ...)` names the questions it depends on and becomes the row's `deps` in the ledger; a root question
-has none. The human answers in shorthand, several in one message: `Q3 A`, `Q3 ok` (the recommendation),
+has none. The human answers in shorthand, several in one message one per line: `Q3 A`, `Q3 ok` (the recommendation),
 free text, `Q4 defer`, `Q2 reopen`. `explore Q3` asks you for a table, one row per option, two to four pros
 and cons each, specific to this repo and as honest about the recommended option's cons; if writing it changes
 your mind, say so and give the new recommendation. `Q3 more` asks for more detail before the human decides:
@@ -77,13 +79,16 @@ row again.
 
 ## Steps
 
-1. Run the interview loop, keeping the gap ledger of `references/ledger.md`, which also holds the musts the
-   loop has to ask about, and close every row, dry run included. Every answered round completes with the
-   grill file `<slug>-grill.md` written.
+1. When the task file carries `request: <R-id>` and the spec does not already start with the map's export, run
+   `sh ${CLAUDE_PLUGIN_ROOT}/bin/map.sh export <R-id> <repo-key>` first: its destination, decisions and terms are
+   settled rows of the ledger, never asked again. Then run the interview loop, keeping the gap ledger of
+   `references/ledger.md`, which also holds the musts the loop has to ask about, and close every row, dry run
+   included. Every answered round completes with the grill file `<slug>-grill.md` written.
 2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
-4. Write the proposals and the plan, lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
+4. Write the proposals and the plan (its frontmatter carries `task:` and, when a `map.sh export` was prepended to
+   the spec, `request:` with that request id), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
    `references/output.md`.
 
 **Done when** `plan-ready.md` exists in the state repo, `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` passes over it, plan-check left a

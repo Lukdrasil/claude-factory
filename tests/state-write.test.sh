@@ -1,7 +1,8 @@
 #!/bin/sh
-# The writers of a state clone share one working tree with every other session on the machine: a refused push in
-# task-new.sh undoes only its own commit and file, never another session's uncommitted edit or commit, two
-# task-new.sh runs on one clone hand out two ids, and task-approve.sh and curate-apply.sh wait for state_lock.
+# The writers of a state clone share one working tree with every other session on the machine: task-new.sh
+# commits only its own file and never touches the remote (no pull, fetch or push, so no reset either), another
+# session's uncommitted or staged edit survives it untouched, parallel task-new.sh runs on one clone hand out
+# distinct ids, and task-approve.sh and curate-apply.sh wait for state_lock.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -9,8 +10,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=''
-DASHBOARD_URL=''
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 fail=0
 check() { # <what> <expected> <actual>
@@ -74,91 +74,85 @@ fix(demo): $2
 EOF
 }
 
-foreign_task() { # <other clone> <id>: the lines of a script that pushes a task with that id from the other clone
-  printf "printf -- '---\\nid: %s\\nrepo: demo\\nstatus: draft\\n---\\n' > %s/repos/demo/tasks/%s-foreign.md\n" "$2" "$1" "$2"
-  printf 'git -C %s add -A\ngit -C %s commit -q -m "foreign %s"\ngit -C %s push -q >/dev/null 2>&1\n' "$1" "$1" "$2" "$1"
-}
-
-# a git on PATH that runs $FIRST_PUSH once, before the first push it is asked for, so the remote (and in case 2
-# the clone itself) moves between task-new.sh's commit and its push
+# a git on PATH that logs every call that talks to a remote into $GIT_LOG, so a test can see that none was made
 real_git=$(command -v git)
 mkdir -p "$tmp/fakebin"
 cat > "$tmp/fakebin/git" <<EOF
 #!/bin/sh
 case " \$* " in
-  *" push "*)
-    if [ -n "\${FIRST_PUSH:-}" ] && [ ! -e "\$FIRST_PUSH.done" ]; then
-      : > "\$FIRST_PUSH.done"
-      sh "\$FIRST_PUSH"
-    fi ;;
+  *" push "*|*" pull "*|*" fetch "*|*" ls-remote "*|*" remote update "*)
+    [ -z "\${GIT_LOG:-}" ] || printf '%s\n' "\$*" >> "\$GIT_LOG" ;;
 esac
 exec "$real_git" "\$@"
 EOF
 chmod +x "$tmp/fakebin/git"
 
-# --- 1. a refused push keeps another session's uncommitted edit ---------------------
+# --- 1. task-new commits locally, never talks to the remote, and leaves another session's edit alone ---
 st="$tmp/one/state"
 new_state "$st"
 with_origin "$st" "$tmp/one/other"
-foreign_task "$tmp/one/other" T-002 > "$tmp/one/first-push.sh"
+pushed=$(git -C "$st" rev-parse HEAD)
 printf 'another session, not committed\n' >> "$st/notes.md"
-draft "$tmp/one/draft.md" 'a task written while the remote moves'
+draft "$tmp/one/draft.md" 'a task written beside an edit'
 rc=0
-out=$(PATH="$tmp/fakebin:$PATH" FIRST_PUSH="$tmp/one/first-push.sh" \
+out=$(PATH="$tmp/fakebin:$PATH" GIT_LOG="$tmp/one/remote.log" \
   sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/one/draft.md" 2>"$tmp/one/err") || rc=$?
-check '1. the push was refused once' yes "$([ -e "$tmp/one/first-push.sh.done" ] && echo yes || echo no)"
 check '1. task-new exits 0' 0 "$rc"
 [ "$rc" = 0 ] || sed 's/^/  /' "$tmp/one/err"
-check '1. the new task takes the id after the remote one' T-003 "$(printf '%s' "$out" | sed -n 's/^{"id":"\([^"]*\)".*/\1/p')"
+check '1. the new task is T-002' T-002 "$(printf '%s' "$out" | sed -n 's/^{"id":"\([^"]*\)".*/\1/p')"
+check '1. no git call talked to the remote' '' "$(cat "$tmp/one/remote.log" 2>/dev/null)"
+check '1. the task commit sits right on the previous HEAD' "$pushed" "$(git -C "$st" rev-parse HEAD~1)"
+check '1. the origin did not move' "$pushed" "$(git -C "$st.git" rev-parse main)"
 check '1. the uncommitted edit of another session survives' 'shared notes
 another session, not committed' "$(cat "$st/notes.md")"
 check '1. the edit is still uncommitted' ' M notes.md' "$(git -C "$st" status --porcelain -- notes.md)"
-check '1. the remote holds T-002 once' 1 \
-  "$(git -C "$st.git" grep -l '^id: T-002$' main -- repos 2>/dev/null | wc -l | tr -d ' ')"
-check '1. the remote holds the new T-003' 1 \
-  "$(git -C "$st.git" grep -l '^id: T-003$' main -- repos 2>/dev/null | wc -l | tr -d ' ')"
+check '1. the task commit holds the task file only' 'repos/demo/tasks/T-002-fix-demo-a-task-written-beside.md' \
+  "$(git -C "$st" show --name-only --format= HEAD)"
 
-# --- 2. HEAD is no longer task-new's own commit: stop, keep everything ----------------
+# --- 2. another session's staged file stays staged and out of the task commit ---------------
 st="$tmp/two/state"
 new_state "$st"
-with_origin "$st" "$tmp/two/other"
-{
-  printf 'printf "foreign\\n" > %s/foreign.md\n' "$st"
-  printf 'git -C %s add -- foreign.md\n' "$st"
-  printf 'git -C %s commit -q -m "a foreign commit" -- foreign.md\n' "$st"
-  foreign_task "$tmp/two/other" T-002
-} > "$tmp/two/first-push.sh"
+printf 'staged by another session\n' > "$st/staged.md"
+git -C "$st" add -- staged.md
 printf 'another session, not committed\n' >> "$st/notes.md"
-draft "$tmp/two/draft.md" 'a task under a foreign commit'
+draft "$tmp/two/draft.md" 'a task beside a staged file'
 rc=0
-out=$(PATH="$tmp/fakebin:$PATH" FIRST_PUSH="$tmp/two/first-push.sh" \
-  sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/two/draft.md" 2>"$tmp/two/err") || rc=$?
-check '2. task-new exits 1' 1 "$rc"
-check '2. the refusal is reported on stderr' yes "$(grep -q '^task-new: .*moved past' "$tmp/two/err" && echo yes || echo no)"
-check '2. the foreign commit is still HEAD' 'a foreign commit' "$(git -C "$st" log -1 --format=%s)"
-check '2. the own commit is kept under it' 'chore(T-002): new draft task' "$(git -C "$st" log -1 --format=%s HEAD~1)"
-check '2. the own task file is kept' yes \
-  "$([ -f "$st/repos/demo/tasks/T-002-fix-demo-a-task-under-a.md" ] && echo yes || echo no)"
-check '2. the uncommitted edit of another session survives' ' M notes.md' "$(git -C "$st" status --porcelain -- notes.md)"
+out=$(sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/two/draft.md" 2>"$tmp/two/err") || rc=$?
+check '2. task-new exits 0' 0 "$rc"
+[ "$rc" = 0 ] || sed 's/^/  /' "$tmp/two/err"
+check '2. the task commit holds the task file only' 'repos/demo/tasks/T-002-fix-demo-a-task-beside-a.md' \
+  "$(git -C "$st" show --name-only --format= HEAD)"
+check '2. the staged file stays staged' 'A  staged.md' "$(git -C "$st" status --porcelain -- staged.md)"
+check '2. the uncommitted edit stays uncommitted' ' M notes.md' "$(git -C "$st" status --porcelain -- notes.md)"
 
-# --- 3. two runs in parallel on one clone take two ids ----------------------------
+# --- 3. parallel runs on one clone take distinct ids, legacy and alias alike -----------------
 st="$tmp/three/state"
 new_state "$st"
-draft "$tmp/three/a.md" 'the first parallel task'
-draft "$tmp/three/b.md" 'the second parallel task'
+printf 'ecs: {url: %s, default_branch: main, path: %s, alias: ECS}\n' "$tmp/ecs-origin.git" "$tmp/ecs" >> "$st/repos.yml"
+git -C "$st" commit -q -m ecs -- repos.yml
+for n in a b c d; do draft "$tmp/three/$n.md" "the parallel task $n"; done
+for n in c d; do
+  sed 's/^repo: demo$/repo: ecs/; s/^fix(demo)/fix(ecs)/' "$tmp/three/$n.md" > "$tmp/three/$n.ecs.md"
+done
 sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/three/a.md" > "$tmp/three/a.out" 2>&1 &
 pa=$!
 sh "$bin/task-new.sh" --repo demo --state "$st" --file "$tmp/three/b.md" > "$tmp/three/b.out" 2>&1 &
 pb=$!
-ra=0; wait "$pa" || ra=$?
-rb=0; wait "$pb" || rb=$?
-check '3. the first parallel run exits 0' 0 "$ra"
-check '3. the second parallel run exits 0' 0 "$rb"
-ida=$(sed -n 's/^{"id":"\([^"]*\)".*/\1/p' "$tmp/three/a.out")
-idb=$(sed -n 's/^{"id":"\([^"]*\)".*/\1/p' "$tmp/three/b.out")
-check '3. the two runs took two different ids' 'T-002 T-003' "$(printf '%s\n%s\n' "$ida" "$idb" | sort | tr '\n' ' ' | sed 's/ $//')"
-check '3. three distinct ids are committed' 3 \
-  "$(git -C "$st" grep -h '^id:' HEAD -- repos/demo/tasks | sort -u | wc -l | tr -d ' ')"
+sh "$bin/task-new.sh" --repo ecs --state "$st" --file "$tmp/three/c.ecs.md" > "$tmp/three/c.out" 2>&1 &
+pc=$!
+sh "$bin/task-new.sh" --repo ecs --state "$st" --file "$tmp/three/d.ecs.md" > "$tmp/three/d.out" 2>&1 &
+pd=$!
+for n in a b c d; do
+  r=0
+  eval "wait \"\$p$n\"" || r=$?
+  check "3. the parallel run $n exits 0" 0 "$r"
+  [ "$r" = 0 ] || sed 's/^/  /' "$tmp/three/$n.out"
+done
+check '3. the four runs took four distinct ids' 'T-002 T-003 T-ECS-1 T-ECS-2' \
+  "$(sed -n 's/^{"id":"\([^"]*\)".*/\1/p' "$tmp/three/a.out" "$tmp/three/b.out" "$tmp/three/c.out" "$tmp/three/d.out" \
+     | sort | tr '\n' ' ' | sed 's/ $//')"
+check '3. five distinct ids are committed' 5 \
+  "$(git -C "$st" grep -h '^id:' HEAD -- repos | sort -u | wc -l | tr -d ' ')"
 
 # --- 4. task-approve.sh and curate-apply.sh wait for the lock ----------------------
 waits_for_lock() { # <name> <state> <command…>

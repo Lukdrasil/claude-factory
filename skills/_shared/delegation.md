@@ -6,18 +6,21 @@ A block or a ready task can instead run as its own interactive session, which
 binds it, except that its report arrives through the state repo rather than as a returned brief.
 The rules of a spawn are in `<plugin-root>/skills/_shared/rules.md`, which
 `<plugin-root>/bin/agent-brief.sh <agent>` prints at the top of every brief together with that agent's own
-memory. Prepend its output to the brief you write.
+memory and, when the state has one, the playbook of that agent for the repository
+(`repos/<key>/agents/<agent>/playbook.md`); the SubagentStart hook hands a subagent the same playbook. Prepend
+its output to the brief you write.
 
 | agent | for |
 |---|---|
-| `worker-explorer` | read-only recon: blast radius, references, existing tests; cheap, fan out in parallel |
-| `worker-test-author` | characterization or red tests for one area; parallel over disjoint test files |
-| `worker-implementer` | one well-scoped implementation step |
-| `factory-block-tests` | a coordinator's tests phase for one block: analysis, red tests, `## Handoff` |
-| `factory-block-implement` | a coordinator's implement phase for one block: the code, no MR, no self-report |
-| `factory-block-implement-medium` | the same phase at `complexity: high`, picked by `model-for.sh --agent` |
-| `factory-reviewer` | a coordinator's review of the whole diff before the MR, read-only (ADR-0053) |
-| `mr-issue-linker` | the open issues a finished change solves or touches, for the MR description |
+| `scout` | read-only recon: blast radius, references, existing tests; cheap, fan out in parallel |
+| `test-writer` | characterization or red tests for one area; parallel over disjoint test files |
+| `step-implementer` | one well-scoped implementation step |
+| `test-designer` | a coordinator's tests phase for one block: analysis, red tests, `## Handoff` |
+| `implementer` | a coordinator's implement phase for one block: the code, no MR, no self-report |
+| `implementer-senior` | the same phase at `complexity: high`, picked by `model-for.sh --agent` |
+| `code-reviewer` | a coordinator's review of the whole diff before the MR, read-only (ADR-0053) |
+| `architecture-auditor` | after the change, per block and once per parent: drift no doc or ADR proposal covers, the architectural risk, `.harness/<unit>/arch.md`; skipped without `docs/architecture/` |
+| `issue-finder` | the open issues a finished change solves or touches, for the MR description |
 | `mr-reviewer` | one merge request judged against its issue, read-only (ADR-0054) |
 
 Model and effort live in the agent definitions, not here.
@@ -25,13 +28,20 @@ Model and effort live in the agent definitions, not here.
 - A subagent's "it works" is a claim, not evidence: rerun the proving command yourself before recording it.
 - Duplication: `git diff origin/<base>...<branch> > <harness>/review.diff`, then
   `<plugin-root>/bin/dup-check.sh <harness>/review.diff <worktree>`, never a task id. What it printed goes
-  verbatim under `## Duplication` and into the `factory-reviewer` brief, which judges every candidate; no spawn
+  verbatim under `## Duplication` and into the `code-reviewer` brief, which judges every candidate; no spawn
   per candidate.
-- Writing the MR stays here; only the issue lookup behind its `Issues` line goes to `mr-issue-linker`.
+- Writing the MR stays here; only the issue lookup behind its `Issues` line goes to `issue-finder`.
 - The **task-wide** test lock: the coordinator arms it with `state-report.sh --task <block-id> --set-phase implement`, and from
   then on the guard refuses every write to a test file of that task, for the session and its subagents alike.
   Policy hooks apply to subagent tool calls; delegation is not a way around them.
 - Each block agent runs only the tests it wrote; the coordinator reruns the whole suite over the merged diff.
 - At most **five** block agents run concurrently; a wider wave queues.
+- Every role has a capacity shared across all leads (factory.yml `capacity:`). When the PreToolUse hook denies
+  an agent with `role <r> is full`, run `<plugin-root>/bin/capacity.sh wait <r>` and call it again; a timeout is
+  a blocked question (`<plugin-root>/skills/_shared/blocked-question.md`), never the caller doing the role's work.
+- SendMessage reaches only a session's own subagents: a lead with the named subagents of its team. The CEO, a
+  lead and a block session are separate `claude` processes, and a line between them goes through `herdr agent
+  prompt <name> "<line>"` (`<plugin-root>/skills/herdr/SKILL.md`), inside one task and between a lead and the
+  CEO. A message coordinates; the state repo is the record, and a message never carries an approval.
 - A subagent's report may end with one `## Lessons` line (Why plus evidence) about its own craft, which the
   calling session turns into a proposal per `<plugin-root>/skills/_shared/knowledge-review.md`.

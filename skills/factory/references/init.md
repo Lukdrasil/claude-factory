@@ -5,10 +5,18 @@ then the current clone registered and checked.
 
 ## Interview
 
-Ask at most 6 questions, each with a default the user can accept as is:
+With `HERDR_ENV=1`, ask **Browser UI?** first, in the terminal per the `ui: off` section of `_shared/ask.md`: the answers of this flow
+then come from the browser or the terminal alike. Default no. Outside herdr skip it and say nothing, the
+answer is no. A yes becomes `--ui docker`: run `<plugin-root>/bin/ui-up.sh` with no `--state`, which starts
+the UI with `/ui` only because no state repo exists yet, print the URL it prints, and ask every later
+question and the confirm per the `ui: docker` section of `_shared/ask.md`. A no becomes `--ui off`.
+
+Then ask at most 6 questions, each with a default the user can accept as is:
 
 1. **Factory root**, default `~/factory`, never inside a product repo. Becomes `--root`.
-2. **State repo**: adopt an existing `<root>/state`, its `repos.yml` byte for byte, or create it.
+2. **State repo**: adopt an existing `<root>/state`, its `repos.yml` byte for byte, create it, or clone
+   the state repo another machine already pushes to (its url becomes `--from <url>`; question 3 is then
+   answered by that url).
 3. **State remote**, optional, default none. When given, `git -C <root>/state remote add origin <url>`
    after the apply step.
 4. **Git identity**, only when `git config user.email` prints nothing.
@@ -22,13 +30,34 @@ Completion: every answer recorded, from the user or the stated default.
 
 ## Steps
 
-- **Preview.** `<plugin-root>/bin/factory-init.sh --root <root>` without `--yes`, plus `--settings <file>`
-  when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with `nothing to do`: continue at
-  Register. Exit 3: the output is the diff over the state repo, `repos.yml` and the settings file gaining
-  `env.WORK_DIR`.
-- **Confirm.** Show the diff and ask with AskUserQuestion whether to apply it. Completion: a yes or a no.
+- **Preview.** `<plugin-root>/bin/factory-init.sh --root <root>` without `--yes`, plus `--from <url>` for a
+  clone and `--settings <file>` when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with
+  `nothing to do`: continue at Register. Exit 3: the output is the diff over the state repo (`git init`, or
+  `git clone <url>` whose `repos.yml` is adopted), `repos.yml`, `factory.yml` and the settings file gaining
+  `env.WORK_DIR` and the `permissions.allow` rules of the step sessions (Read of the root and the plugin,
+  Edit and Write of `state/`, `Bash(sh <plugin-root>/bin/*)`). A new `factory.yml` carries the `capacity:` defaults; an existing one keeps its keys and
+  gains the `ui:` asked for and a `ui_port:` when it has none. Every run, preview included, refreshes the
+  Setup tab's `doctor.json` (`references/doctor.md`).
+- **Confirm.** Ask whether to apply it with a confirm (`_shared/ask.md`) that carries the printed diff
+  verbatim as a fenced block, without the `pending` line:
+
+  ````markdown
+  ❓ **Q1** - **Apply the init diff?**: factory-init.sh printed it and wrote nothing.
+
+  ```diff
+  <the output of the preview>
+  ```
+
+    **A** yes
+    **B** no
+  ````
+
+  Completion: a yes or a no.
 - **Apply.** On a yes, rerun the same command with `--yes`. Completion: exit 0, `applied`, a commit in
   `git -C <root>/state log --oneline`. On a no: report the diff and stop.
+- **UI over the state repo.** With `--ui docker`, run `<plugin-root>/bin/ui-up.sh --state <root>/state`: it
+  recreates the container with the new state repo at `/state`, same token, on its `ui_port`. Completion: it
+  printed the URL.
 - **Identity and remote.** Set what questions 3 and 4 asked.
 - **Register.** On a yes to question 5, follow `references/add-repo.md` for the cwd clone. Completion: the
   key is on a `<key>:` line in `<root>/state/repos.yml`.

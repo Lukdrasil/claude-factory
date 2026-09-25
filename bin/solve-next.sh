@@ -3,14 +3,24 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>]
+#   solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
+#                            --ui also records the step in that session's session.md through ui-session.sh
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
 # `review` with an `mr_url` is waiting for the developer, so step 11 steps over it to the next block that still
 # needs work and only prints the reminder with the open MRs when every remaining block is one of those; a block
-# in `changes_requested` is a fix round.
+# in `changes_requested` is a fix round. That holds for a task already stacked (a block whose progress file
+# records `base: block/...`). Every other task cuts its blocks from the work branch, one wave at a time, and puts
+# each one up through block-verify.sh, the code-reviewer and the architecture-auditor, then block-mr.sh: a block
+# in `review` with an `mr_url` does not hold the blocks of its own wave, and before a block of a later wave is
+# cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
+# the human's yes). Step 14 is then the task MR the human reviews and merges.
+#
+# A parent with `request:` is charted first: while no plan-ready file exists and `map.sh clear <R-id>` does not
+# exit 0 or the map is not yet `planned` or later, the step is 3b, the request map of skills/wayfinder; the grill of step 4 is then seeded by
+# `map.sh export <R-id> <key>`.
 #
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
 # beginning `Completion:`, and under `Commands:` the commands to run, two spaces in front of each. The work
@@ -18,8 +28,10 @@
 # the session worktree, `<root>/<key>/T-NNN-NN` a block worktree, `<root>/<key>/.harness/T-NNN` the scratch
 # directory of the run.
 #
-# The state a step is read off, in the order the steps are tried: no `tier` is step 3, no plan-ready file is
-# step 4 (the one whose frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
+# The state a step is read off, in the order the steps are tried: no `tier` is step 3, and so is no plan-ready
+# file on a feature, bugfix or refactor with no `## Related issues`; no plan-ready file is step 3b while the
+# parent's request map is not clear or its `Status:` is still charting or grilling, else step 4 (the plan-ready file is the one whose
+# frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
 # and a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
 # wave plan in the progress file is step 8, a parent that is not `in_progress` is step 9, no session worktree
 # is step 10, a block that is not `done` is step 11, every block done is step 12, no `## Duplication` in the
@@ -37,15 +49,16 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state=''
+id='' state='' ui=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    --ui) [ $# -ge 2 ] || die "--ui needs a value"; ui=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
@@ -108,6 +121,7 @@ emit() { # <heading> <completion line>
   printf '## %s\n' "$1"
   printf 'Completion: %s\n' "$2"
   printf 'Commands:\n'
+  [ -z "$ui" ] || sh "$bin/ui-session.sh" --session "$ui" --task "$id" --flow solve --step "$1"
 }
 cmd() { printf '  %s\n' "$1"; }
 
@@ -118,14 +132,16 @@ complexity=$(fm "$task" complexity)
 status=$(fm "$task" status)
 branch=$(fm "$task" branch)
 mr_url=$(fm "$task" mr_url)
+request=$(fm "$task" request)
 
-if [ -z "$tier" ] || [ -z "$archetype" ]; then
-  emit "Step 3 of 16: triage $id" "tier and archetype are set on $id."
+triage_step() {
+  emit "Step 3 of 16: triage $id" "tier and archetype are set on $id and ## Related issues is written for a feature, bugfix or refactor."
   cmd "cat $task"
   cmd "cat $plugin/skills/_shared/investigate.md"
   cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): triaged'"
   exit 0
-fi
+}
+[ -n "$tier" ] && [ -n "$archetype" ] || triage_step
 
 slug=''
 for f in "$state/repos/$key/plans/"*-plan-ready.md; do
@@ -136,21 +152,46 @@ done
 [ -n "$slug" ] || slug=$(grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' "$task" 2>/dev/null | head -n1 | sed 's|^plans/||; s|-plan-ready\.md$||' || :)
 plan="$state/repos/$key/plans/$slug-plan-ready.md"
 
+# why: task-new.sh requires tier: of every draft, so before the plan triage is done only once investigate.md
+# why: step 4 has written ## Related issues (feature, bugfix and refactor only), and charting only once the chart
+# why: session has moved the map past charting and grilling, which it does when the map is clear
+triaged() {
+  case "$archetype" in feature|bugfix|refactor) grep -q '^## Related issues[[:space:]]*$' "$task" ;; esac
+}
+charted() {
+  sh "$bin/map.sh" clear "$request" --state "$state" >/dev/null 2>&1 || return 1
+  case "$(awk '/^Status:/ { print $2; exit }' "$state/requests/$request/map.md")" in
+    planned|queued|running|done) ;;
+    *) return 1 ;;
+  esac
+}
+
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
-  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
+  triaged || triage_step
+  # why: the request map is one per request and decides what every parent of it shares, so no grill starts on
+  # why: a parent while a ticket of the map is open or fog is left on it
+  if [ -n "$request" ] && ! charted; then
+    emit "Step 3b of 16: chart $request" "$bin/map.sh clear $request exits 0: no ticket of $state/requests/$request/map.md is open or claimed and nothing is left under Not yet specified."
+    cmd "cat $plugin/skills/wayfinder/SKILL.md"
+    if [ -f "$state/requests/$request/map.md" ]; then
+      cmd "cat $state/requests/$request/map.md"
+      cmd "$bin/map.sh frontier $request --state $state"
+    else
+      cmd "$bin/map.sh new $request --destination '<the request in one or two lines>' --state $state"
+    fi
+    exit 0
+  fi
+  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id${request:+ and request: $request} in its frontmatter."
   cmd "cat $plugin/skills/grill/SKILL.md"
+  [ -z "$request" ] || cmd "$bin/map.sh export $request $key --state $state"
   cmd "cat $task"
   exit 0
 fi
 
-blocks=''
-for f in "$state"/repos/*/tasks/*.md; do
-  [ -f "$f" ] || continue
+blocks=$(task_files | while IFS= read -r f; do
   b=$(fm "$f" id)
-  if is_block_of "$id" "$b"; then blocks="$blocks$b
-"; fi
-done
-blocks=$(printf '%s' "$blocks" | sort_ids)
+  if is_block_of "$id" "$b"; then printf '%s\n' "$b"; fi
+done | sort_ids)
 
 product=$(clone_path "$key")
 verdict="$state/repos/$key/verdicts/$slug.md"
@@ -166,7 +207,7 @@ if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] 
 fi
 
 if [ -z "$blocks" ]; then
-  emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on and parallel_group."
+  emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on."
   cmd "cat $plugin/skills/decompose/SKILL.md"
   cmd "cat $plan"
   exit 0
@@ -184,7 +225,7 @@ fi
 # invariant: only a status the approval still lies ahead of asks for step 9; `review` and `done` are past it and
 # invariant: are answered by step 15 and step 16 at the bottom of this file.
 case "$status" in
-  draft|triaged|ready|claimed|blocked|stalled|failed)
+  draft|triaged|ready|claimed|blocked|failed)
     emit "Step 9 of 16: approve and claim $id" "$id is in_progress with plan_hash set."
     cmd "$bin/task-approve.sh $id --state $state"
     cmd "$bin/state-report.sh --task $id --set-status in_progress --message 'chore($id): claimed'"
@@ -234,6 +275,22 @@ for b in $ordered; do
   break
 done
 
+# a task already stacked has a block cut from another block's branch; its block MRs stay the developer's to merge
+stacked=''
+for b in $blocks; do
+  case "$(sed -n 's/^base:[[:space:]]*//p' "$state/repos/$key/progress/$b.md" 2>/dev/null | head -n1)" in
+    block/*) stacked=1 ;;
+  esac
+done
+
+# why: every other task cuts a wave's blocks from the work branch once the wave before it is merged, so a block
+# why: of a later wave than a waiting MR is not started; the merges below come first
+if [ -n "$pending" ] && [ -n "$waiting" ] && [ -z "$stacked" ]; then
+  for b in $waiting; do
+    [ "$(wave_of "$b")" = "$(wave_of "$pending")" ] || { pending=''; break; }
+  done
+fi
+
 if [ -n "$pending" ]; then
   bf=$(task_of "$pending")
   bs=$(fm "$bf" status)
@@ -259,6 +316,12 @@ if [ -n "$pending" ]; then
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
+  elif [ "${FACTORY_ROLE:-}" = repo-lead ] && { [ ! -e "$bwt/.git" ] || [ "$bs" = ready ]; }; then
+    # why: a lead herds its blocks as sessions and session-monitor.sh claims each one it starts; a claim of the
+    # why: lead's own leaves it no ready block to dispatch (F36)
+    emit "Step 11 of 16: dispatch wave ${wave:-1} of $id" "every ready block of the wave printed <id> spawned from session-monitor.sh, which claimed it for its session."
+    [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
+    cmd "$bin/session-monitor.sh --task $id$wave_arg --spawn herdr"
   elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ]; then
     emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
@@ -280,6 +343,14 @@ if [ -n "$pending" ]; then
     cmd "git -C $bwt log --format='%h %s' --name-only ${bbase:-$branch}..HEAD"
     cmd "git -C $bwt worktree add --detach $harness/red-$pending <red-commit> && (cd $harness/red-$pending && <test-filter binding over the red test files>); git -C $bwt worktree remove --force $harness/red-$pending"
     cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status"
+  elif [ -z "$stacked" ]; then
+    # why: a block cut from the work branch merges into it through its own MR, so there is no stack to prove the
+    # why: merge into; block-mr.sh builds the description from the reviewer's and the auditor's reports
+    emit "Step 11 of 16: verify, review and open the MR for $pending" "$pending is review with its mr_url set: block-verify.sh is green and wrote $own/.harness/$pending/verify.txt, the code-reviewer's final message is saved as $own/.harness/$pending/review.md and the architecture-auditor wrote $own/.harness/$pending/arch.md, both over the block diff, and block-mr.sh opened the MR into ${branch:-the work branch} from them."
+    cmd "$bin/model-for.sh $ba $bt verify $bn $bc"
+    cmd "$bin/block-verify.sh $pending --state $state"
+    cmd "$bin/block-mr.sh $pending"
+    cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): MR open'"
   else
     emit "Step 11 of 16: verify and open the MR for $pending" "$pending is review with its mr_url set, evidenced in $bprogress, and the merge into the session branch is proved green."
     cmd "$bin/model-for.sh $ba $bt verify $bn $bc"
@@ -291,8 +362,16 @@ if [ -n "$pending" ]; then
   exit 0
 fi
 
+if [ -n "$waiting" ] && [ -z "$stacked" ]; then
+  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done; exit 3 is a block whose MR rates the risk high, merged only after the human's yes (_shared/ask.md) by the same line with --confirmed; a class C forge prints <block> auto-merge <url>, and the line runs again once the forge has merged it. The next wave is cut from the work branch once this one is merged."
+  for b in $waiting; do
+    cmd "$bin/block-mr-merge.sh $b"
+  done
+  exit 0
+fi
+
 if [ -n "$waiting" ]; then
-  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block with depends_on on that block: the template written to $harness/extra.md and filled in, an architect-review cut-check over that one block, task-new.sh --parent, and the verdict removed and pushed afterwards when the registered clone has docs/architecture/, as decompose does."
+  emit "Step 11 of 16: $id waits for the developer" "the human has been asked to review and merge the block MRs listed below, and mr-watch.sh is armed on $id: merged sets the block done and retargets the stack, changes-requested opens the fix round through state-report.sh --set-status changes_requested, and new-comments is read first with --comments and answered thread by thread, a thread asking for a code change being a fix round on the same block branch, a question being answered on the MR by hand (forge.sh reads only, so print the answer for the human), and a thread asking for work outside the block's acceptance being a new draft block with depends_on on that block: the template written to $harness/extra.md and filled in, an architect-review cut-check over that one block, task-new.sh --parent, and the verdict removed and committed afterwards when the registered clone has docs/architecture/, as decompose does."
   for b in $waiting; do
     bf=$(task_of "$b" || :)
     [ -n "$bf" ] || continue
@@ -308,9 +387,8 @@ if [ -n "$waiting" ]; then
   cmd "cat $plugin/skills/architect-review/SKILL.md $plugin/skills/architect-review/references/cut-check.md"
   cmd "$bin/task-new.sh --repo $key --parent $id --file $harness/extra.md --state $state"
   if [ -n "$product" ] && [ -d "$product/docs/architecture" ]; then
-    cmd "git -C $state rm -q repos/$key/verdicts/$slug.md"
-    cmd "git -C $state commit -q -m 'chore($id): extra block written, verdict removed'"
-    cmd "git -C $state push -q"
+    cmd "rm $state/repos/$key/verdicts/$slug.md"
+    cmd "$bin/state-commit.sh -m 'chore($id): extra block written, verdict removed' --state $state -- repos/$key/verdicts/$slug.md"
   fi
   exit 0
 fi
@@ -326,7 +404,7 @@ if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
-  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and its output stands verbatim under ## Duplication in $progress, judged by nobody yet: the factory-reviewer of step 13 answers every candidate. An empty candidate list is recorded as one line."
+  emit "Step 12b of 16: duplication check over $id" "dup-check.sh has run over the whole diff and its output stands verbatim under ## Duplication in $progress, judged by nobody yet: the code-reviewer of step 13 answers every candidate. An empty candidate list is recorded as one line."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/dup-check.sh $harness/review.diff $worktree"
@@ -334,7 +412,7 @@ if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Review' "$progress" 2>/dev/null; then
-  emit "Step 13 of 16: integrated review of $id" "a verdict from factory-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
+  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"
@@ -343,11 +421,12 @@ if ! grep -q '^## Review' "$progress" 2>/dev/null; then
 fi
 
 if [ -z "$mr_url" ]; then
-  emit "Step 14 of 16: open the MR for $id" "the MR exists with no conflicts against $base, or the branch is merge-ready without a forge."
+  emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, or the branch is merge-ready without a forge, and the human has been asked to review and merge it; done follows the merge."
   cmd "git -C $worktree fetch origin"
   cmd "git -C $worktree rebase origin/$base"
   cmd "git -C $worktree push --force-with-lease origin ${branch:-HEAD}"
   cmd "cat $plugin/skills/_shared/mr-description.md"
+  cmd "$bin/mr-open.sh $id --state $state"
   exit 0
 fi
 

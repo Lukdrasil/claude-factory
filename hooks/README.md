@@ -1,30 +1,49 @@
-# hooks.json — why it looks the way it does
+# hooks.json, why it looks the way it does
 
 `hooks.json` carries no prose of its own: Claude Code validates the whole file, not only the `hooks`
 object, and warns `unknown key "//" ignored` for a comment key at the top level (2.1.234 refuses `//Stop`
-*inside* `hooks` outright, and the plugin then fails to load — seen on the worker 2026-09-04). Everything
+*inside* `hooks` outright, and the plugin then fails to load, seen 2026-09-04). Everything
 that used to sit in that key lives here instead.
 
-- The file is the policy layer for `bypassPermissions` — the deterministic twin of the rules the skills
+- The file is the policy layer for `bypassPermissions`, the deterministic twin of the rules the skills
   state in prose (v1: ADR-0009, BACKLOG E4.3/E4.4).
 - The guard hooks (`policy-guard.sh`, `architect-gate.sh`) waive only the cwd rule outside `WORK_DIR`
-  unless `HARNESS_WORKER=1` (ADR-0049). The session hooks — `SessionStart`, `PreCompact`, the PreToolUse
-  tripwire — run everywhere.
+  (ADR-0049). A cwd under `WORK_DIR` that is no task worktree, such as `WORK_DIR/state` or `WORK_DIR/<key>`,
+  may write only inside that top-level directory. The session hooks, `SessionStart`, `PreCompact`, the PreToolUse
+  tripwire, run everywhere.
+- `ask-gate.sh` runs on `AskUserQuestion`: with `ui: docker` in herdr a session with a `FACTORY_ROLE` or `FACTORY_UNIT`
+  asks through `skills/_shared/ask.md`, so the terminal dialog is denied; a human's own session keeps it.
 - `attribution-gate.sh` runs on `Bash` as well as the write tools: a commit, a tag and a forge command
   carry their text in the command, an MR description and a progress file in a file. On `Bash` it also
   resolves the files the command reads - `--description-file`, `--body-file`, `git commit -F`, `-f key=@path`,
   `$(cat path)`, a `< path` redirect - and scans those, and it matches a git verb through `-C dir` and
   `-c k=v` options; on a write it watches a path that looks like a message or a body and any text carrying an
   MR-body marker or a Conventional Commits first line. A source file mentioning a banned phrase still passes.
-- `Stop` has exactly one hook. Both Stop scripts write into the same state clone, so `bin/session-stats.sh`
-  is chained from the end of `self-report-check.sh` rather than running beside it over one git index.
+- The Stop hooks that write the state clone are chained from `self-report-check.sh`: both write into the same
+  state clone, so `bin/session-stats.sh` runs from the end of `self-report-check.sh` rather than beside it over
+  one git index. `rearm-check.sh` is the second Stop hook and writes nothing there: in a parent worktree whose
+  units run in herdr, and in the state clone for every parent of a request that is in flight, it exits 2 with
+  one herd-list line per herd that no `monitor` entry of the hook's `background_tasks` watches with
+  `herd-watch.sh <T-id>`, so a CEO or lead whose Monitor expired, or that was restarted, arms it again. Never
+  when `stop_hook_active` is true, at most twice per session: its counter `.harness-rearm-<sid>` sits in the
+  task's `.harness/<T-id>/` for a lead, and in the state clone's git dir (`git rev-parse --absolute-git-dir`)
+  for the CEO, where no commit and no status sees it.
 - `session-start.sh` warns when the running plugin root looks older than this repo: `bin/attribution-gate.sh`
   missing from it, a `.claude-plugin/plugin.json` version other than the installed one, or, for a dev checkout,
   a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR
   that does not bump it never reaches a session (incident C, 2026-09-22: three PRs shipped nothing while the
   cache sat at 0.12.0). Bump the version in `.claude-plugin/plugin.json` with any change to the hooks.
+- Capacity (agent-org plan 3.3): `capacity.sh --hook pretooluse` on `Agent` denies a subagent whose role is
+  at its cap in factory.yml `capacity:` and otherwise writes a pending lease; `--hook subagentstart` turns the
+  oldest pending lease of that session and role into the agent's own; `--hook subagentstop` releases it. The
+  leases live in `<state>/.capacity/` under their own lock, never the state lock. A role outside the table, a
+  factory.yml without `capacity:`, a missing state clone or any error of the script lets the call through with
+  nothing printed.
+- `playbook-inject.sh --hook` on `SubagentStart` hands the subagent the playbook of its role for the repo key of
+  its cwd, `repos/<key>/agents/<role>/playbook.md` in the state clone, as `additionalContext`, or nothing.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
-  name. `tests/hooks-wiring.test.sh` enforces both.
+  name. `tests/hooks-wiring.test.sh` enforces both, that the capacity and playbook hooks sit on their events,
+  and the Stop order with `rearm-check.sh` calling no state writer.
 
 ## policy-guard rules
 
@@ -54,8 +73,6 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
   it is data, and it opens only after an odd run of `$`: in `$$'…'` the `$$` is the PID and the quote is plain. `>&N`, `>&-`, `>(`, `=>`, `<>` and `->` name no file, while `>&word` writes the file `word`. A
   target quoted as a whole (`> "README.md"` or `> $'README.md'`) is judged without its quotes. A bare `~` or `~/x` is expanded through `$HOME` and
   denied when `HOME` is unset, while a quoted `"~/x"` is relative to the cwd, as the shell writes it.
-- **State-clone push.** With a dashboard configured, `git push` is judged against every base. After a `cd` the
-  guard cannot resolve, it is judged as a push of the state clone whenever that clone holds a commit to push.
 - **In-place editors.** The tokens of `sed -i`, `perl -i`, `tee`, `patch` and `git checkout|restore` are read
   with quoted spans removed, so the pieces of a quoted script are never write targets, and a target that starts
   with `$` is skipped, as for a redirect. The first operand of `sed -i` and `perl -i` without `-e` is the
@@ -77,3 +94,4 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
 - **Issue label.** A segment with `gh issue create` or `glab issue create` is denied unless `--label` or `-l`
   carries `ai-drafted` as one comma-separated value, quoted or bare, after a space or `=`. The deny names
   `bin/issue-create.sh`, which adds the label.
+- **Human gates.** A session with a `FACTORY_ROLE` is denied `task-approve.sh`, `task-done.sh --close` and `curate-apply.sh approve` unless it is `ceo`, `task-done.sh` unless it is `ceo` or `repo-lead`, and `block-mr-merge.sh --confirmed` unless it is `repo-lead`, however the script is spelled or chained; no `FACTORY_ROLE` is a human's own session. `FACTORY_ROLE=onboard`, the onboarding session of a freshly cloned repo, works from an allowlist instead: it writes only `<state>/repos/<key>/onboarding.md` (the key of its `FACTORY_UNIT` `onboard-<key>`), runs no `*.sh` but `factory-doctor.sh`, `doc-cites.sh`, `ui-ask.sh`, `ui-session.sh` and `state-commit.sh` of that one file (`--state` only this state clone), drives herdr only as `agent prompt ceo` and `tab close` of its own `$HERDR_TAB_ID`, and never runs `git push`; everything else is denied with one text that names `references/onboard.md`.

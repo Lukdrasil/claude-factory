@@ -6,8 +6,13 @@
 #
 #   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
 #
-# The `Issues` file is what `mr-issue-linker` answered: its `closes #12` / `refs #30` lines become the `Issues`
+# The `Issues` file is what `issue-finder` answered: its `closes #12` / `refs #30` lines become the `Issues`
 # line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
+#
+# A task whose blocks went through block MRs (3.4 of the agent-org plan) gets a `## Blocks` section after the
+# description: one `- [<block goal>](<mr_url>), risk <level>` line per block with an mr_url, in id order, the
+# level from the block's `.harness/<block>/arch.md` or `not rated` when the auditor wrote none. The list grows
+# with the task, so it is not counted in the 120 words.
 #
 # It is not create-only. When the MR or PR is already open, the freshly built description is compared with the
 # one the forge carries and pushed with `gh pr edit --body-file` / `glab mr update --description-file` when
@@ -82,6 +87,29 @@ verify=$(bullets '## Evidence' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 follow=$(bullets '## Follow-ups')
 
+# why: the title said it already, so a Why that repeated the goal told the reviewer nothing (F17). The task's
+# `## Context`, else the `# Spec` of the plan it names, else the goal; bin/block-mr.sh adds a block's parent.
+first_sentence() { # <heading> <file>: the first sentence of the first paragraph under the heading
+  # the `From the plan` line decompose writes points at the plan and gives no reason, so it is skipped
+  awk -v h="$1" '
+    $0 == h { f = 1; next }
+    !f { next }
+    /^#/ { exit }
+    /^From the plan[[:space:]]/ { s = 1; next }
+    !NF { if (s) exit; next }
+    { s = 1; sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); p = p == "" ? $0 : p " " $0 }
+    END { if (p == "") exit; if (match(p, /[.!?][[:space:]]/)) p = substr(p, 1, RSTART); print p }
+  ' "$2"
+}
+why=$(first_sentence '## Context' "$task")
+if [ -z "$why" ]; then
+  plan=$(plan_slug < "$task")
+  if [ -n "$plan" ] && [ -f "$state/repos/$key/plans/$plan-plan-ready.md" ]; then
+    why=$(first_sentence '# Spec' "$state/repos/$key/plans/$plan-plan-ready.md")
+  fi
+fi
+[ -n "$why" ] || why=$goal
+
 issue_line=''
 if [ -n "$issues" ]; then
   [ -f "$issues" ] || die "no issues file at $issues"
@@ -101,7 +129,7 @@ mkdir -p "$desc_dir"
 desc="$desc_dir/mr.md"
 {
   printf '**What changed** - %s\n' "$changed"
-  printf '**Why** - %s\n' "$goal"
+  printf '**Why** - %s\n' "$why"
   if [ -n "$issue_line" ]; then printf '**Issues** - %s\n' "$issue_line"; fi
   printf '**How to verify** - %s\n' "$verify"
   if [ -n "$follow" ]; then
@@ -112,7 +140,26 @@ desc="$desc_dir/mr.md"
 
 words=$(wc -w < "$desc" | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress"
+  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
+
+# the block MRs of the task, each with the risk its architecture audit rated; the audits sit beside this task's
+# own stamp folder, in <root>/<key>/.harness/<block>/
+blocks=$(task_files "$key" | while IFS= read -r f; do
+  b=$(task_fields "$f" id)
+  if is_block_of "$id" "$b"; then printf '%s\n' "$b"; fi
+done | sort_ids)
+listed=''
+for b in $blocks; do
+  bf=$(task_of "$b")
+  bu=$(task_fields "$bf" mr_url)
+  case "$bu" in http://*|https://*) ;; *) continue ;; esac
+  bgoal=$(awk '/^#+[[:space:]]*Goal[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$bf")
+  brisk=$(task_fields "${desc_dir%/*}/$b/arch.md" risk)
+  case "$brisk" in low|medium|high) ;; *) brisk='not rated' ;; esac
+  listed="$listed- [${bgoal:-$b}]($bu), risk $brisk
+"
+done
+if [ -n "$listed" ]; then printf '\n## Blocks\n%s' "$listed" >> "$desc"; fi
 
 base=''
 if [ -f "$state/repos.yml" ]; then
@@ -125,7 +172,12 @@ fi
 
 remote=$(git -C "$worktree" remote get-url origin 2>/dev/null || :)
 [ -n "$remote" ] || die "$worktree has no origin remote, so there is no forge to open the MR on"
-host=$(printf '%s' "$remote" | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#[:/].*##')
+# why: an http(s) origin keeps its port, the forge's own (a self-hosted GitLab on :8929); an ssh one drops it, the
+# why: port of the ssh daemon, and an scp-style git@host:group/repo is the bare host
+case "$remote" in
+  http://*|https://*) host=$(printf '%s' "$remote" | sed -e 's#^[a-z]*://##' -e 's#^[^@/]*@##' -e 's#/.*##') ;;
+  *) host=$(printf '%s' "$remote" | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#[:/].*##') ;;
+esac
 # why: the routing of bin/forge.sh, so a read and a write land on the same instance: github.com goes to gh,
 # every other host to glab
 case "$host" in

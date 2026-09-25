@@ -9,13 +9,23 @@
       { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/comment-gate.sh" }] },
       { "matcher": "Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/dash-gate.sh" }] },
       { "matcher": "Bash|Write|Edit|MultiEdit", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/attribution-gate.sh" }] },
-      { "matcher": ".*", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/compact-tripwire.sh" }] }
+      { "matcher": ".*", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/compact-tripwire.sh" }] },
+      { "matcher": "Agent", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/capacity.sh --hook pretooluse" }] },
+      { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/ask-gate.sh" }] }
     ],
+    "SubagentStart": [{ "hooks": [
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/capacity.sh --hook subagentstart" },
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/playbook-inject.sh --hook" }
+    ] }],
+    "SubagentStop": [{ "hooks": [
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/capacity.sh --hook subagentstop" }
+    ] }],
     "PreCompact": [{ "hooks": [
       { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/pre-compact.sh" }
     ] }],
     "Stop": [{ "hooks": [
-      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/self-report-check.sh" }
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/self-report-check.sh" },
+      { "type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/bin/rearm-check.sh" }
     ] }]
   }
 }

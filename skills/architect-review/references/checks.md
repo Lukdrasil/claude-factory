@@ -35,7 +35,7 @@ never make a verdict `misaligned`.
 
 ## Report
 
-What the `architect-reviewer` agent returns and what the host skill checks. A specialist returns its
+What the `plan-architect` agent returns and what the host skill checks. A specialist returns its
 `### Findings` in the same shape, for its domain, and no `### Verdict`.
 
 ```markdown

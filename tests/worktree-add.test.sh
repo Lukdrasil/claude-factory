@@ -3,15 +3,16 @@
 # base beside `base:`, and a resumed block whose base moved is reset when it has no commits of its own, refused
 # with the command when it has, and left alone when the base did not move. Without `base_sha:` only a branch
 # that is an ancestor of the new base is reset. T-253: a progress file it creates arrives with `## Remaining`
-# seeded from the task's `## Checklist`, and one that already exists keeps its sections.
+# seeded from the task's `## Checklist`, and one that already exists keeps its sections. 3.4 of the agent-org
+# plan: a block is cut from the work branch even when it depends on another block, and only a block of a task
+# stacked before keeps the block branch its progress file records as `base:`, while that branch exists.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=$tmp
-DASHBOARD_URL=
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 state="$tmp/state"
 clone="$tmp/clone"
@@ -207,5 +208,47 @@ check 'an existing progress file keeps its sections as they are' "$(cat "$tmp/T-
 
 check 'a block with no checklist gets no ## Remaining' 0 \
   "$(grep -cxF '## Remaining' "$state/repos/demo/progress/T-300-01.md")"
+
+# --- 3.4 of the agent-org plan: a block is cut from the work branch, whatever block it depends on ---
+git -C "$clone" branch -q feat/T-610-demo main
+K=$(commit_on feat/T-610-demo 'parent work K')
+task T-610 feat/T-610-demo
+task T-610-01 null
+task T-610-02 null
+sed 's/^depends_on: \[\]$/depends_on: [T-610-01]/' "$state/repos/demo/tasks/T-610-02.md" > "$tmp/dep.md"
+mv -f "$tmp/dep.md" "$state/repos/demo/tasks/T-610-02.md"
+publish
+add T-610-01
+git -C "$tmp/demo/T-610-01" commit -q --allow-empty -m 'block work L'
+add T-610-02
+check 'a block with a dependency exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'a block with a dependency is cut from the work branch' "$K" "$(tip block/T-610-02)"
+check 'base: of a block with a dependency is the work branch' feat/T-610-demo "$(progress_field T-610-02 base)"
+if printf '%s\n' "$out" | grep -qx 'base: feat/T-610-demo'; then printf 'PASS stdout prints base: <work branch>\n'
+else printf 'FAIL stdout prints base: <work branch>: %s\n' "$out"; fail=1; fi
+
+# --- a task stacked before keeps the block base its progress file records while that branch exists ---
+git -C "$clone" branch -q feat/T-620-demo main
+M=$(commit_on feat/T-620-demo 'parent work M')
+task T-620 feat/T-620-demo
+for b in 01 02 03; do task "T-620-$b" null; done
+publish
+add T-620-01
+git -C "$tmp/demo/T-620-01" commit -q --allow-empty -m 'block work N'
+N=$(tip block/T-620-01)
+printf '# T-620-02\nbase: block/T-620-01\n' > "$state/repos/demo/progress/T-620-02.md"
+printf '# T-620-03\nbase: block/T-620-99\n' > "$state/repos/demo/progress/T-620-03.md"
+publish
+add T-620-02
+check 'a stacked block exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'a stacked block is cut from the block branch it records' "$N" "$(tip block/T-620-02)"
+check 'a stacked block keeps its base:' block/T-620-01 "$(progress_field T-620-02 base)"
+add T-620-03
+check 'a recorded block base that no longer exists exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'a recorded block base that no longer exists falls back to the work branch' "$M" "$(tip block/T-620-03)"
+check 'its base: is the work branch' feat/T-620-demo "$(progress_field T-620-03 base)"
 
 exit $fail

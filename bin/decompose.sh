@@ -77,21 +77,7 @@ esac
 # the MR title the block will open. The check runs over the plan before any file is written, so a plan whose
 # goals cannot be titles leaves nothing behind, the way every other refusal here does. Triage and research
 # goals never become titles.
-goals=$(awk '
-  function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
-  /^##[ \t]+Proposed tasks[ \t]*$/ { ps = 1; next }
-  /^##[ \t]/ { if (ps && have) { print arch "\t" goal; have = 0 } ; ps = 0; next }
-  !ps { next }
-  /^###[ \t]/ { if (have) print arch "\t" goal; arch = ""; goal = ""; have = 1; next }
-  /^-[ \t]*goal:/ { g = $0; sub(/^-[ \t]*goal:[ \t]*/, "", g); goal = trim(g); next }
-  /^-[ \t]*archetype:/ { a = $0; sub(/^-[ \t]*archetype:[ \t]*/, "", a); sub(/[ \t,].*$/, "", a); arch = trim(a); next }
-  END { if (ps && have) print arch "\t" goal }
-' "$plan")
-badgoals=$(printf '%s\n' "$goals" | while IFS="$(printf '\t')" read -r garch ggoal; do
-    [ -n "$ggoal" ] || continue
-    case "$garch" in triage|research) continue ;; esac
-    reason=$(mr_title_check "$ggoal" "$repo") || printf 'the `goal:` of a proposal cannot be the MR title it becomes: %s (`%s`)\n' "$reason" "$ggoal"
-  done)
+badgoals=$(plan_goal_violations "$plan" "$repo")
 if [ -n "$badgoals" ]; then
   printf '%s\n' "$badgoals" | sed 's/^/decompose: /' >&2
   exit 1
@@ -262,11 +248,8 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
       print "tier: " ptier[p] > f
       print "archetype: " parch[p] > f
       print "complexity: " pcomp[p] > f
-      print "runtime: default" > f
       print "depends_on: []" > f
-      print "parallel_group: null" > f
       print "attempt: 0" > f
-      print "max_attempts: 3" > f
       print "plan_hash: null" > f
       print "owner: null" > f
       print "mr_url: null" > f

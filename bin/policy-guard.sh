@@ -1,7 +1,7 @@
 #!/bin/sh
 # PreToolUse policy (E4.4, ADR-0009/0012, P7 "the text describes, the hook enforces"): the deterministic
 # twin of the prohibitions in the block-* skills. exit 2 = deny, and the reason on stderr reaches the agent.
-# Deny by default — whatever the guard cannot evaluate, it blocks.
+# Deny by default, whatever the guard cannot evaluate, it blocks.
 set -eu
 
 WORK_DIR=${WORK_DIR:-/work}
@@ -12,9 +12,9 @@ STATUS_ALLOWED='review blocked failed'
 DENY_FIX=''
 deny() { printf 'policy-guard deny: %s%s\n' "$1" "$DENY_FIX" >&2; exit 2; }
 
-# ponytail: node is in the worker image (base node:22) — no parser of our own, no extra dependency.
+# ponytail: node is in the worker image (base node:22), no parser of our own, no extra dependency.
 # QS-13 (T-003): exactly one node run per hook call, and it reads the hook stdin itself. Every field the guard
-# can need comes back from that single pass as one escaped line — a Bash command carries the newlines of a
+# can need comes back from that single pass as one escaped line, a Bash command carries the newlines of a
 # heredoc, so `\` and the line breaks are escaped on the way out and `printf %b` puts them back on the way in.
 fields=$(node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -34,7 +34,7 @@ process.stdout.write([o.tool_name,o.cwd,o.session_id,
 } <<EOF
 $fields
 EOF
-# QS-13: undoing the escaping costs a process, so it only runs when there is an escape to undo — a POSIX path
+# QS-13: undoing the escaping costs a process, so it only runs when there is an escape to undo, a POSIX path
 # and an ordinary one-line command go through untouched
 un() { # <variable name> <escaped value>
   case "$2" in
@@ -47,14 +47,13 @@ un tool "$f_tool"
 un cwd "$f_cwd"
 un sid "$f_sid"
 
-# T-003: one layout rule, shared with the Stop hook and session-stats (ADR-0049). The cwd gives the task on the
-# worker — and the work dir of the RC clones, which are $WORK_DIR/<name> with no task file at all. In the
-# standalone posture the coordinator's cwd is the user's clone and carries no task, so there the task comes from
-# the write target instead (adopt_target below).
+# T-003: one layout rule, shared with the Stop hook and session-stats (ADR-0049). The cwd gives the task in a task
+# worktree. In the standalone posture the coordinator's cwd is the user's clone and carries no task, so there the
+# task comes from the write target instead (adopt_target below).
 . "$(dirname -- "$0")/lib-tasks.sh"
 
 # T-003: every path comparison below is between these two and a write target, so all three are spelled the one
-# way norm_path defines (forward slashes, a lower-case drive letter, no trailing slash, `x/..` collapsed) —
+# way norm_path defines (forward slashes, a lower-case drive letter, no trailing slash, `x/..` collapsed),
 # `$WORK_DIR/` with a trailing slash, or a Windows target written `D:\…`, otherwise matches nothing and the
 # deny-by-default the whole guard rests on turns into an allow-by-typo.
 norm_into WORK_DIR "$WORK_DIR"
@@ -70,7 +69,7 @@ case "$WORK_DIR" in
     WORK_RE="[$(printf '%s' "$wd_l" | tr '[:lower:]' '[:upper:]')$wd_l]${WORK_RE#?}" ;;
 esac
 
-# a write target the way the comparisons want it: absolute (a Windows `D:/…` or `D:\…` is absolute too — read as
+# a write target the way the comparisons want it: absolute (a Windows `D:/…` or `D:\…` is absolute too, read as
 # relative it would be joined onto the cwd and land inside whatever that cwd is) and normalised.
 abs_norm() { # <path>
   case "$1" in
@@ -79,19 +78,33 @@ abs_norm() { # <path>
   esac
 }
 
-# T-264: a registered clone under the work root is a coordinator, not the catch-all's task, so it takes the else branch
-if resolve_layout "$cwd" "$WORK_DIR" && { [ "$LO_POSTURE" = standalone ] || ! is_registered_top "$cwd"; }; then
+layout_ok() { resolve_layout "$cwd" "$WORK_DIR" && return 0
+  # why: a task session whose shell cd'ed into the state clone would otherwise be confined there, unable even to
+  # cd back; it keeps the layout of the task worktree it was launched in
+  case "$cwd" in "$WORK_DIR"/?*) ;; *) return 1 ;; esac
+  [ -n "${CLAUDE_PROJECT_DIR:-}" ] || return 1
+  norm_into proj "$CLAUDE_PROJECT_DIR"
+  resolve_layout "$proj" "$WORK_DIR"
+}
+if layout_ok; then
   task=$LO_TASK; own=$LO_OWN; state=$LO_STATE; stamp=$LO_STAMP; posture=$LO_POSTURE
 else
-  # ADR-0049: HARNESS_WORKER=1 is the worker container, where a cwd outside the work root stays fail-closed.
-  # Standalone posture — only the cwd rule is waived: every target-path rule below still runs with an empty
-  # own work dir, and the task is derived from the target path instead.
-  [ "${HARNESS_WORKER:-}" = 1 ] && deny "cwd '$cwd' is not inside $WORK_DIR/<task> (worker posture). Do not relocate the session with EnterWorktree or a 'cd' into a worktree: stay where the session started and reach the other tree by absolute path, 'git -C $WORK_DIR/<key>/T-NNN-NN ...'."
-  task=''; own=''; state=''; stamp=''; posture=standalone
+  case "$cwd" in
+    # a cwd under the work root that is no task worktree ($WORK_DIR/state, $WORK_DIR/<key>) stays confined to
+    # its top-level directory, and posture=workdir keeps coord_scope and read_scope closed to it. T-264: a
+    # registered clone under the work root is a coordinator, so it takes the standalone posture instead.
+    "$WORK_DIR"/?*) is_registered_top "$cwd" && lo_wd=0 || lo_wd=1 ;;
+    *) lo_wd=0 ;;
+  esac
+  if [ "$lo_wd" = 1 ]; then
+    wd_rest=${cwd#"$WORK_DIR"/}
+    task=''; own="$WORK_DIR/${wd_rest%%/*}"; state="$WORK_DIR/state"; stamp=''; posture=workdir
+  else
+    # Standalone posture: only the cwd rule is waived. Every target-path rule below still runs with an empty
+    # own work dir, and the task is derived from the target path instead.
+    task=''; own=''; state=''; stamp=''; posture=standalone
+  fi
 fi
-# 2026-09-07 lesson D: the coordinator scope below opens only in the standalone layout on a developer machine —
-# the worker container (HARNESS_WORKER=1) and the worker layout keep exactly the reach they had.
-[ "${HARNESS_WORKER:-}" != 1 ] || posture=worker
 
 docs_carveout() { # <absolute path>
   rel=${1#"$cwd"/}
@@ -113,7 +126,7 @@ load_task_context() {
   # task_of (lib-tasks.sh) picks the file by its `id:` line, out of the state clone of this posture
   if [ -n "$task" ] && [ -n "$state" ]; then taskfile=$(task_of "$task") || taskfile=''; fi
   if [ -n "$taskfile" ]; then
-    # QS-13: the whole frontmatter in one pass — a `sed … | head -n1` per field was six processes on its own
+    # QS-13: the whole frontmatter in one pass, a `sed … | head -n1` per field was six processes on its own
     { IFS= read -r status    || status=''
       IFS= read -r archetype || archetype=''
       IFS= read -r branch    || branch=''
@@ -139,9 +152,9 @@ EOF
     if [ -n "$triage_target" ]; then triage_target="$state/$triage_target"; fi
   fi
   # architect-agent plan #3: a research task whose `## Context` names the architecture-docs skill gets a
-  # product-repo write carve-out (docs/**, CONTEXT.md, README.md) — every other research session stays
-  # read-only. README.md is in because the bootstrap task template asks for a paragraph pointing at the model
-  # (docs/design/architecture-model.md § Docs); without it the task's own ## Docs section is unsatisfiable.
+  # product-repo write carve-out (docs/**, CONTEXT.md, README.md), every other research session stays
+  # read-only. README.md is in because the bootstrap task template asks for a paragraph pointing at the model;
+  # without it the task's own ## Docs section is unsatisfiable.
   if [ "$archetype" = research ] && [ -n "$taskfile" ]; then
     if awk '/^## Context/ { s=1; next } /^## / { s=0 } s' "$taskfile" | grep -q 'architecture-docs'; then
       architecture_docs=1
@@ -149,16 +162,15 @@ EOF
   fi
   # ADR-0030: the tests phase self-reports tests_ready; review belongs to the implement phase
   if [ "$phase" = tests ]; then STATUS_ALLOWED='tests_ready blocked failed'; fi
-  # ADR-0050's standalone divergence: with no dashboard there is no other writer, and state-report.sh already
-  # accepts `claimed → in_progress` and `ready → in_progress`. The guard denying the same word deadlocked every
-  # block at `claimed` (2026-09-07, lesson B). With a dashboard configured it writes that transition itself.
-  [ -n "${DASHBOARD_URL:-}" ] || STATUS_ALLOWED="$STATUS_ALLOWED in_progress"
+  # ADR-0050: there is no other writer, and state-report.sh already accepts `claimed → in_progress` and
+  # `ready → in_progress`. The guard denying the same word deadlocked every block at `claimed` (2026-09-07, lesson B).
+  STATUS_ALLOWED="$STATUS_ALLOWED in_progress"
 
   # Issue #290: the test lock of the implement phase. "The red tests are the contract" was prompt-level only, and
-  # prompting is not a control — ImpossibleBench measured strict prompting cutting reward hacking on SWE-bench
+  # prompting is not a control, ImpossibleBench measured strict prompting cutting reward hacking on SWE-bench
   # from 66 % only to 54 %, and EvilGenie found Claude models specifically favour editing the tests directly.
-  # The globs come from the repo's toolset frontmatter (ADR-0039, issue #289) through the very awk snippet
-  # docs/design/toolset.md publishes — one source, no YAML parser. `phase` is empty (or `null`) on a single-phase
+  # The globs come from the repo's toolset frontmatter (ADR-0039, issue #289) through a line-wise awk over
+  # the `test-globs:` list, no YAML parser. `phase` is empty (or `null`) on a single-phase
   # run, so nothing below ever fires there.
   if [ "$phase" = implement ] && [ -n "$taskfile" ]; then
     key=${taskfile#"$state"/repos/}; key=${key%%/*}
@@ -172,7 +184,7 @@ EOF
     if [ -n "$TEST_GLOBS" ]; then
       TEST_GLOBS_SRC="test-globs in repos/$key/toolset.md"
     else
-      # a repo with no toolset (or a toolset with no frontmatter) must keep working — the fallback is named in
+      # a repo with no toolset (or a toolset with no frontmatter) must keep working, the fallback is named in
       # the deny reason so a human can tell which globs were in force
       TEST_GLOBS='**/tests/**
 **/*Tests.*'
@@ -186,7 +198,7 @@ EOF
 
 # `case` is the whole glob matcher: `*` in a case pattern already spans `/`, so `**` collapses to `*`. The path
 # is tried repo-relative (an anchored glob like `src/**`) and again with a leading `/` (so a leading `**/` also
-# matches a file in the repo root). Nothing matches on a bare substring — `**/tests/**` becomes `*/tests/*` and
+# matches a file in the repo root). Nothing matches on a bare substring, `**/tests/**` becomes `*/tests/*` and
 # needs a literal `/tests/`, so `src/Testing/Helper.cs` and `src/contest/Foo.cs` stay allowed.
 # ponytail: a directory component that itself reads like a test file (`Foo.Tests.Core/Prod.cs` against
 # `**/*Tests.*`) over-denies; the escape hatch for that is the same `blocked` as for any other test change.
@@ -204,15 +216,15 @@ path_is_test() {
 
 # Issue #308: the Stop-hook backstop that closes the routes no PreToolUse rule can see (`sed -i`, a heredoc, a
 # two-line python script) needs a boundary to diff against. The cheapest reversible one is a stamp in the fresh
-# per-session work dir — the same trick #290 used for `.harness-test-edits`: it lives outside both clones, so the
+# per-session work dir, the same trick #290 used for `.harness-test-edits`: it lives outside both clones, so the
 # rebase in `## Output` cannot corrupt it, and it needs no bookkeeping in the progress file and no second SHA in
 # the task frontmatter. Line 1 is the tests-phase HEAD (this runs on the *first* tool call of the session, before
-# anything has been written, and the implement phase starts from a fresh clone of what the tests phase pushed —
+# anything has been written, and the implement phase starts from a fresh clone of what the tests phase pushed,
 # ADR-0030, block-tests `## Self-report`), the remaining lines are the test files that existed at that moment.
 # self-report-check.sh diffs exactly that inventory against exactly that SHA.
-# ponytail: no repo, no git, no stamp. The backstop is best-effort — the deny rules above are not.
-# T-003: the stamp directory is $stamp — the work dir itself on the worker, $WORK_DIR/<key>/.harness/<task-id>
-# in the standalone posture, where the work dir is a git worktree the rebase would carry the stamps through.
+# ponytail: no repo, no git, no stamp. The backstop is best-effort, the deny rules above are not.
+# T-003: the stamp directory is $stamp, $WORK_DIR/<key>/.harness/<task-id>, outside the work dir because that is a
+# git worktree the rebase would carry the stamps through.
 stamp_test_base() {
   [ -n "$stamp" ] && [ -n "$TEST_GLOBS" ] || return 0
   base_mark="$stamp/.harness-test-base"
@@ -235,11 +247,11 @@ stamp_test_base() {
 # ADR-0030 says a test from the tests phase "may only be changed with a justification in the progress file
 # (`## Test deviations`)". Issue #290 implemented that for feature/bugfix as a hard deny, which left an approved
 # deviation with no path into the files at all (T-028): the human wrote the approval into the task and the next
-# session was denied exactly like the one before it. The gate is the written analysis instead — the first edit is
+# session was denied exactly like the one before it. The gate is the written analysis instead, the first edit is
 # denied and tells the session to work out whether the goal needs the test changed or the implementation fixed;
 # an entry under `## Test deviations` naming this file then opens it. The edit is recorded either way
 # (self-report-check.sh audits it on Stop, block-review diffs it against the tests-phase commit).
-# ponytail: naming the file is all a shell hook can check — whether the reasoning holds is the reviewer's job.
+# ponytail: naming the file is all a shell hook can check, whether the reasoning holds is the reviewer's job.
 deviation_declared() { # <absolute path>
   [ -n "$progress" ] && [ -f "$progress" ] || return 1
   awk '/^## Test deviations/ { s = 1; next } /^## / { s = 0 } s' "$progress" | grep -qF "$(basename "$1")"
@@ -251,7 +263,7 @@ check_test_lock() { # <tool> <absolute path>
   if [ -n "$state" ]; then case "$2" in "$state"/*) return 0 ;; esac; fi
   path_is_test "$2" || return 0
   # A *new* test file stays allowed: the lock protects the tests-phase contract, not new coverage (issue #293,
-  # the CRAP loop, adds missing tests in this same phase). Only a file that already exists is a modification —
+  # the CRAP loop, adds missing tests in this same phase). Only a file that already exists is a modification,
   # Edit/MultiEdit imply one, a Write does not. Adding a new *case* to an existing test file is therefore
   # blocked too; that is the deliberate price of the cheap deterministic rule, and `blocked` is the way out.
   { [ "$1" = Write ] && [ ! -e "$2" ]; } && return 0
@@ -264,11 +276,11 @@ check_test_lock() { # <tool> <absolute path>
     printf '%s\n' "$2" >> "$stamp/.harness-test-edits" 2>/dev/null || true
     return 0
   fi
-  deny "the implement phase must not modify a test (issue #290, ADR-0030): '$2' matches $TEST_GLOBS_SRC [$(printf '%s' "$TEST_GLOBS" | tr '\n' ' ')]. The red tests from the tests phase are the contract — do not bend them to fit. First work out which of the two is wrong for the goal in '## Acceptance': if the implementation can be made to satisfy this test as written, fix the implementation. Only if the test itself is wrong, write that analysis into '## Test deviations' in ${progress:-the progress file} — name '$(basename "$2")', the exact change, and why fixing the implementation cannot get you there — and then repeat this edit: with the entry on record it is allowed and logged for the reviewer. A brand new test file needs none of this. Do not retry this edit before the entry exists."
+  deny "the implement phase must not modify a test (issue #290, ADR-0030): '$2' matches $TEST_GLOBS_SRC [$(printf '%s' "$TEST_GLOBS" | tr '\n' ' ')]. The red tests from the tests phase are the contract, do not bend them to fit. First work out which of the two is wrong for the goal in '## Acceptance': if the implementation can be made to satisfy this test as written, fix the implementation. Only if the test itself is wrong, write that analysis into '## Test deviations' in ${progress:-the progress file}, name '$(basename "$2")', the exact change, and why fixing the implementation cannot get you there, and then repeat this edit: with the entry on record it is allowed and logged for the reviewer. A brand new test file needs none of this. Do not retry this edit before the entry exists."
 }
 
 # T-003 rule (a), QS-14: the clone a repo is registered with (`path:` in <root>/state/repos.yml, ADR-0013
-# revision) is the human's own checkout and is read-only towards every session, in every posture — work happens
+# revision) is the human's own checkout and is read-only towards every session, in every posture, work happens
 # in the worktrees under $WORK_DIR/<key>/<task-id>/. Loaded once per call and only when the registry exists, so
 # a factory that never ran `factory add-repo` pays nothing for this rule.
 CLONE_PATHS=''
@@ -280,14 +292,14 @@ check_product_clone() { # <absolute path>
   fi
   [ -n "$CLONE_PATHS" ] || return 0
   # QS-13: both sides through lib-tasks.sh's norm_into, which spends a subshell only on a path that actually
-  # needs normalising (a Windows one, or one with a trailing slash) — a POSIX comparison stays as cheap as it was.
+  # needs normalising (a Windows one, or one with a trailing slash), a POSIX comparison stays as cheap as it was.
   norm_into np "$1"
   while IFS='	' read -r ck cp; do
     [ -n "$cp" ] || continue
     norm_into cp "$cp"
     case "$np" in
       "$cp"|"$cp"/*)
-        deny "the clone registered for '$ck' in repos.yml is read-only (ADR-0049, QS-14): $1. That directory is the human's own checkout — work happens in a worktree of it under $WORK_DIR/$ck/<task-id>/, created with 'git worktree add'." ;;
+        deny "the clone registered for '$ck' in repos.yml is read-only (ADR-0049, QS-14): $1. That directory is the human's own checkout, work happens in a worktree of it under $WORK_DIR/$ck/<task-id>/, created with 'git worktree add'." ;;
     esac
   done <<EOF
 $CLONE_PATHS
@@ -295,40 +307,33 @@ EOF
 }
 
 # T-003 rule (b): the human gate, enforced. A worktree under $WORK_DIR/<key>/<task-id>/ opens only for a task
-# that is `ready` with the body the `plan_hash` commit carries (the twin of DispatchGate.BodyUnchanged: nothing
-# dispatches on any other basis, and `ready` with a plan_hash is what task-approve.sh writes in the standalone
-# posture and what the dashboard writes where one is configured), or one this very session already holds: `owner:
+# that is `ready` with the body the `plan_hash` commit carries (`ready` with a plan_hash is what task-approve.sh
+# writes), or one this very
+# session already holds: `owner:
 # factory@<host>:<session_id>` with the session id off the hook stdin. A block (`T-NNN-NN`) is created `claimed`
 # by the coordinator and never carries a plan_hash of its own, so `claimed` + owner is the whole gate for it.
-# It reads what load_task_context already parsed out of the frontmatter — nothing here opens the file twice.
-# T-187: the two denials below name the approver, and the approver is a command in the standalone posture and a
-# dashboard only where DASHBOARD_URL is set. Telling a standalone session to go to a dashboard it does not have
-# is what sent four sessions to tell their user to "close it in the dashboard".
+# It reads what load_task_context already parsed out of the frontmatter, nothing here opens the file twice.
+# T-187: the two denials below name the approver, and the approver is a command. Telling a session to go to a
+# dashboard it does not have is what sent four sessions to tell their user to "close it in the dashboard".
 approval_stale() { # <the target that asked for it> <the plan_hash it was approved as>
-  if [ -z "${DASHBOARD_URL:-}" ]; then
-    deny "the body of $task changed since it was approved as $2 (DispatchGate.BodyUnchanged): re-approve it with $(dirname -- "$0")/task-approve.sh $task --state $state before working in its worktree: $1"
-  fi
-  deny "the body of $task changed since it was approved as $2 (DispatchGate.BodyUnchanged), so re-approve it in the dashboard before working in its worktree: $1"
+  deny "the body of $task changed since it was approved as $2: re-approve it with $(dirname -- "$0")/task-approve.sh $task --state $state before working in its worktree: $1"
 }
 approval_gate() { # <the target that asked for it>
   if [ -z "$taskfile" ]; then
-    if [ -z "${DASHBOARD_URL:-}" ]; then
-      deny "no task file for '$task' in $state: a worktree is only created for a task approved with task-approve.sh (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
-    fi
-    deny "no task file for '$task' in $state: a worktree is only created for a task the dashboard approved (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
+    deny "no task file for '$task' in $state: a worktree is only created for a task approved with task-approve.sh (status ready with a plan_hash) or one this session already owns (ADR-0049): $1. Create the task file first, with task-new.sh from the plugin's bin/, and add the worktree after it exists."
   fi
   case "$status" in
     ready)
       case "${plan_hash%%[ 	#]*}" in
-        ''|null) deny "task $task is ready but carries no plan_hash — a human has not approved this body yet (ADR-0004), so its worktree stays closed: $1" ;;
+        ''|null) deny "task $task is ready but carries no plan_hash, a human has not approved this body yet (ADR-0004), so its worktree stays closed: $1" ;;
         *) gph=${plan_hash%%[ 	#]*} ;;
       esac
-      # DispatchGate.BodyUnchanged: the body at the approved commit against the body on disk, both without the
+      # the body at the approved commit against the body on disk, both without the
       # frontmatter and without the two sections the machine keeps writing back (`## Attempts`,
-      # `## Tool failures` — the status notes and the session-stats lines). A missing commit and an empty
-      # approved body are the same mismatch (DispatchGate.cs:83-87).
+      # `## Tool failures`, the status notes and the session-stats lines). A missing commit and an empty
+      # approved body are the same mismatch.
       gappr=$(git -C "$state" show "$gph:${taskfile#"$state"/}" 2>/dev/null) || gappr=''
-      [ -n "$gappr" ] || deny "the approved body of $task cannot be read from plan_hash $gph in $state (a missing commit or an empty body is a mismatch, DispatchGate.BodyUnchanged): $1"
+      [ -n "$gappr" ] || deny "the approved body of $task cannot be read from plan_hash $gph in $state (a missing commit or an empty body is a mismatch): $1"
       # the approved body travels in the environment, not in `awk -v`: -v runs its value through escape
       # processing, so a body containing `printf %s\n` (or any other backslash) would arrive changed and every
       # comparison against it would report a mismatch that is not there.
@@ -338,7 +343,7 @@ approval_gate() { # <the target that asked for it>
           n = split(text, lines, "\n"); skip = 0; out = ""
           for (i = 1; i <= n; i++) {
             t = lines[i]; sub(/^[ \t]+/, "", t); sub(/[ \t\r]+$/, "", t)
-            # DispatchGate.Normalize:118-119 — only `# ` and `## ` end a machine section, so a `### ` inside one
+            # only `# ` and `## ` end a machine section, so a `### ` inside one
             # does not turn it back on and one under it does not turn it off
             if (t ~ /^# / || t ~ /^## /) { skip = (t == "## Attempts" || t == "## Tool failures") }
             if (!skip) { out = out lines[i] "\n" }
@@ -359,13 +364,13 @@ approval_gate() { # <the target that asked for it>
       esac
       ;;
     *)
-      deny "task $task is '$status' — a worktree opens only for a task that is ready with an approved plan_hash, or one this session owns (claimed|in_progress|tests_ready|review|blocked|failed with owner: factory@<host>:$sid): $1" ;;
+      deny "task $task is '$status', a worktree opens only for a task that is ready with an approved plan_hash, or one this session owns (claimed|in_progress|tests_ready|review|blocked|failed with owner: factory@<host>:$sid): $1" ;;
   esac
 }
 
 # T-003 rule (b), the other half: the standalone posture's cwd is the user's own clone and names no task, so the
-# task and its work dir come from the write *target*. The worker layout keeps working through the cwd, which
-# already gave `own` above, and is never re-derived here.
+# task and its work dir come from the write *target*. A cwd under the work root already gave `own` above and is
+# never re-derived here.
 adopt_target() { # <absolute target path>
   [ -z "$own" ] || return 0
   resolve_layout "$1" "$WORK_DIR" || return 0
@@ -379,7 +384,7 @@ adopt_target() { # <absolute target path>
 # 2026-09-07 lesson D (rows 11-13): the coordinator of skills/factory/references/solve.md works in
 # $WORK_DIR/<key>/T-NNN and, from there, creates the block worktrees $WORK_DIR/<key>/T-NNN-NN and writes the stamp
 # and diff files under $WORK_DIR/<key>/.harness/. Three helpers, all standalone-only (`posture`):
-# — the `owner:` of another task's frontmatter, read fresh: load_task_context holds the session's own task and
+# the `owner:` of another task's frontmatter, read fresh: load_task_context holds the session's own task and
 #   must not be clobbered by a look at a child
 task_field() { # <task id> <frontmatter key>
   tf_saved=$state
@@ -409,7 +414,7 @@ read_scope() { # <absolute path>
   is_block_id "$LO_TASK" || return 1
   owner_is_session "${LO_TASK%-*}"
 }
-# — $WORK_DIR/<key>/.harness/<T>[/…] recognised, the task id in HT_TASK
+# $WORK_DIR/<key>/.harness/<T>[/…] recognised, the task id in HT_TASK
 harness_target() { # <absolute path>
   HT_TASK=''
   case "$1" in "$WORK_DIR"/*) ;; *) return 1 ;; esac
@@ -420,7 +425,7 @@ harness_target() { # <absolute path>
   HT_TASK=${ht_rest%%/*}
   is_task_id "$HT_TASK"
 }
-# — the scope itself. With an own work dir: the stamp directory of the own task and of its blocks, and a child
+# the scope itself. With an own work dir: the stamp directory of the own task and of its blocks, and a child
 #   block worktree whose task file this session owns (the very owner check approval_gate runs for claimed|
 #   in_progress|…). With none (the cwd is the registered clone): a stamp directory of a task this session owns,
 #   or of a block whose parent it owns. Anything else falls through to the rules that were there before.
@@ -456,11 +461,10 @@ check_path() {
   # syntax (egress, which the firewall governs, ADR-0002) and std{out,err} are this process's own streams.
   case "$p" in /dev/null|/dev/stdout|/dev/stderr|/dev/tcp/*|/dev/udp/*) return 0 ;; esac
   check_product_clone "$p"
-  # issue #358: /tmp is scratch space, not a protected surface — a work dir nested under it stays guarded
+  # issue #358: /tmp is scratch space, not a protected surface, a work dir nested under it stays guarded
   case "$p" in "$WORK_DIR"/*) ;; /tmp|/tmp/*) return 0 ;; esac
   # 2026-09-07 lesson A1: the standalone state clone is the coordinator's shared registry and its own write path
-  # (state-report.sh writes there), and resolve_layout can never adopt it as a task — `state` is not a task id.
-  # The worker layout's clone is $WORK_DIR/<task>/state, which this does not name, so it stays foreign there.
+  # (state-report.sh writes there), and resolve_layout can never adopt it as a task, `state` is not a task id.
   case "$p" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) return 0 ;; esac
   adopt_target "$p"
   if [ -z "$own" ]; then
@@ -473,16 +477,6 @@ check_path() {
   case "$p" in "$own"|"$own"/*) ;; *) deny "write outside your own work dir $own: $p. Run one 'git worktree add' per Bash call, and spell every worktree path literally: a second add in the same command reads as a write outside the first, and a path built from a shell variable cannot be resolved here." ;; esac
   case "$p" in *"/.claude/"*|*/CLAUDE.md|*/.mcp.json)
     deny "the product repo is agentic-free (ADR-0001): $p" ;;
-  esac
-  # Issue #429: a dashboard RC clone is $WORK_DIR/rc-<key> and carries no task file, so `archetype` is empty and
-  # nothing below constrains it. The session starts in `--permission-mode plan`, but the grill contract itself
-  # tells the human to approve leaving plan mode (RcBriefBuilder) — and from then on every write inside the clone
-  # would be permitted, product source included. An RC interview may end in documents, so it gets the same scope
-  # as the architecture-docs carve-out and nothing more; state/ returned above. The standalone rc-worker clones to
-  # $WORK_DIR/<key> without the prefix (rc-ctl.sh) and keeps its full-trust posture (ADR-0043).
-  case "$task" in
-    rc-*) docs_carveout "$p" && return 0
-          deny "an RC session may only write docs/**, CONTEXT.md and README.md (issue #429): $p" ;;
   esac
   case "$archetype" in
     research|review)
@@ -606,55 +600,11 @@ check_state_commit() { # <one command segment, quotes removed> <the segment as w
   deny "a commit in the state clone $WORK_DIR/state names its paths: 'git commit -m <message> -- <path>…'. Without '--' it also commits whatever another session left staged there."
 }
 
-# ADR-0047: the session's state clone is read-only towards the state repo — `status`, the progress snapshot and the
-# lines under `## Attempts` / `## Tool failures` are written by the dashboard, which is the only pusher. Every other
-# git operation in the clone (pull, log, show, and a commit) stays allowed: new files still push themselves, because
-# a research report, an ADR or memory proposal and a grilled plan have unique names and cannot conflict.
-
-# the commits this push would carry: only when every one of their files is a new-file writer's is the push allowed
-state_push_new_files_only() { # <state clone>
-  sfiles=$(git -C "$1" diff --name-only '@{upstream}..HEAD' 2>/dev/null) || return 1
-  [ -n "$sfiles" ] || return 1
-  printf '%s\n' "$sfiles" | grep -Ev '(^|/)(research|proposals|plans)/' >/dev/null && return 1
-  return 0
-}
-
-check_state_push() { # <one command segment>
-  printf '%s' "$1" | grep -Eq '(^|[[:space:]])git(-guard)?([[:space:]]+[^[:space:]]+)*[[:space:]]push([[:space:]]|$)' \
-    || return 0
-  sdir=$(printf '%s' "$1" | sed -n 's/.*[[:space:]]-C[[:space:]][[:space:]]*\([^[:space:]]*\).*/\1/p' | head -n1)
-  [ -n "$sdir" ] || sdir=$cwd
-  # abs_norm collapses the `x/..` of `git -C ../state push`, so the product clone's sibling is recognised
-  sdir=$(abs_norm "$sdir")
-  sroot=''
-  if [ -n "$state" ]; then case "$sdir" in "$state"|"$state"/*) sroot=$state ;; esac; fi
-  # T-003: the standalone posture's state clone is $WORK_DIR/state, a sibling of the repo keys (ADR-0049), and
-  # the cwd that pushes it names no task at all
-  if [ -z "$sroot" ]; then
-    case "$sdir" in "$WORK_DIR"/state|"$WORK_DIR"/state/*) sroot="$WORK_DIR/state" ;; esac
-  fi
-  # T-228-08: after a cd the guard cannot resolve, the push may run in the state clone, so it is judged as one
-  # whenever that clone holds a commit to push
-  if [ -z "$sroot" ] && [ -n "$cwd_lost" ]; then
-    for sr in "$state" "$WORK_DIR/state"; do
-      [ -n "$sr" ] && [ -d "$sr" ] || continue
-      git -C "$sr" diff --quiet '@{upstream}..HEAD' 2>/dev/null && continue
-      sroot=$sr; break
-    done
-  fi
-  [ -n "$sroot" ] || return 0
-  # ADR-0050: with no dashboard configured there is no other pusher — the state clone is the write path itself,
-  # and denying it here would strand the local posture. With one, ADR-0047's rule stands unchanged.
-  [ -n "${DASHBOARD_URL:-}" ] || return 0
-  state_push_new_files_only "$sroot" && return 0
-  deny "the state clone does not push (ADR-0047): the status, the progress snapshot and the '## Attempts' / '## Tool failures' lines are written by the dashboard. Run state-report.sh from the plugin's bin/ instead — it sends them through PATCH /api/tasks/<id>, and the Stop hook sends them for you at the end anyway. Only a new file of your own (a research report, an ADR or memory proposal, a plan) may still be committed and pushed from the state clone."
-}
-
 # Issue #308, point 1: the same implement-phase test lock the Edit/Write branch applies, reached from bash.
-# `Write` semantics on purpose — a redirect that CREATES a test file is new coverage (issue #293, the CRAP loop),
+# `Write` semantics on purpose, a redirect that CREATES a test file is new coverage (issue #293, the CRAP loop),
 # only rewriting one that already exists bends the tests-phase contract, exactly as for the Write tool.
 # T-003: and the same product-clone rule, because a relative target is resolved against a cwd that may itself be
-# the registered clone — `echo x > README.md` there writes into the human's own checkout exactly like the
+# the registered clone, `echo x > README.md` there writes into the human's own checkout exactly like the
 # absolute spelling check_path already denies.
 # A `..` in the path cannot be resolved safely here; check_path already denies those on the routes it sees.
 bash_write_target() {
@@ -667,7 +617,7 @@ bash_write_target() {
 }
 
 # Only unambiguous *write* forms. `sed -n 's/x/y/p' FooTests.cs`, `grep -r Assert FooTests.cs` and `cat FooTests.cs`
-# read a test file and must stay allowed — a guard that strands legitimate sessions is worse than the hole it
+# read a test file and must stay allowed, a guard that strands legitimate sessions is worse than the hole it
 # closes, and point 2 (the Stop backstop) is the net for everything this cannot tell apart.
 # `patch -p1 < fix.diff` and `python -c` name no target on the command line and are deliberately not guessed at.
 bash_in_place_write() { # <one command segment>
@@ -681,8 +631,8 @@ bash_in_place_write() { # <one command segment>
   return 1
 }
 
-# 2026-09-07 lessons A3/A4: a heredoc body is data — a progress note saying `dotnet test ran green`, a line with
-# `<id>` and a backtick (read as a redirect into a file named backtick), a python script quoting "status: ready" —
+# 2026-09-07 lessons A3/A4: a heredoc body is data, a progress note saying `dotnet test ran green`, a line with
+# `<id>` and a backtick (read as a redirect into a file named backtick), a python script quoting "status: ready",
 # and the scans below misread every one of them as a command. This drops the BODY lines: from the line after one
 # carrying `<<[-]['"]TAG['"]` up to and including the TAG line (tab-indented or not); the heredoc line itself, and
 # with it the redirect target it feeds, stays. A `<<<` here-string is not a heredoc and is left alone. One awk, run
@@ -697,9 +647,9 @@ strip_heredocs() { # <command>
 # …except when the body is code or a status write: fed to a shell (`sh <<EOF` / `eval`) the body IS the command,
 # and a heredoc redirected into a task file (`cat > …/tasks/T.md <<EOF`) is the status write check_status must
 # still judge. In both the command is scanned as written.
-heredoc_stripped() { # <command> — prints the command to scan
+heredoc_stripped() { # <command>, prints the command to scan
   case "$1" in *"<<"*) ;; *) printf '%s' "$1"; return 0 ;; esac
-  # 2026-09-10: the task-file route is judged on the heredoc line alone — a body line quoting `cat > …/tasks/T.md`
+  # 2026-09-10: the task-file route is judged on the heredoc line alone, a body line quoting `cat > …/tasks/T.md`
   # (a skill doc, a task body under edit) is prose, and scanning that body as a command read its backticks and
   # arrows as redirects into the cwd.
   if printf '%s\n' "$1" | grep -F '<<' | grep -Eq '(^|[[:space:];&|(])(sh|bash|zsh|eval)([[:space:]]|$)' \
@@ -930,6 +880,187 @@ inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; ba
 inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
 lost_inplace() { deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$1'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."; }
 
+# R3: the human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
+# dialog in front of them. A session a monitor dispatched carries FACTORY_ROLE (session-monitor.sh); of those only
+# the CEO and the lead run a gate, each its own and after the human's yes (references/ceo.md, lead.md, done.md,
+# curate.md). No FACTORY_ROLE is a human's own session. The segments are read with the quote characters removed
+# and split once more at `;`, `&`, `|`, a bracket and a backtick, so `bash -c '... && sh task-approve.sh'` and
+# `$(...)` count too; the script is the first word after assignments, options and wrappers (sh, bash, env, ...).
+gate_role_check() { # <the command segments>
+  gr_role=${FACTORY_ROLE:-}
+  [ -n "$gr_role" ] || return 0
+  case "$1" in *task-approve.sh*|*task-done.sh*|*block-mr-merge.sh*|*curate-apply.sh*) ;; *) return 0 ;; esac
+  gr_lines=$(printf '%s\n' "$1" | tr -d '\042\047' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  set -f
+  gr_ifs=$IFS; IFS='
+'
+  for gr_line in $gr_lines; do
+    IFS=$gr_ifs
+    # shellcheck disable=SC2086
+    set -- $gr_line
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *) break ;;
+      esac
+    done
+    [ $# -gt 0 ] || continue
+    gr_cmd=${1##*/}; shift
+    gr_owner=''
+    case "$gr_cmd" in
+      task-approve.sh)
+        gr_owner=ceo gr_msg="task-approve.sh is the CEO's, after the human's yes in the approval ask (references/ceo.md)" ;;
+      task-done.sh)
+        case " $* " in
+          *" --close "*)
+            gr_owner=ceo gr_msg="task-done.sh --close is the CEO's, after the human's yes in the done ask (references/done.md)" ;;
+          *)
+            gr_owner='ceo repo-lead' gr_msg="task-done.sh is the lead's or the CEO's, after the human says the task MR is merged (references/lead.md, done.md)" ;;
+        esac ;;
+      block-mr-merge.sh)
+        case " $* " in *" --confirmed "*)
+          gr_owner=repo-lead gr_msg="block-mr-merge.sh --confirmed is the lead's, after the human's yes in the high-risk confirm ask (references/lead.md)" ;;
+        esac ;;
+      curate-apply.sh)
+        if [ "${1:-}" = approve ]; then
+          gr_owner=ceo gr_msg="curate-apply.sh approve is the CEO's, after the human's yes in the curate round (references/curate.md)"
+        fi ;;
+    esac
+    [ -n "$gr_owner" ] || continue
+    case " $gr_owner " in *" $gr_role "*) continue ;; esac
+    deny "$gr_msg, and this session runs as FACTORY_ROLE=$gr_role. Report what is ready and let the owner ask the human."
+  done
+  IFS=$gr_ifs
+  set +f
+}
+
+# C7 (add-repo F4): an onboarding session reads a repository cloned from a URL minutes ago, prompt injection
+# material, so FACTORY_ROLE=onboard works from an allowlist and not a deny list. It writes only
+# <state>/repos/<key>/onboarding.md, <key> from its FACTORY_UNIT onboard-<key>; of the scripts (any `*.sh`) it runs
+# only factory-doctor.sh, doc-cites.sh, ui-ask.sh, ui-session.sh and state-commit.sh of that one file; herdr only as
+# `agent prompt ceo` and `tab close` of its own tab; and never `git push`. The command words are read the way
+# gate_role_check reads them, quote characters dropped and split at a bracket, `;`, `&`, `|` and a backtick, so
+# `bash -c '...'` and `$(...)` count; a `(` right after a word (`chore(<key>):` in a commit message) splits nothing.
+# The rules for everyone else still run after these.
+ONBOARD_KEY='' ONBOARD_FILE=''
+if [ "${FACTORY_ROLE:-}" = onboard ]; then
+  case "${FACTORY_UNIT:-}" in onboard-?*) ONBOARD_KEY=${FACTORY_UNIT#onboard-} ;; esac
+  case "$ONBOARD_KEY" in *[!A-Za-z0-9_-]*) ONBOARD_KEY='' ;; esac
+  [ -z "$ONBOARD_KEY" ] || ONBOARD_FILE="$WORK_DIR/state/repos/$ONBOARD_KEY/onboarding.md"
+fi
+ob_cd=''
+onboard_deny() { # <what>
+  deny "$1 is not for an onboarding session: it only reports, writing repos/${ONBOARD_KEY:-<key>}/onboarding.md through state-commit.sh (references/onboard.md), and this session runs as FACTORY_ROLE=onboard."
+}
+onboard_target() { # <a write target as written>
+  case "$1" in ''|\$*|*..*) onboard_deny "a write to $1" ;; esac
+  ot=$(tilde_path "$1")
+  [ -n "$ot" ] || onboard_deny "a write to $1"
+  case "$ot" in /*|[A-Za-z]:/*) ;; *) [ -z "$ob_cd" ] || onboard_deny "a write to $1 after a cd" ;; esac
+  ot=$(abs_norm "$ot")
+  case "$ot" in /dev/null|/dev/stdout|/dev/stderr) return 0 ;; esac
+  [ -n "$ONBOARD_FILE" ] && [ "$ot" = "$ONBOARD_FILE" ] || onboard_deny "a write to $1"
+}
+# state-commit.sh named in a segment: the script itself, run directly, with -m, --state of this state clone at
+# most, and after `--` only the report
+onboard_commit() { # <one command segment>
+  ob_words=$(printf '%s\n' "$1" | awk '{
+    n = length($0); w = ""; q = ""; qd = 0
+    for (i = 1; i <= n + 1; i++) {
+      ch = i <= n ? substr($0, i, 1) : " "
+      if (q != "") { if (ch == q) q = ""; else w = w ch; continue }
+      if (ch == "\"" || ch == "\047") { q = ch; qd = 1; continue }
+      if (ch == " " || ch == "\t") { if (w != "" || qd) print w; w = ""; qd = 0; continue }
+      w = w ch
+    }
+  }')
+  set -f
+  oc_ifs=$IFS; IFS=$NL
+  # shellcheck disable=SC2086
+  set -- $ob_words
+  IFS=$oc_ifs
+  set +f
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      *=*|-*|[0-9]*|!|.|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+      *) break ;;
+    esac
+  done
+  [ "${1##*/}" = state-commit.sh ] || onboard_deny "state-commit.sh inside another command"
+  shift
+  oc_paths=0 oc_dd=''
+  while [ $# -gt 0 ]; do
+    if [ -n "$oc_dd" ]; then
+      case "$1" in
+        *..*) onboard_deny "state-commit.sh of $1" ;;
+        /*|[A-Za-z]:/*) oc_p=$(abs_norm "$1") ;;
+        *) [ -z "$ob_cd" ] || onboard_deny "state-commit.sh of $1 after a cd"; oc_p=$(norm_path "$WORK_DIR/state/$1") ;;
+      esac
+      [ -n "$ONBOARD_FILE" ] && [ "$oc_p" = "$ONBOARD_FILE" ] || onboard_deny "state-commit.sh of $1"
+      oc_paths=$((oc_paths + 1)); shift; continue
+    fi
+    case "$1" in
+      -m) [ $# -ge 2 ] || onboard_deny "state-commit.sh with no message"; shift 2 ;;
+      --state)
+        [ $# -ge 2 ] || onboard_deny "state-commit.sh --state with no directory"
+        case "$2" in
+          '$WORK_DIR/state'|'${WORK_DIR}/state') ;;
+          *) [ "$(abs_norm "$2")" = "$WORK_DIR/state" ] || onboard_deny "state-commit.sh --state $2" ;;
+        esac
+        shift 2 ;;
+      --) oc_dd=1; shift ;;
+      *) onboard_deny "state-commit.sh $1" ;;
+    esac
+  done
+  [ "$oc_paths" -gt 0 ] || onboard_deny "state-commit.sh with no path"
+}
+onboard_bash() { # <the command segments>
+  ob_segs=$1
+  ob_lines=$(printf '%s\n' "$ob_segs" | tr -d '\042\047' | sed 's/\([A-Za-z0-9_]\)(/\1 /g' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  ob_cd='' ob_sc=''
+  set -f
+  ob_ifs=$IFS; IFS=$NL
+  for ob_line in $ob_lines; do
+    IFS=$ob_ifs
+    # shellcheck disable=SC2086
+    set -- $ob_line
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *) break ;;
+      esac
+    done
+    [ $# -gt 0 ] || continue
+    ob_cmd=${1##*/}; shift
+    case "$ob_cmd" in
+      cd|pushd|popd) ob_cd=1 ;;
+      state-commit.sh) ob_sc=1 ;;
+      factory-doctor.sh|doc-cites.sh|ui-ask.sh|ui-session.sh) ;;
+      *.sh) onboard_deny "$ob_cmd" ;;
+      herdr)
+        case "${1:-} ${2:-}" in
+          'agent prompt') [ "${3:-}" = ceo ] || onboard_deny "herdr agent prompt ${3:-}" ;;
+          'tab close')
+            case "${3:-}" in
+              '$HERDR_TAB_ID') ;;
+              *) [ -n "${HERDR_TAB_ID:-}" ] && [ "${3:-}" = "$HERDR_TAB_ID" ] || onboard_deny "herdr tab close ${3:-}" ;;
+            esac ;;
+          *) onboard_deny "herdr ${1:-} ${2:-}" ;;
+        esac ;;
+      git) for ob_a; do [ "$ob_a" != push ] || onboard_deny 'git push'; done ;;
+      rm|rmdir|unlink|mv|cp|dd|tee|truncate|chmod|chown|ln|shred|mkfs*|install|rsync|touch|mkdir|patch)
+        onboard_deny "$ob_cmd" ;;
+      sed|perl) for ob_a; do case "$ob_a" in --in-place*|-i*|-[!-]*i*) onboard_deny "$ob_cmd -i" ;; esac; done ;;
+    esac
+  done
+  IFS=$ob_ifs
+  printf '%s\n' "$ob_segs" | while IFS= read -r ob_seg; do
+    for ob_t in $(redirect_targets "$ob_seg"); do onboard_target "$ob_t"; done
+    if [ -n "$ob_sc" ]; then case "$ob_seg" in *state-commit.sh*) onboard_commit "$ob_seg" ;; esac; fi
+  done || exit 2
+  set +f
+}
+
 guard_bash() {
   c=$1
   [ -n "$c" ] || deny "empty command"
@@ -1012,6 +1143,8 @@ guard_bash() {
   # split into segments is split_segs, which ends a segment only outside quotes.
   sc=$(heredoc_stripped "$c")
   segs=$(split_segs "$sc")
+  gate_role_check "$segs"
+  [ -z "${FACTORY_ROLE:-}" ] || [ "$FACTORY_ROLE" != onboard ] || onboard_bash "$segs"
   # T-254: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, quoted or
   # bare. bin/issue-create.sh adds it; a direct create is held to the same rule, segment by segment. The create is
   # read with the quoted spans removed, so a mention in a message is none; the label is read as written.
@@ -1050,12 +1183,11 @@ guard_bash() {
   for line in "$@"; do
     seg=${line#* }
     cd_track "$prev"; prev=$seg
-    with_alt check_state_push "$seg"
     with_alt check_state_commit "$(unquoted "$seg")" "$seg"
   done
   cd_reset
-  # T-036: a `dotnet test` with no wall-clock cap hung a session until the watchdog stalled it — 20 minutes of
-  # dead time and no trace of which test hung. The deterministic twin of _shared/test-budget.md: every command
+  # T-036: a `dotnet test` with no wall-clock cap hung a session for 20 minutes of dead time, with no trace of
+  # which test hung. The deterministic twin of _shared/test-budget.md: every command
   # segment that runs `dotnet test` carries a `timeout` in the same segment. A quoted mention is prose, not a run.
   if printf '%s' "$sc" | grep -Eq '(^|[[:space:]])dotnet[[:space:]]+test([[:space:]]|$)'; then
     set -f
@@ -1069,27 +1201,27 @@ guard_bash() {
       plain=$(printf '%s' "$seg" | sed "s/'[^']*'//g; s/\"[^\"]*\"//g")
       if printf '%s' "$plain" | grep -Eq '(^|[[:space:]])dotnet[[:space:]]+test([[:space:]]|$)' \
          && ! printf '%s' "$plain" | grep -Eq '(^|[[:space:]])timeout[[:space:]]'; then
-        deny "a test run must carry a wall-clock cap (T-036, _shared/test-budget.md): run it as 'timeout 15m dotnet test …'. If the cap fires, retry once with '--blame-hang-timeout 10m --blame-hang-dump-type none' (VSTest) to name the hanging test, then self-report failed with the reason — never wait a hung run out."
+        deny "a test run must carry a wall-clock cap (T-036, _shared/test-budget.md): run it as 'timeout 15m dotnet test …'. If the cap fires, retry once with '--blame-hang-timeout 10m --blame-hang-dump-type none' (VSTest) to name the hanging test, then self-report failed with the reason, never wait a hung run out."
       fi
     done
   fi
-  # ponytail: bash is not parsed — only absolute paths on destructive commands, redirections
+  # ponytail: bash is not parsed, only absolute paths on destructive commands, redirections
   # and any mention of a work dir (even someone else's, read-only) are checked
   for p in $(printf '%s' "$sc" \
     | grep -oE '(^|[;&|(]|[[:space:]])(rm|mv|cp|dd|tee|truncate|chmod|chown|ln|shred|mkfs[^[:space:]]*)[[:space:]][^|;&]*' \
     | grep -oE '(^|[[:space:]])/[^[:space:]"'"'"';|&)]+' || true); do
     check_path "$p"
     # issue #308: the paths the guard already extracts go through the test lock too. ponytail: this loop cannot
-    # tell a source operand from a destination, so `cp /…/FooTests.cs /tmp/b` over-denies — `blocked` is the way out.
+    # tell a source operand from a destination, so `cp /…/FooTests.cs /tmp/b` over-denies, `blocked` is the way out.
     bash_write_target "$p"
   done
   for p in $(printf '%s' "$sc" | grep -oE '>>?&?[[:space:]]*/[^[:space:]"'"'"';|&)]+' | sed 's/^>*&*[[:space:]]*//' || true); do
     check_path "$p"
   done
-  # issue #358: a $WORK_DIR path quoted as data — a grep pattern, an echo, a commit message — is prose,
+  # issue #358: a $WORK_DIR path quoted as data, a grep pattern, an echo, a commit message, is prose,
   # not a write, so the mention scan drops quoted spans before it looks. A segment that can write (a
   # redirect, a destructive command, an in-place editor) gets no such shield: there every mention is
-  # checked, quotes stripped rather than honoured. An unquoted mention in a read segment stays denied —
+  # checked, quotes stripped rather than honoured. An unquoted mention in a read segment stays denied,
   # bash is not parsed, and a read of a foreign work dir is forbidden anyway (issue #19).
   # T-228 D1: the reads of bash_read_only reach read_scope before check_path.
   set -f
@@ -1113,16 +1245,16 @@ guard_bash() {
       check_path "$p"
     done
   done
-  # issue #308: a redirection target is a write whether it is absolute or relative — `cat > src/FooTests.cs <<EOF`
+  # issue #308: a redirection target is a write whether it is absolute or relative, `cat > src/FooTests.cs <<EOF`
   # and `echo x >> src/FooTests.cs` are the same bypass as `sed -i`. T-003: this ran only in the implement phase,
   # for the test lock alone, which left the relative form of a write into the registered clone (`echo x > README.md`
-  # with the clone as cwd) seen by nothing at all — so it runs for every bash call now, and the clone rule runs
+  # with the clone as cwd) seen by nothing at all, so it runs for every bash call now, and the clone rule runs
   # with it. check_path's reach over bash stays exactly as #19 drew it.
   # 2026-09-07 lesson A4: check_status used to fire on any `tasks/` anywhere in the command, which denied a
-  # `grep -rl "status: ready" …/tasks/` — a read. It fires only when a write route (a redirect target, a `tee`
+  # `grep -rl "status: ready" …/tasks/`, a read. It fires only when a write route (a redirect target, a `tee`
   # operand, an in-place editor's token) names a task file; the two loops below raise the flag as they go.
   # 2026-09-10: a `>` inside quotes (`x=>y` in a node -e script, `"a -> b"`, `--format="%h>%s"`, a grep pattern,
-  # a PR body) is data, and one right after `=`, `-` or `<` is an arrow or `<>`, never a redirect — every one of
+  # a PR body) is data, and one right after `=`, `-` or `<` is an arrow or `<>`, never a redirect, every one of
   # them was denied as a write into the cwd, the registered clone, on a read-only command. T-264-02:
   # redirect_targets reads the targets with split_segs's quote tracking, escapes included, so a quote in a grep
   # pattern no longer pairs with a later one and an escaped `\"` no longer hides a real redirect. T-264-07: an
@@ -1209,10 +1341,10 @@ guard_bash() {
       fi
       [ "$t" != . ] || continue
       case "$t" in *tasks/*) status_write=1 ;; esac
-      # 2026-09-07 lesson A2: a bare word is a file only when it names one — `git restore --staged .` from the
+      # 2026-09-07 lesson A2: a bare word is a file only when it names one, `git restore --staged .` from the
       # registered clone was denied as a write into `<clone>/git`. A token with a `/` is a path; one without is
       # offered only when it exists in the cwd. `.` is the directory itself, and a `cd` earlier in the command may
-      # have moved it — it is not judged here (the clone rule already denies every explicit spelling of the clone).
+      # have moved it, it is not judged here (the clone rule already denies every explicit spelling of the clone).
       with_alt inplace_tok "$t"
     done
     set +f
@@ -1236,12 +1368,14 @@ case "$tool" in
     guard_bash "$cmd"
     ;;
   Write|Edit|MultiEdit|NotebookEdit)
-    un p "$f_path"; check_path "$p"
+    un p "$f_path"
+    [ -z "${FACTORY_ROLE:-}" ] || [ "$FACTORY_ROLE" != onboard ] || onboard_target "$p"
+    check_path "$p"
     abs=$(abs_norm "$p")
     check_test_lock "$tool" "$abs"
     case "$abs" in */tasks/*)
       # ADR-0018/0035/0036: a triage session may create a file that does not exist yet and, on top of that, edit
-      # exactly the one draft it has in its `## Context` — nothing else, and only to `status: triaged`
+      # exactly the one draft it has in its `## Context`, nothing else, and only to `status: triaged`
       if [ "$archetype" = triage ] && { { [ "$tool" = Write ] && [ ! -e "$abs" ]; } || { [ -n "$triage_target" ] && [ "$abs" = "$triage_target" ]; }; }; then
         STATUS_ALLOWED=triaged
       fi
@@ -1250,7 +1384,7 @@ case "$tool" in
     esac
     ;;
   *)
-    deny "unknown tool '$tool' — the policy guard does not know its write paths"
+    deny "unknown tool '$tool', the policy guard does not know its write paths"
     ;;
 esac
 exit 0

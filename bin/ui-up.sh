@@ -1,0 +1,122 @@
+#!/bin/sh
+# Starts the Factory UI: builds the image claude-factory-ui:<plugin version> when missing, starts or reuses the
+# one container as the host uid:gid with the state dir at /state read-only and the UI home at /ui read-write,
+# published on 127.0.0.1:<ui_port> or a random free port when that is taken, opens the relay in the herdr tab
+# `ui relay (no agent)` when none is open (a shell loop, no Claude session; an older `factory-ui-relay` tab is renamed), runs it again in that tab's pane when `herdr pane process-info` shows no
+# ui-relay.sh there (a herdr restart restores the tab as a bare shell), and prints the URL with the token. A
+# state dir is one with a repos.yml. With no --state and none to resolve from the cwd, as before factory init,
+# it starts with /ui only on port 7171. A running container whose cf.version or cf.state label differs is
+# recreated. FACTORY_UI_IMAGE, set only by the test suites, names another image to build and run. Exits 3 when
+# Docker is not running, 4 outside herdr.
+#
+#   ui-up.sh [--state <dir>]
+set -eu
+
+bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+root=${bin%/*}
+. "$bin/lib-tasks.sh"
+
+die() { printf 'ui-up: %s\n' "$1" >&2; exit "${2:-1}"; }
+
+state=''
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    *) die "unknown argument '$1'" ;;
+  esac
+done
+
+[ "${HERDR_ENV:-}" = 1 ] || die "the Factory UI runs only inside herdr (HERDR_ENV=1)" 4
+docker info >/dev/null 2>&1 || die "Docker is not running" 3
+
+if [ -n "$state" ]; then
+  state=$(CDPATH= cd -- "$state" 2>/dev/null && pwd) || die "no state dir at '$state'"
+  [ -f "$state/repos.yml" ] || die "$state is not a factory state repo (no repos.yml)"
+else
+  state=$(CDPATH= cd -- "$(resolve_state_dir "$PWD")" 2>/dev/null && pwd) || state=''
+  [ -n "$state" ] && [ -f "$state/repos.yml" ] || state=''
+fi
+
+name=${FACTORY_UI_CONTAINER:-claude-factory-ui}
+ui=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
+ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -n1)
+image=${FACTORY_UI_IMAGE:-claude-factory-ui:$ver}
+port=''
+[ -z "$state" ] || port=$(sed -n 's/^ui_port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state/factory.yml" 2>/dev/null | head -n1)
+port=${port:-7171}
+
+mkdir -p "$ui"
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$ui/.up.lock"
+  flock -w 900 9 || die "another ui-up.sh held $ui/.up.lock for 15 minutes"
+fi
+
+put() { # <file> <text>: through a temp file and a rename
+  printf '%s\n' "$2" > "$1.$$"
+  mv -f "$1.$$" "$1"
+}
+
+if [ ! -s "$ui/token" ]; then
+  (umask 077; put "$ui/token" "$(od -An -tx1 -N32 /dev/urandom | tr -d ' \n')")
+fi
+token=$(cat "$ui/token")
+
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
+
+run() { # <publish spec>: docker run's stderr in $err
+  publish=$1
+  set --
+  [ -z "$state" ] || set -- -e "FACTORY_ROOT=${state%/*}" -v "$state:/state:ro"
+  docker run -d --name "$name" --user "$(id -u):$(id -g)" \
+    --label "cf.version=$ver" --label "cf.state=$state" \
+    "$@" -v "$ui:/ui" -p "$publish" "$image" >/dev/null 2>"$err"
+}
+
+start() {
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
+    docker build -t "$image" "$root/ui" >&2 || die "building $image failed"
+  fi
+  run "127.0.0.1:$port:8080" && return 0
+  if grep -q 'is already in use by container' "$err"; then return 0; fi
+  docker rm -f "$name" >/dev/null 2>&1 || :
+  run "127.0.0.1::8080" || die "docker run failed: $(cat "$err")"
+}
+
+current=$(docker inspect -f '{{index .Config.Labels "cf.version"}}|{{index .Config.Labels "cf.state"}}|{{.State.Running}}' \
+  "$name" 2>/dev/null) || current=''
+if [ -n "$current" ] && [ "$current" != "$ver|$state|true" ]; then
+  docker rm -f "$name" >/dev/null
+  current=''
+fi
+[ -n "$current" ] || start
+
+port=$(docker port "$name" 8080/tcp | sed -n 's/^127\.0\.0\.1://p' | head -n1)
+[ -n "$port" ] || die "the container $name publishes no port on 127.0.0.1"
+put "$ui/port" "$port"
+
+# why: the tab runs a shell loop, not an agent, and its name says so; an older plugin named it factory-ui-relay
+relay_label='ui relay (no agent)'
+relay_line=$(herdr tab list 2>/dev/null | tr '{' '\n' | grep -E '"label":"(ui relay \(no agent\)|factory-ui-relay)"[,}]' | head -n1)
+relay_tab=$(printf '%s' "$relay_line" | grep -o '"tab_id":"[^"]*"' | cut -d'"' -f4)
+case "$relay_line" in *'"label":"factory-ui-relay"'*) herdr tab rename "$relay_tab" "$relay_label" >/dev/null 2>&1 || : ;; esac
+if [ -z "$relay_tab" ]; then
+  set -- tab create --label "$relay_label" --no-focus
+  [ -z "${HERDR_WORKSPACE_ID:-}" ] || set -- "$@" --workspace "$HERDR_WORKSPACE_ID"
+  pane=$(herdr "$@" | grep -o '"pane_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  [ -n "$pane" ] || die "herdr tab create gave no pane for the relay"
+  herdr pane run "$pane" "sh '$bin/ui-relay.sh' --home '$ui'" >/dev/null || die "herdr pane run failed in $pane"
+else
+  # the tab outlives its relay across a herdr restart, which brings the pane back as a bare shell: a pane whose
+  # foreground processes hold no ui-relay.sh gets the relay again; a pane herdr cannot name is left alone
+  pane=$(herdr pane list 2>/dev/null | RELAY_TAB=$relay_tab node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
+    let p=[];try{p=JSON.parse(s).result.panes||[]}catch(e){}
+    const m=p.find(x=>x.tab_id===process.env.RELAY_TAB);if(m&&m.pane_id)process.stdout.write(m.pane_id)})') || pane=''
+  if [ -n "$pane" ] && info=$(herdr pane process-info --pane "$pane" 2>/dev/null) \
+    && ! printf '%s' "$info" | grep -q 'ui-relay\.sh'; then
+    herdr pane run "$pane" "sh '$bin/ui-relay.sh' --home '$ui'" >/dev/null || die "herdr pane run failed in $pane"
+    printf 'ui-up: the relay in %s had stopped; it runs again\n' "$pane" >&2
+  fi
+fi
+
+printf 'http://127.0.0.1:%s/#token=%s\n' "$port" "$token"

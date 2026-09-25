@@ -8,6 +8,9 @@ The only evidence the grill happened. Every gap is a row with a type, never a no
 | `research` | a fact about the existing system | you, reading code and ADRs read-only, the answer into the row |
 | `prototype` | a question code answers faster than a discussion would | throwaway code, only the finding survives |
 
+A `prototype` row about how something looks can be closed by a drawn visual in the page instead, with
+`ui: docker` in herdr: `references/visual-brief.md`. Only its finding goes into the row.
+
 Every row carries `deps`: the rows it depends on, `-` for a root, so the design tree stays readable in the
 plan. A deferred question is closed, not left open: its answer is `deferred:` and what would reopen it, and it
 goes to `## Out of scope`. A reopened row is open again until the human answers it.

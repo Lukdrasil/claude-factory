@@ -13,6 +13,7 @@
 #   a `## Program design` member named in no proposal, or named in two
 #   a `tier`, `archetype` or `complexity` outside the allowed values, or missing
 #   a `red` proposal with no `## Quality scenarios` row
+#   a proposal `goal:` that cannot be the MR title it becomes (lib-tasks.sh plan_goal_violations)
 #
 # invariant: the gap ledger's `state` column is found by its header cell, so a ledger with the `deps` column and
 # invariant: one without it read the same; a header with no `state` cell falls back to the fourth column.
@@ -31,6 +32,7 @@
 set -eu
 
 die() { printf 'plan-lint: %s\n' "$1" >&2; exit 1; }
+. "$(dirname -- "$0")/lib-tasks.sh"
 
 [ $# -ge 1 ] || die "usage: plan-lint.sh <plan-ready.md>"
 [ $# -eq 1 ] || die "one plan at a time: plan-lint.sh <plan-ready.md>"
@@ -165,6 +167,10 @@ out=$(awk '
 ' "$1")
 
 violations=$(printf '%s\n' "$out" | sed -n 's/^V //p')
+# the repo key of repos/<key>/plans/<plan> gives the repo's own title cap
+case "$1" in */repos/*/plans/*) key=${1%/plans/*}; key=${key##*/} ;; *) key='' ;; esac
+goals=$(plan_goal_violations "$1" "$key")
+[ -z "$goals" ] || violations=$(printf '%s\n%s' "$violations" "$goals" | sed '/^$/d')
 if [ -n "$violations" ]; then
   printf '%s\n' "$violations" | sed 's/^/plan-lint: /' >&2
   exit 1

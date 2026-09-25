@@ -1,7 +1,7 @@
 #!/bin/sh
 # The coordinator's merge of a block into the session branch (T-007): run from the session worktree,
 # `git merge --no-ff <block branch>`, then remove the block's worktree and delete its branch. A conflict aborts
-# the merge, leaves the session worktree exactly as it was and keeps the block worktree/branch in place — the
+# the merge, leaves the session worktree exactly as it was and keeps the block worktree/branch in place, the
 # coordinator resolves it there per skills/factory/references/solve.md.
 #
 #   block-merge.sh <block-id> [--session-worktree <dir>] [--branch <name>] [--verify]
@@ -25,10 +25,10 @@
 #
 # The block branch is --branch when given, else the `branch:` of the block's task file in the state clone, else
 # `block/<id>`. 2026-09-07: a block whose task file named another branch was merged as the hard-coded `block/<id>`
-# — "not something we can merge" — so the task file is the source of truth and the convention only the fallback.
+# "not something we can merge", so the task file is the source of truth and the convention only the fallback.
 # Every note of this script, the skipped build stage included, goes to stderr: stdout is the merge SHA alone.
 # Prints the merge SHA on a clean merge (exit 0, even when the merged block's worktree or branch could not be
-# cleaned up — that is reported on stderr); a conflict exits 3 with the conflicting paths on stderr.
+# cleaned up, that is reported on stderr); a conflict exits 3 with the conflicting paths on stderr.
 set -eu
 . "$(dirname -- "$0")/lib-tasks.sh"
 
@@ -75,7 +75,7 @@ if [ -z "$branch" ]; then
   [ -n "$branch" ] || branch="block/$id"
 fi
 
-# see: docs/design/toolset.md and bin/block-verify.sh, the same reader for a command's binding cell
+# see: bin/block-verify.sh, the same reader for a command's binding cell
 binding_of() { # <toolset file> <command name>
   [ -f "$1" ] || return 0
   awk -F '|' -v want="$2" '
@@ -175,14 +175,14 @@ fi
 
 merge_sha=$(git -C "$session" rev-parse HEAD)
 
-# find the block worktree from git worktree list — match by branch, not by a guessed path
+# find the block worktree from git worktree list, match by branch, not by a guessed path
 block_path=$(git -C "$session" worktree list --porcelain | awk -v b="refs/heads/$branch" '
   /^worktree / { wt = $2 }
   /^branch / { if ($2 == b) { print wt } }
 ')
 [ -n "$block_path" ] || die "no worktree found for branch $branch"
 
-# `--force`: the merge is in, so whatever the subagent left uncommitted in the block worktree is disposable —
+# `--force`: the merge is in, so whatever the subagent left uncommitted in the block worktree is disposable,
 # a plain `worktree remove` refuses a dirty worktree and would fail a merge that already succeeded (T-007
 # review). A removal that still fails is reported and does not undo the merge: the SHA is printed, exit 0, and
 # the coordinator is told which worktree/branch is left behind.

@@ -18,10 +18,14 @@
 # policy-guard.sh uses, and matched with the same repo-relative plus leading-slash `case` pair. A changed
 # `*.test.sh` runs as `timeout 10m sh <file>`; a changed `*Tests.cs` runs through the toolset's `test-filter`
 # binding with <expr> substituted by the file's base name; that binding carries the `timeout` policy-guard.sh
-# demands of every `dotnet test` (toolsets/dotnet.md). `timeout` is
-# spelled as a bare word so PATH resolves it. A changed file that matches a glob but is neither shape is not
-# counted and not run, and so is a file the block deleted: only a test file present on disk can be run. An
-# empty diff is the same as a diff with no test file in it, which is red.
+# demands of every `dotnet test` (toolsets/dotnet.md); with no `test-filter` binding it is not run. A changed
+# `*.test.js` or `*.spec.js` of a toolset whose `stack:` is node runs as `timeout 10m node --test <file>`. Any
+# other changed test file runs through the `test-filter` binding when that binding takes `<file>`, with the
+# repo-relative path substituted, else through the plain `test` binding, which runs the whole suite and so runs
+# once per verify however many files fell back to it; a toolset with neither leaves the file not counted and
+# not run. `timeout` is spelled as a bare word so PATH resolves it. A file the block deleted is not run either:
+# only a test file present on disk can be run. An empty diff is the same as a diff with no test file in it,
+# which is red.
 #
 # The one exception is a **documentation block**: a non-empty diff whose every path ends in `.md`. No document
 # is asserted by a test in any repo this runs against, so such a block can never change a test file, and the
@@ -43,6 +47,8 @@
 #     crap:  <value> | over <threshold>: <method> <value>, ... | not bound (repos/<key>/toolset.md)
 #     verdict: green | red
 #
+# The same four lines go to `<root>/<key>/.harness/<block-id>/verify.txt` when the worktree sits under
+# $WORK_DIR, which is where block-mr.sh reads the verification that ran.
 # Two spaces after `crap:` line the value up with the one on the `tests:` line. The verdict is green only when
 # at least one test ran (or the diff is markdown-only, above), none failed and no method of the `crap` run is
 # over the threshold, so zero tests on a diff that carries code is red and so is one method over the threshold
@@ -88,7 +94,7 @@ branch_of() { # <task file>
     | sed 's/^["'\'']//; s/["'\'']$//'
 }
 
-# see: docs/design/toolset.md, the command table whose binding cell is wrapped in backticks
+# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks
 binding_of() { # <toolset file> <command name>
   [ -f "$1" ] || return 0
   awk -F '|' -v want="$2" '
@@ -156,9 +162,34 @@ docs_only=0
 if [ -s "$tmp/changed" ] && ! grep -qv '\.md$' "$tmp/changed"; then docs_only=1; fi
 
 filter_binding=$(binding_of "$toolset" test-filter)
+test_binding=$(binding_of "$toolset" test)
+stack=''
+if [ -f "$toolset" ]; then
+  stack=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && /^---$/ { exit }
+    /^stack:[[:space:]]*/ { sub(/^stack:[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit }' "$toolset")
+fi
 run=0; passed=0; failed=0; first_failure=''
 : > "$tmp/first-out"
 
+run_one() { # <command>: runs it in the worktree and counts it
+  set +e
+  ( cd "$worktree" && eval "$1" ) >"$tmp/out" 2>&1
+  status=$?
+  set -e
+  run=$((run + 1))
+  if [ "$status" -eq 0 ]; then
+    passed=$((passed + 1))
+  else
+    failed=$((failed + 1))
+    if [ -z "$first_failure" ]; then
+      first_failure=$1
+      tail -n 30 "$tmp/out" > "$tmp/first-out"
+    fi
+  fi
+}
+
+# the plain `test` binding runs the whole suite, so the files that fall back to it share one run after the loop
+whole_suite=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   is_test_path "$f" || continue
@@ -171,23 +202,21 @@ while IFS= read -r f; do
       expr=${f##*/}; expr=${expr%.cs}
       cmd=$(printf '%s' "$filter_binding" | sed "s|<expr>|$expr|g")
       ;;
-    *) continue ;;
   esac
-  set +e
-  ( cd "$worktree" && eval "$cmd" ) >"$tmp/out" 2>&1
-  status=$?
-  set -e
-  run=$((run + 1))
-  if [ "$status" -eq 0 ]; then
-    passed=$((passed + 1))
-  else
-    failed=$((failed + 1))
-    if [ -z "$first_failure" ]; then
-      first_failure=$cmd
-      tail -n 30 "$tmp/out" > "$tmp/first-out"
-    fi
+  if [ -z "$cmd" ]; then
+    case "$stack:$f" in
+      node:*.test.js|node:*.spec.js) cmd="timeout 10m node --test $f" ;;
+    esac
   fi
+  if [ -z "$cmd" ]; then
+    case "$filter_binding" in
+      *'<file>'*) cmd=$(printf '%s' "$filter_binding" | sed "s|<file>|$f|g") ;;
+      *) [ -z "$test_binding" ] || whole_suite=1; continue ;;
+    esac
+  fi
+  run_one "$cmd"
 done < "$tmp/changed"
+[ "$whole_suite" -eq 0 ] || run_one "$test_binding"
 
 crap_binding=$(binding_of "$toolset" crap)
 crap_over=''
@@ -238,10 +267,20 @@ fi
 note=''
 if [ "$docs_only" -eq 1 ] && [ "$run" -eq 0 ]; then note=' (markdown-only diff)'; fi
 
-printf 'block: %s\n' "$id"
-printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
-printf 'crap:  %s\n' "$crap"
-printf 'verdict: %s\n' "$verdict"
+{
+  printf 'block: %s\n' "$id"
+  printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
+  printf 'crap:  %s\n' "$crap"
+  printf 'verdict: %s\n' "$verdict"
+} > "$tmp/report"
+cat "$tmp/report"
+# see: 3.4 of the agent-org plan, block-mr.sh puts the last report into the block MR as the verification that
+# see: ran, from `<root>/<key>/.harness/<block>/verify.txt` beside review.md and arch.md; a worktree outside
+# see: $WORK_DIR has no such folder and keeps the report on stdout only
+if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}"; then
+  mkdir -p "${LO_STAMP%/*}/$id" && cp "$tmp/report" "${LO_STAMP%/*}/$id/verify.txt" \
+    || printf 'block-verify: the report could not be written to %s\n' "${LO_STAMP%/*}/$id/verify.txt" >&2
+fi
 
 if [ "$verdict" = green ]; then
   exit 0

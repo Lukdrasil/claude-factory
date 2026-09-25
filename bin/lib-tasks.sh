@@ -4,9 +4,66 @@
 # owned_task_ids read the state clone the caller put in $state, the way self-report-check.sh and
 # session-stats.sh always did.
 
-# the file is chosen by the `id:` line, not by an `<id>-*.md` glob: with hierarchical ids a child `T-005-01-…`
-# sorts before its parent `T-005-…` (`0` < a letter) and the glob would hand back the wrong task.
-task_of() { grep -lx "id: $1" "$state"/repos/*/tasks/*.md 2>/dev/null | head -n1; }
+# the permissions.allow rules factory-init.sh writes and factory-doctor.sh checks, one per line: a step session
+# reads the factory root and the plugin, edits the state clone and runs the plugin scripts without a dialog,
+# which a model that cannot run in auto mode (Haiku 4.5) needs
+factory_allow_rules() { # <work dir> <plugin root>
+  printf '%s\n' "Read(/$1/**)" "Read(/$2/**)" "Edit(/$1/state/**)" "Bash(sh $2/bin/*)" "Bash($2/bin/*)"
+}
+
+# every task file of $state, one path per line: the live ones under repos/<key>/tasks/, and with --all also the
+# archived ones under repos/<key>/archive/<YYYY-MM>/tasks/ (state-archive.sh moves a finished parent there).
+# Without a key every repo. Every reader that used to glob repos/*/tasks goes through this.
+task_files() { # [--all] [<key>]
+  tf_all=''
+  if [ "${1:-}" = --all ]; then tf_all=1; shift; fi
+  tf_k=${1:-*}
+  for tf_f in "$state"/repos/$tf_k/tasks/*.md; do [ -f "$tf_f" ] || continue; printf '%s\n' "$tf_f"; done
+  [ -n "$tf_all" ] || return 0
+  for tf_f in "$state"/repos/$tf_k/archive/*/tasks/*.md; do [ -f "$tf_f" ] || continue; printf '%s\n' "$tf_f"; done
+}
+
+# the file of a task, live first, then the archive. By the file name first (`<id>.md`, `<id>-*.md`), and only when
+# no name matches by grepping every `id:` line. A name is only a hint: with hierarchical ids a child
+# `T-005-01-…` also matches `T-005-*` and sorts before its parent `T-005-…` (`0` < a letter), so the `id:` line of
+# a candidate decides. Prints nothing, and still returns 0, when no file holds the id.
+task_of() { # <id>
+  task_of_in "$1" "$state"/repos/*/tasks && return 0
+  task_of_in "$1" "$state"/repos/*/archive/*/tasks || :
+}
+task_of_in() { # <id> <tasks dir>...
+  to_id=$1
+  shift
+  for to_d in "$@"; do
+    for to_f in "$to_d/$to_id.md" "$to_d/$to_id"-*.md; do
+      [ -f "$to_f" ] && grep -qx "id: $to_id" "$to_f" && { printf '%s\n' "$to_f"; return 0; }
+    done
+  done
+  to_f=$(for to_d in "$@"; do grep -lx "id: $to_id" "$to_d"/*.md 2>/dev/null; done | head -n1)
+  [ -n "$to_f" ] && printf '%s\n' "$to_f"
+}
+
+# frontmatter fields of one task file, one value per line in the order asked, an empty line for a field that is
+# not there, from one awk instead of three processes per field. Only the frontmatter is read (a body line
+# `status: …` is no field); a ` # comment` is dropped as setf and task-new.sh drop it, a `#` inside a value (a
+# url anchor) stays.
+task_fields() { # <file> <field>...
+  tfs_f=$1
+  shift
+  [ -f "$tfs_f" ] || tfs_f=/dev/null
+  awk -v want="$*" '
+    BEGIN { n = split(want, k, " ") }
+    NR == 1 && /^---[ \t\r]*$/ { fm = 1; next }
+    fm && /^---[ \t\r]*$/ { exit }
+    !fm { exit }
+    {
+      c = index($0, ":"); if (c < 2 || $0 ~ /^[ \t#]/) next
+      name = substr($0, 1, c - 1); if (name in v) next
+      val = substr($0, c + 1); sub(/[ \t]+#.*$/, "", val); sub(/^[ \t]+/, "", val); sub(/[ \t]+$/, "", val)
+      v[name] = val
+    }
+    END { for (i = 1; i <= n; i++) print v[k[i]] }' "$tfs_f"
+}
 
 # one field of the repos.yml line of a repo in $state (ADR-0013 revision): `<key>: {url: …, default_branch: …,
 # path: …}`, written by factory-add-repo.sh, in the flat or the indented spelling
@@ -20,6 +77,18 @@ yml_field() { # <key> <field>
       gsub(/^["'"'"']|["'"'"']$/, "", v)
       if (v != "") { print v; exit }
     }' "$state/repos.yml"
+}
+
+# the id alias of a repo, `alias:` in its repos.yml entry: 2 to 4 uppercase letters, which make its new ids
+# T-<ALIAS>-<n>. Prints nothing for a repo without one (it keeps the legacy T-<n> ids), and nothing with status 1
+# when the value is no alias, so a writer can refuse instead of silently falling back to a legacy id.
+repo_alias() { # <key>
+  ra_v=$(yml_field "$1" alias)
+  case "$ra_v" in
+    '') return 0 ;;
+    [A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) printf '%s\n' "$ra_v" ;;
+    *) return 1 ;;
+  esac
 }
 
 # the plan slug of a task on stdin: decompose names `repos/<key>/plans/<slug>-plan-ready.md` in its `## Context`
@@ -84,11 +153,11 @@ architect_verdict() { # <key> <plan slug> <task id or empty>
   return 1
 }
 
-# the tasks whose `owner:` ends in this session's id — `factory@<host>:<session_id>`, the whole id after the
+# the tasks whose `owner:` ends in this session's id, `factory@<host>:<session_id>`, the whole id after the
 # last colon (ADR-0050); one id per line, sorted
 owned_task_ids() { # <session id>
   esc=$(printf '%s' "$1" | sed 's/[][\.*^$/]/\\&/g')
-  grep -l "^owner:[[:space:]]*[^[:space:]]*:$esc[[:space:]]*\$" "$state"/repos/*/tasks/*.md 2>/dev/null \
+  task_files | xargs -r grep -l "^owner:[[:space:]]*[^[:space:]]*:$esc[[:space:]]*\$" 2>/dev/null \
     | xargs -r sed -n 's/^id:[[:space:]]*//p' 2>/dev/null | sed 's/[[:space:]]*#.*//' | sort -u | sort_ids
 }
 
@@ -102,7 +171,7 @@ single_phase() { # <tier> <complexity>
 # one frontmatter field of a task file, rewritten in place: the line is replaced when the key is already there
 # (a trailing ` # comment` kept) and inserted just above the closing `---` when it is not. T-007 review: a
 # `sed -i 's/^owner:.*/…/'` is a silent no-op on a task whose frontmatter carries no `owner:` line at all, so
-# both writers of a task field — task-done.sh and state-report.sh — go through this one helper.
+# both writers of a task field, task-done.sh and state-report.sh, go through this one helper.
 setf() { # <file> <key> <value>
   node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -114,7 +183,7 @@ let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   L.splice(end,0,`${k}: ${v}`);process.stdout.write(L.join("\n"))})' "$2" "$3" < "$1" > "$1.tmp" && mv -f "$1.tmp" "$1"
 }
 
-# one commit in a state clone, scoped to the paths it is given — the three local writers (task-new.sh,
+# one commit in a state clone, scoped to the paths it is given, the three local writers (task-new.sh,
 # task-approve.sh, state-report.sh) commit exactly the files they wrote and never whatever else the clone had
 # lying around. The identity fallback is for a worker image with no git identity configured; nothing to commit
 # is success, not a failure. Returns non-zero when git refuses, and the caller maps that to its own exit code.
@@ -132,7 +201,7 @@ state_commit() { # <state> <message> [paths…]
 }
 
 # E3 (2026-09-07): two solve sessions in one standalone state clone reported at the same time, and git's index
-# lock is not a transaction — one report's `add` rode in the other's commit. The whole critical section of
+# lock is not a transaction, one report's `add` rode in the other's commit. The whole critical section of
 # state-report.sh (read the committed status, write, commit, push) runs under one lock per state clone: flock on
 # <git-dir>/factory-state.lock where flock exists, otherwise a mkdir spin on <git-dir>/factory-state.lockdir with
 # the holder's pid and start time inside, taken over once it is 120 s old (a session that died mid-report).
@@ -172,17 +241,17 @@ state_unlock() {
   STATE_LOCK_HELD=''
 }
 
-# The push recipe of ADR-0012, three tries of pull-rebase and push, shared by task-done.sh and task-approve.sh.
-# A clone with no origin stays local and is not an error (task-new.sh has the same rule). Returns 1 when the
-# third try still failed; the commits stay in the clone.
-state_push() { # <state>
-  git -C "$1" remote get-url origin >/dev/null 2>&1 || return 0
-  sp_n=0
-  until git -C "$1" pull -q --rebase --autostash -X theirs >/dev/null 2>&1 && git -C "$1" push -q >/dev/null 2>&1; do
-    sp_n=$((sp_n + 1))
-    [ "$sp_n" -lt 3 ] || return 1
-    sleep 1
-  done
+# The one write path of a state clone for files already written: lock, add, commit the named paths, unlock, and
+# no push (state-push.sh publishes in the background, never under this lock). Returns state_lock's 1 (timeout) or
+# 2 (no lock path), and 3 when git refuses the commit. A caller that already holds the lock, because it picked an
+# id inside it, gets the commit alone and keeps its lock.
+state_write() { # <state> <message> <path>...
+  if [ -n "$STATE_LOCK_HELD" ]; then state_commit "$@" || return 3; return 0; fi
+  state_lock "$1" || return $?
+  sw_rc=0
+  state_commit "$@" || sw_rc=3
+  state_unlock
+  return "$sw_rc"
 }
 
 # one flat string field of the hook stdin (session_id, cwd, transcript_path) without a JSON parser; a Windows
@@ -192,7 +261,7 @@ hook_field() { # <json> <field>
 }
 
 # a path the way both sides of a comparison see it: forward slashes, no trailing slash, a lower-case drive letter
-# and `x/..` collapsed. T-003: a Windows path is what makes it necessary — `D:\src\repo`, `D:/src/repo` and
+# and `x/..` collapsed. T-003: a Windows path is what makes it necessary, `D:\src\repo`, `D:/src/repo` and
 # `d:/src/repo/` are one directory, and a comparison that spells them differently lets through the write it meant
 # to deny. Every step runs only when there is something to do, so an ordinary POSIX path spawns no process.
 norm_path() {
@@ -210,7 +279,7 @@ norm_path() {
   printf '%s' "$n"
 }
 
-# norm_path into a variable, skipping the subshell for a path already in that spelling — a command substitution
+# norm_path into a variable, skipping the subshell for a path already in that spelling, a command substitution
 # would fork exactly the process the cases inside norm_path avoid.
 norm_into() { # <variable name> <path>
   case "$2" in
@@ -219,20 +288,25 @@ norm_into() { # <variable name> <path>
   esac
 }
 
-# T-003: the one layout rule the guard, the Stop hook and session-stats share. Two shapes, one implementation
-# (ADR-0049): the worker's <root>/<task-id>/… and the standalone <root>/<key>/<task-id>/…, where <task-id> is
-# `T-NNN` (a session worktree) or `T-NNN-NN` (a block worktree). Given a path (the guard's write target) or a cwd
-# (a hook) plus the work root, it sets
-#   LO_POSTURE  worker | standalone
+# T-003: the one layout rule the guard, the Stop hook and session-stats share: the standalone
+# <root>/<key>/<task-id>/… (ADR-0049), where <task-id> is a parent id (a session worktree) or a block id (a block
+# worktree). Given a path (the guard's write target) or a cwd (a hook) plus the work root, it sets
+#   LO_POSTURE  standalone
 #   LO_TASK     the task id
 #   LO_OWN      the session's work dir LO_STATE  the state clone   LO_STAMP  the per-session stamp directory
-# and returns 1 when the path is not under the root at all. The worker layout keeps exactly the directories it
-# always had: LO_OWN = <root>/<task-id>, LO_STATE = <own>/state, LO_STAMP = <own>.
+# and returns 1, setting nothing, for every path that is not inside such a task worktree.
 is_task_id() { is_parent_id "$1" || is_block_id "$1"; }
 
+# two parent grammars side by side: the legacy `T-<n>` with three or more digits, and `T-<ALIAS>-<n>` with the
+# repo's 2 to 4 uppercase letters from repos.yml and one or more digits. A repo key is lowercase, so neither
+# grammar reads a key as an id, and a step unit `<parent>-<step>` still strips back to its parent.
 is_parent_id() { # <id>
-  case "$1" in T-[0-9][0-9][0-9]*) ;; *) return 1 ;; esac
-  case "${1#T-}" in *[!0-9]*) return 1 ;; esac
+  case "$1" in
+    T-[A-Z][A-Z]-*|T-[A-Z][A-Z][A-Z]-*|T-[A-Z][A-Z][A-Z][A-Z]-*) ip_n=${1#T-*-} ;;
+    T-*) ip_n=${1#T-}; [ "${#ip_n}" -ge 3 ] || return 1 ;;
+    *) return 1 ;;
+  esac
+  case "$ip_n" in ''|*[!0-9]*) return 1 ;; esac
 }
 
 is_block_id() { # <id>
@@ -245,12 +319,15 @@ is_block_of() { # <parent> <id>
   is_block_id "$2" && [ "${2%-*}" = "$1" ]
 }
 
-# lines ordered by the task id in their first word: the parent number, then the block number with a parent
-# before its blocks, the whole line breaking a tie. Duplicates stay; a caller wanting unique lines runs sort -u.
+# lines ordered by the task id in their first word: legacy ids first, then the alias ids by alias (bytewise), then
+# the parent number, then the block number with a parent before its blocks, the whole line breaking a tie.
+# Duplicates stay; a caller wanting unique lines runs sort -u.
 sort_ids() {
-  awk '{ p = $1; sub(/^T-/, "", p); b = 0
+  awk '{ p = $1; sub(/^T-/, "", p); g = 0; a = ""; b = 0
+         if (match(p, /^[A-Z]+-/)) { g = 1; a = substr(p, 1, RLENGTH - 1); p = substr(p, RLENGTH + 1) }
          if (i = index(p, "-")) { b = substr(p, i + 1) + 1; p = substr(p, 1, i - 1) }
-         print p "\t" b "\t" $0 }' | sort -t "$(printf '\t')" -k1,1n -k2,2n -k3 | cut -f3-
+         print g "\t" a "\t" p "\t" b "\t" $0 }' \
+    | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2 -k3,3n -k4,4n -k5 | cut -f5-
 }
 
 resolve_layout() { # <path> <work root>
@@ -263,18 +340,13 @@ resolve_layout() { # <path> <work root>
   lo_s1=${lo_rest%%/*}
   lo_s2=${lo_rest#*/}
   if [ "$lo_s2" = "$lo_rest" ]; then lo_s2=''; else lo_s2=${lo_s2%%/*}; fi
-  if [ -n "$lo_s2" ] && is_task_id "$lo_s2" && ! is_task_id "$lo_s1"; then
-    LO_POSTURE=standalone; LO_TASK=$lo_s2
-    LO_OWN="$lo_root/$lo_s1/$lo_s2"; LO_STATE="$lo_root/state"; LO_STAMP="$lo_root/$lo_s1/.harness/$lo_s2"
-  else
-    LO_POSTURE=worker; LO_TASK=$lo_s1
-    LO_OWN="$lo_root/$lo_s1"; LO_STATE="$lo_root/$lo_s1/state"; LO_STAMP="$lo_root/$lo_s1"
-  fi
-  return 0
+  [ -n "$lo_s2" ] && is_task_id "$lo_s2" && ! is_task_id "$lo_s1" || return 1
+  LO_POSTURE=standalone; LO_TASK=$lo_s2
+  LO_OWN="$lo_root/$lo_s1/$lo_s2"; LO_STATE="$lo_root/state"; LO_STAMP="$lo_root/$lo_s1/.harness/$lo_s2"
 }
 
 # the same rule for a hook, which is handed no target path: the work root is $WORK_DIR when the cwd is under it,
-# and otherwise the cwd's own two trailing segments — a standalone session's environment need not carry WORK_DIR.
+# and otherwise the cwd's own two trailing segments, a standalone session's environment need not carry WORK_DIR.
 resolve_cwd_layout() { # <cwd>
   resolve_layout "$1" "${WORK_DIR:-}" && return 0
   lo_d=${1%/*}
@@ -283,8 +355,8 @@ resolve_cwd_layout() { # <cwd>
 
 # the state clone of a session, the one rule state-report.sh, self-report-check.sh and session-stats.sh share:
 # the sibling `../state` of the product clone when that is a clone itself, the standalone layout's $WORK_DIR/state
-# when the cwd is a work dir of it (ADR-0049) — and otherwise the cwd, which is where a triage session sits
-# (ADR-0018). `../state` first: the worker layout's sibling clone (ADR-0018) wins over the standalone rule.
+# when the cwd is a work dir of it (ADR-0049), and otherwise the cwd, which is where a triage session sits
+# (ADR-0018). `../state` first: a sibling state clone (ADR-0018) wins over the standalone rule.
 resolve_state_dir() { # <cwd>
   if [ -d "$1/../state/.git" ]; then printf '%s' ../state; return 0; fi
   if resolve_cwd_layout "$1" && [ "$LO_POSTURE" = standalone ]; then printf '%s' "$LO_STATE"; return 0; fi
@@ -293,7 +365,7 @@ resolve_state_dir() { # <cwd>
 }
 
 # why: a factory coordinator (ADR-0049) runs in the registered clone itself, outside $WORK_DIR, where neither the
-# worker's sibling `../state` nor the standalone layout resolves and the cwd is no state clone either. Without
+# sibling `../state` nor the standalone layout resolves and the cwd is no state clone either. Without
 # this case the Stop chain and the PreCompact hook look for its tasks under the product clone and find none.
 # Prints the registry key and returns 0 only when $WORK_DIR/state is a clone as well.
 in_registered_clone() { # <cwd>
@@ -306,7 +378,7 @@ in_registered_clone() { # <cwd>
 # the layout of a session that is reporting for a known task: resolve_cwd_layout's standalone answer where the cwd
 # is a work dir under $WORK_DIR, and otherwise the coordinator's own standalone posture, whose work dir is the
 # registered clone, whose state clone is $WORK_DIR/state and whose stamps sit in $WORK_DIR/<key>/.harness/<task-id>/,
-# the same stamp directory the task's own worker session would use. It falls back to resolve_cwd_layout, so every
+# the same stamp directory the task's own session would use. It falls back to resolve_cwd_layout, so every
 # posture the resolver already reported stays what it was.
 resolve_session_layout() { # <cwd> <task id>
   resolve_cwd_layout "$1" && [ "$LO_POSTURE" = standalone ] && return 0
@@ -331,7 +403,7 @@ repo_clone_paths() {
     }' "$WORK_DIR/state/repos.yml"
 }
 
-# the key in $WORK_DIR/state/repos.yml whose `path:` is the clone this cwd is in — its toplevel, or the main
+# the key in $WORK_DIR/state/repos.yml whose `path:` is the clone this cwd is in, its toplevel, or the main
 # clone when the cwd is a worktree made from it (ADR-0049). Prints nothing when there is no registry or no match.
 repo_key_of_cwd() { # <cwd>
   [ -f "${WORK_DIR:-}/state/repos.yml" ] || return 0
@@ -423,6 +495,27 @@ mr_title_check() { # <title> [<repo key>] -> 0, or the reason on stdout and 1
   return 1
 }
 
+# Every `goal:` of a plan's `## Proposed tasks` that cannot be the MR title it becomes, one reason per line;
+# triage and research goals never become titles. decompose.sh refuses on it and plan-lint.sh checks it earlier,
+# before plan-check signs the plan hash.
+plan_goal_violations() { # <plan-ready.md> [<repo key>]
+  awk '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    /^##[ \t]+Proposed tasks[ \t]*$/ { ps = 1; next }
+    /^##[ \t]/ { if (ps && have) { print arch "\t" goal; have = 0 } ; ps = 0; next }
+    !ps { next }
+    /^###[ \t]/ { if (have) print arch "\t" goal; arch = ""; goal = ""; have = 1; next }
+    /^-[ \t]*goal:/ { g = $0; sub(/^-[ \t]*goal:[ \t]*/, "", g); goal = trim(g); next }
+    /^-[ \t]*archetype:/ { a = $0; sub(/^-[ \t]*archetype:[ \t]*/, "", a); sub(/[ \t,].*$/, "", a); arch = trim(a); next }
+    END { if (ps && have) print arch "\t" goal }
+  ' "$1" | while IFS="$(printf '\t')" read -r pg_arch pg_goal; do
+    [ -n "$pg_goal" ] || continue
+    case "$pg_arch" in triage|research) continue ;; esac
+    pg_reason=$(mr_title_check "$pg_goal" "${2:-}") \
+      || printf 'the `goal:` of a proposal cannot be the MR title it becomes: %s (`%s`)\n' "$pg_reason" "$pg_goal"
+  done
+}
+
 # Does this clone lint its own MR titles, and at what length? A commitlint config, or a CI file that names
 # commitlint or CI_MERGE_REQUEST_TITLE, means the forge judges the title a second time, and the factory's cap
 # has to be no larger than that one (MR !412). An explicit `header-max-length` in the commitlint config wins;
@@ -448,4 +541,11 @@ commitlint_cap() { # <clone dir>
   fi
   case "${cc_n:-}" in ''|*[!0-9]*|0) cc_n=100 ;; esac
   printf '%s\t%s\n' "$cc_n" "${cc_cfg:-$cc_ci}"
+}
+
+# A line with the userinfo of every scheme URL cut out (https://user:token@host becomes https://host), the redact of
+# factory-doctor.sh: git echoes the URL it was given in its errors, so a token typed into a URL would otherwise reach
+# the terminal, a json file or the state repo. An scp-style git@host:path carries no secret and is kept.
+redact_urls() { # <text>
+  printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'
 }

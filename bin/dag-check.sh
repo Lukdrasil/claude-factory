@@ -10,9 +10,10 @@
 # listed under its `## Docs`. Ownership is over files, not members, and it comes from the body of the task
 # file, not from the frontmatter.
 #
-# A backticked token counts as a claimed path only when it contains a `/`. Every path this repo names in a
-# task body is repo-relative and so has a directory component, while a Docs sentence naming a symbol, a flag
-# or a command in backticks is ordinary prose: `#!`, `--state` and `depends_on` are not files and are ignored.
+# A design heading always names a file, at the repo root or below it. A backticked Docs token counts as a
+# claimed path only when it contains a `/` or ends in a file extension (`README.md`), while a Docs sentence
+# naming a symbol, a flag or a call in backticks is ordinary prose: `#!`, `--state`, `depends_on` and
+# `remove(file, id)` are not files and are ignored.
 #
 # Block 00, when a cut has one, is the additive skeleton: it declares surface that other blocks implement, so
 # its paths take no part in the overlap computation and it is planned alone in the first wave. A block 00 that
@@ -58,7 +59,10 @@ if [ -z "$state" ]; then
 fi
 [ -d "$state/repos" ] || die "$state is not a state clone"
 
-[ -n "$(task_of "$parent" || :)" ] || die "no task file for '$parent' in $state"
+ptask=$(task_of "$parent" || :)
+[ -n "$ptask" ] || die "no task file for '$parent' in $state"
+pkey=${ptask#"$state/repos/"}
+pkey=${pkey%%/*}
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -67,12 +71,12 @@ mkdir -p "$tmp/paths" "$tmp/deps" "$tmp/integration"
 # invariant: a claim comes out of the body: every design heading of the file plus every backticked token of
 # invariant: the `## Docs` section, which ends at the next `## ` heading. A Docs section reading `none` has no
 # invariant: backticks and so claims nothing.
-# invariant: a token is a claim only when it carries a `/`; without one it is prose, not a repo-relative path.
+# invariant: a Docs token is a claim only when it carries a `/` or a file extension; else it is prose.
 claimed_paths() { # <task file>
   awk '
-    function claim(p) { if (p != "" && index(p, "/") > 0) print p }
+    function claim(p) { if (p != "" && (index(p, "/") > 0 || p ~ /^[^[:space:]()]*\.[A-Za-z][A-Za-z0-9]*$/)) print p }
     /^## / { docs = ($0 ~ /^## Docs([[:space:]]*)$/) }
-    /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); claim(p); next }
+    /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); if (p != "") print p; next }
     docs {
       line = $0
       while (match(line, /`[^`]+`/)) {
@@ -116,7 +120,11 @@ deps_of() { # <task file>
 
 # invariant: blocks are selected by their `id:` line and an id-shape check, never by an `<id>-*.md` glob: the
 # invariant: parent file T-200-parent.md sits in the same directory and a glob would pick it up too.
-for f in "$state"/repos/*/tasks/*.md; do
+# invariant: the blocks sit under the parent's repo key, live or archived (task_files --all, the way task_of
+# invariant: finds the parent): an archived parent moved with all its blocks, so its cut stays whole.
+# why: a depends_on outside the parent's blocks, live or archived, is no edge of the wave plan: it orders
+# why: parents, the queue (queue-next.sh) waits for it, and an archived id is done.
+while IFS= read -r f; do
   [ -f "$f" ] || continue
   bid=$(sed -n 's/^id:[[:space:]]*//p' "$f" | sed 's/[[:space:]]*#.*//' | head -n 1)
   is_block_of "$parent" "$bid" || continue
@@ -124,7 +132,9 @@ for f in "$state"/repos/*/tasks/*.md; do
   claimed_paths "$f" > "$tmp/paths/$bid"
   deps_of "$f" > "$tmp/deps/$bid"
   acceptance_phrase "$f" > "$tmp/integration/$bid"
-done
+done <<EOF
+$(task_files --all "$pkey")
+EOF
 [ -f "$tmp/blocks" ] || die "'$parent' has no T-NNN-NN blocks, so it is not a parent task"
 sort -u "$tmp/blocks" | sort_ids > "$tmp/blocks.sorted" && mv -f "$tmp/blocks.sorted" "$tmp/blocks"
 

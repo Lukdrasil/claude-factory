@@ -1,8 +1,11 @@
 #!/bin/sh
 # The skeletons task-template.sh prints go through task-new.sh as they are once the placeholders are filled
 # (T-249 F2, F5): a `task` draft is born `draft`, a `block` gets the exact `id:` line task_of looks up and a
-# `branch:` line with no comment. Every state-report.sh call in the prose passes `--task` (F4), since the
-# standalone layout has no `# Task <id>` CLAUDE.md to fall back on.
+# `branch:` line with no comment. Every state-report.sh call in the prose passes `--task` (F4), the one way
+# state-report.sh learns its task. T-252-02: both skeletons carry exactly the
+# task keys, none the dashboard alone read. Both print request, priority and issue: the task skeleton as
+# placeholders task-new.sh refuses until they are filled, the block skeleton as values task-new.sh replaces with
+# its parent's.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$root/bin"
@@ -10,8 +13,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 WORK_DIR=''
-DASHBOARD_URL=''
-export WORK_DIR DASHBOARD_URL
+export WORK_DIR
 
 fail=0
 check() { # <what> <expected> <actual>
@@ -32,7 +34,8 @@ fill() { # <kind> <goal> > filled markdown
   sh "$bin/task-template.sh" "$1" | sed '
     s/<key>/demo/; s/<repo-key>/demo/
     s/<green|yellow|red>/green/; s/<feature|bugfix|refactor|research|ops>/bugfix/; s/<low|medium|high>/low/
-    s/<YYYY-MM-DD>/2026-09-24/' \
+    s/<YYYY-MM-DD>/2026-09-24/
+    s/<R-YYYYMMDD-n|null>/R-20260924-1/; s/<P0|P1|P2|P3>/P1/; s#<forge issue url|null>#https://forge.example/i/1#' \
   | awk -v goal="$2" '/^# Goal$/ { print; print goal; skip = 1; next } skip && /^$/ { skip = 0 } !skip'
 }
 
@@ -54,6 +57,29 @@ bf="$state/repos/demo/tasks/T-001-01-fix-demo-a-block.md"
 check "2b the block carries the exact line 'id: T-001-01'" 'id: T-001-01' "$(grep -x 'id: T-001-01' "$bf" 2>/dev/null)"
 check "2b task_of T-001-01 finds the block" "$bf" "$(. "$bin/lib-tasks.sh"; task_of T-001-01)"
 check "2b the branch line holds no '#'" 'branch: feat/T-001-01-<slug>' "$(grep '^branch:' "$bf" 2>/dev/null)"
+check "2b the block takes request, priority and issue from its parent" \
+  'request: R-20260924-1|priority: P1|issue: https://forge.example/i/1|' \
+  "$(grep -E '^(request|priority|issue):' "$bf" 2>/dev/null | tr '\n' '|')"
+
+# --- 2d: both skeletons carry exactly the task keys ---------------------------------
+for kind in task block; do
+  check "2d the $kind skeleton holds exactly the task keys" \
+    'archetype attempt branch complexity created depends_on id issue mr_url owner plan_hash priority repo request status tier ' \
+    "$(sh "$bin/task-template.sh" "$kind" | awk '/^---$/ { n++; next } n == 1 { sub(/:.*/, ""); print } n == 2 { exit }' | sort | tr '\n' ' ')"
+done
+
+# --- 2e: the three lines of the org: request, priority, issue ------------------------
+check "2e the task skeleton prints the three lines as placeholders" \
+  'request: <R-YYYYMMDD-n|null>|priority: <P0|P1|P2|P3>|issue: <forge issue url|null>|' \
+  "$(sh "$bin/task-template.sh" task | grep -E '^(request|priority|issue):' | tr '\n' '|')"
+check "2e the block skeleton prints the three lines with the defaults" 'request: null|priority: P2|issue: null|' \
+  "$(sh "$bin/task-template.sh" block | grep -E '^(request|priority|issue):' | tr '\n' '|')"
+sh "$bin/task-template.sh" task | sed 's/<key>/demo/; s/<green|yellow|red>/green/; s/<feature|bugfix|refactor|research|ops>/bugfix/
+  s/<low|medium|high>/low/; s/<YYYY-MM-DD>/2026-09-24/' \
+  | awk '/^# Goal$/ { print; print "fix(demo): unfilled"; skip = 1; next } skip && /^$/ { skip = 0 } !skip' > "$tmp/raw.md"
+rc=0
+out=$(sh "$bin/task-new.sh" --repo demo --state "$state" --file "$tmp/raw.md" 2>&1) || rc=$?
+check "2e task-new.sh refuses the three placeholders unfilled" 1 "$rc"
 
 # --- 2c: every state-report.sh call in the prose names its task --------------------
 check "2c every state-report.sh call passes --task" '' \
