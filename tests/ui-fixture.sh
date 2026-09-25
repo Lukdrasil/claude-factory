@@ -108,7 +108,7 @@ org_task() { # <dir> <key> <id> <status> <request> <priority or -> <goal> [accep
 }
 org_state() { # <dir>: repos claude-factory (CF) and ecs (ECS); request R-20260925-1 in grilling with tickets 01
   # resolved, 02 open on the frontier, 03 dropped, 04 open behind 02, 05 claimed, and parents T-ECS-1 (P1, blocks
-  # -01 without a priority and -02 at P3) and T-CF-1 (none, so P2); request R-20260920-1 done and archived with its
+  # -01 without a priority and -02 at P3, red with spec-critic's line) and T-CF-1 (none, so P2); request R-20260920-1 done and archived with its
   # parent T-CF-2 (P0) and block T-CF-2-01 by state-archive.sh --all; leases by capacity.sh for the lead of
   # T-ECS-1, a block, a scout subagent and an uncapped architecture-auditor; passes stamped by pass-stamp.sh.
   o=$1
@@ -120,6 +120,8 @@ org_state() { # <dir>: repos claude-factory (CF) and ecs (ECS); request R-202609
   org_task "$o" ecs T-ECS-1 in_progress R-20260925-1 P1 'feat(ecs): export invoices to the ledger' '`make test` passes.'
   org_task "$o" ecs T-ECS-1-01 ready R-20260925-1 - 'feat(ecs): keep the export cursor' 'The cursor test passes.'
   org_task "$o" ecs T-ECS-1-02 ready R-20260925-1 P3 'feat(ecs): the nightly job'
+  sed -i 's/^tier: green$/tier: red/' "$o/repos/ecs/tasks/T-ECS-1-02-org.md"
+  printf '\n## Spec critic\nOK - 0 blocking, 0 suggestions (2026-09-25)\n' >> "$o/repos/ecs/tasks/T-ECS-1-02-org.md"
   org_task "$o" claude-factory T-CF-1 ready R-20260925-1 - 'feat(ui): show the export'
   git -C "$o" add -A && git -C "$o" commit -qm 'fixture: the org state' || return 1
   org_task "$o" claude-factory T-CF-2 done R-20260920-1 P0 'fix(ui): the old export' 'It was done.'
