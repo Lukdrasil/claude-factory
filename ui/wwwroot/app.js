@@ -11,7 +11,7 @@ const app = document.getElementById('app');
 const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
-  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, stale: false,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -55,7 +55,7 @@ function focusPath(el) {
 
 async function api(path, init = {}) {
   const r = await fetch(path, { ...init, headers: { 'X-Factory-Token': token, ...init.headers } });
-  if (!r.ok) throw new Error(`${init.method || 'GET'} ${path} answered ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(`${init.method || 'GET'} ${path} answered ${r.status}`), { status: r.status });
   return r;
 }
 
@@ -63,7 +63,7 @@ async function loadDetail(id) {
   if (!id || id === 'setup') return null;
   const r = await fetch(`/api/tasks/${id}`, { headers: { 'X-Factory-Token': token } });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`GET /api/tasks/${id} answered ${r.status}`);
+  if (!r.ok) throw Object.assign(new Error(`GET /api/tasks/${id} answered ${r.status}`), { status: r.status });
   const detail = await r.json();
   detail.blockDetails = (await Promise.all(detail.blocks.map((b) => loadDetail(b.id)))).filter(Boolean);
   return detail;
@@ -127,9 +127,28 @@ function refresh() {
 function showError(err) {
   const p = document.createElement('p');
   p.className = 'error';
-  p.textContent = `${err.message}. Open the URL ui-up.sh printed.`;
+  p.textContent = err.status === 401
+    ? 'The UI token is not valid any more: open the URL ui-up.sh printed.'
+    : `${err.message}. Open the URL ui-up.sh printed.`;
   app.querySelector('.error')?.remove();
   app.prepend(p);
+}
+
+/** The cue that the page may show old data, while the change stream is down; every render puts it back. */
+function staleCue() {
+  app.querySelector('.stale')?.remove();
+  if (!S.stale) return;
+  const p = document.createElement('p');
+  p.className = 'stale';
+  p.setAttribute('role', 'status');
+  p.textContent = 'Live updates stopped, reconnecting. What you see may be out of date.';
+  app.prepend(p);
+}
+
+function stale(on) {
+  if (S.stale === on) return;
+  S.stale = on;
+  staleCue();
 }
 
 function group(id) {
@@ -173,6 +192,7 @@ function render() {
   page.querySelector('.strip').append(renderSetupStrip(S.setup));
   page.append(renderTab());
   app.replaceChildren(page);
+  staleCue();
   const grid = app.querySelector('.grid-wrap');
   if (grid) grid.scrollLeft = left;
   if (S.drawer) {
@@ -316,12 +336,17 @@ document.addEventListener('keydown', (e) => {
 
 async function stream() {
   for (;;) {
+    let refused = false;
     try {
       const reader = (await api('/api/stream')).body.getReader();
+      stale(false);
       while (!(await reader.read()).done) refresh();
     } catch (err) {
-      showError(err);
+      // why: a refused token needs the new URL; any other drop is retried below, so the page only marks its data stale
+      refused = err.status === 401;
+      if (refused) showError(err);
     }
+    stale(!refused);
     await new Promise((r) => setTimeout(r, 1000));
     refresh();
   }
