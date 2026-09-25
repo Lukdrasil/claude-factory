@@ -1,8 +1,9 @@
 #!/bin/sh
 # The fixture of the Factory UI suites, sourced by tests/ui-server.test.sh and tests/ui-page.test.sh once Docker
-# is known to run, with $repo, $bin, $tmp and $name set: the check helpers, a stub `herdr` on PATH, two state
+# is known to run, with $repo, $bin, $tmp, $name and $image set: the check helpers, a stub `herdr` on PATH, two state
 # repos on an ephemeral ui_port, and a UI home with session s1 (pane w1:p1, task T-001) and its asks q1 and q3
-# open and q2 answered, each one grill round. It exports FACTORY_UI_HOME and FACTORY_UI_CONTAINER. `browser` is
+# open and q2 answered, each one grill round. It exports FACTORY_UI_HOME, FACTORY_UI_CONTAINER and FACTORY_UI_IMAGE,
+# the suite's own tag, so ui-up.sh never runs or builds the shared claude-factory-ui:<version> of a real UI. `browser` is
 # the Playwright harness of the page suites; `org_state <dir>` builds a third state repo with the real scripts for
 # the request, org and setup routes.
 
@@ -63,7 +64,8 @@ HERDR_STUB="$tmp/herdr"
 : > "$HERDR_STUB/log"
 PATH="$tmp/path:$PATH"
 FACTORY_UI_CONTAINER=$name
-export HERDR_STUB PATH FACTORY_UI_CONTAINER
+FACTORY_UI_IMAGE=$image
+export HERDR_STUB PATH FACTORY_UI_CONTAINER FACTORY_UI_IMAGE
 unset HERDR_PANE_ID HERDR_WORKSPACE_ID
 
 # --- the fixture: two state repos and a UI home with one session, two open asks and one answered ------------------

@@ -154,4 +154,6 @@ the host needs no .NET, and drives the container end to end through `ui-up.sh` a
 `tests/ui-page.test.sh` drives the page in Chromium from the `mcr.microsoft.com/playwright` image against the same
 fixture, `tests/ui-fixture.sh`; `tests/ui-org.test.sh`, `tests/ui-setup.test.sh` and `tests/ui-task.test.sh` do
 the same for the Org tab, the setup flows with the Setup and Memory tabs, and the task drawer. `ui-up.sh` reuses an existing image, so run `docker image rm
-claude-factory-ui:<version>` after a change under `ui/`.
+claude-factory-ui:<version>` after a change under `ui/`. The suites never use that tag: each builds this checkout's
+image under its own tag, which `tests/ui-fixture.sh` hands to `ui-up.sh` as `FACTORY_UI_IMAGE`, and removes it at
+the end.

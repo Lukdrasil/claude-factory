@@ -5,7 +5,8 @@
 # fallback, the relay tab, the exit codes, the org routes over a state built with the real scripts (requests, the
 # org, setup, the archive fallback, the free message to the CEO, the scan past .git and .capacity), and the
 # server's own xunit tests in the SDK image. The container is
-# named from FACTORY_UI_CONTAINER so a real claude-factory-ui on this machine is never touched.
+# named from FACTORY_UI_CONTAINER and its image tagged from FACTORY_UI_IMAGE, per run, so neither a real
+# claude-factory-ui on this machine nor its shared tag claude-factory-ui:<version> is ever touched or tested.
 # Without Docker it prints `SKIP ui-server: no docker` and exits 0.
 set -u
 unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
@@ -20,12 +21,14 @@ fi
 tmp=$(mktemp -d)
 name="cf-ui-test-$$"
 ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/.claude-plugin/plugin.json" | head -n1)
-image="claude-factory-ui:$ver"
+image="claude-factory-ui:test-$$"
+shared="claude-factory-ui:$ver"
 stream=''
 cleanup() {
   [ -z "$stream" ] || kill "$stream" 2>/dev/null
   FACTORY_UI_CONTAINER=$name HERDR_ENV=1 timeout 120 sh "$bin/ui-down.sh" >/dev/null 2>&1
-  docker rm -f "$name" "$name-hold" "$name-free" >/dev/null 2>&1
+  docker rm -f "$name" "$name-hold" "$name-free" "$name-shared" >/dev/null 2>&1
+  docker image rm "$image" >/dev/null 2>&1
   chmod -R u+rwx "$tmp" 2>/dev/null
   rm -rf "$tmp"
 }
@@ -62,13 +65,19 @@ is 'without Docker this suite prints only its skip line'      "$out" 'SKIP ui-se
 is 'without Docker this suite exits 0'                        "$rc" 0
 
 # --- the first ui-up.sh: builds the image, starts the container as the host uid:gid, opens the relay tab ----------
-if docker image inspect "$image" >/dev/null 2>&1; then
-  docker image rm "$image" >/dev/null 2>&1 || echo "NOTE $image is in use by a container; it is reused, not rebuilt"
-fi
+# F23: with the shared tag in use by a container, as by the human's own UI, the suite still builds and runs the
+# image of this checkout under its own tag and leaves the shared tag where it was
+shared_id=$(docker image inspect -f '{{.Id}}' "$shared" 2>/dev/null) || shared_id=''
+[ -z "$shared_id" ] || docker create --name "$name-shared" "$shared" >/dev/null
+is "the per-run image $image is not there before the first ui-up.sh" "$(docker image inspect -f ok "$image" 2>/dev/null)" ''
 up --state "$state1"; rc=$?
 is 'the first ui-up.sh exits 0'                               "$rc" 0
 [ "$rc" = 0 ] || sed 's/^/  up: /' "$tmp/up.err" | tail -n 30
 is "the image $image exists"                                  "$(docker image inspect -f ok "$image" 2>/dev/null)" ok
+is 'the container runs the per-run image, not the shared tag' "$(docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null)" "$image"
+is 'the container runs the image built under the per-run tag' "$(docker inspect -f '{{.Image}}' "$name" 2>/dev/null)" \
+  "$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null)"
+is "the shared tag $shared is left where it was"              "$(docker image inspect -f '{{.Id}}' "$shared" 2>/dev/null)" "$shared_id"
 is 'the container runs'                                       "$(running)" true
 is 'it runs as the host uid:gid'                              "$(docker inspect -f '{{.Config.User}}' "$name" 2>/dev/null)" "$(id -u):$(id -g)"
 is 'its cf.version label is the plugin version'               "$(label cf.version)" "$ver"
