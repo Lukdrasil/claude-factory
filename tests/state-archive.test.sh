@@ -82,6 +82,10 @@ mkdir -p "$st/requests/R-20260901-1/issues" "$st/requests/R-20260902-1"
 printf -- '---\ntitle: a\n---\n\nStatus: done\n\n# Map\n' > "$st/requests/R-20260901-1/map.md"
 printf 'Type: task\nStatus: resolved\n' > "$st/requests/R-20260901-1/issues/01-one.md"
 printf -- '---\ntitle: b\n---\n\nStatus: running\n' > "$st/requests/R-20260902-1/map.md"
+# a done request whose parent T-002 stays live (its block is open): it waits for the parent
+mkdir -p "$st/requests/R-20260903-1"
+printf -- '---\ntitle: c\n---\n\nStatus: done\n' > "$st/requests/R-20260903-1/map.md"
+sed -i 's/^status: done$/status: done\nrequest: R-20260903-1/' "$d/tasks/T-002-demo.md"
 printf 'shared notes\n' > "$st/notes.md"
 commit_at '2026-08-15T10:00:00' fixture
 
@@ -152,6 +156,8 @@ sh "$bin/state-archive.sh" --all --dry-run --state "$st" >"$tmp/out" 2>&1 || rc=
 check '--all --dry-run exits 0' 0 "$rc"
 check '--all --dry-run prints T-007' yes "$(has "$tmp/out" 'T-007-demo.md')"
 check '--all --dry-run prints the done request' yes "$(has "$tmp/out" 'requests/R-20260901-1')"
+check '--all --dry-run skips the done request of a live parent' 'no yes' \
+  "$(has "$tmp/out" 'requests/R-20260903-1 ->') $(grep -q '^skipped: R-20260903-1 ' "$tmp/out" && echo yes || echo no)"
 check '--all --dry-run makes no commit' "$before" "$(git -C "$st" rev-parse HEAD)"
 check '--all --dry-run moves nothing' '' "$(git -C "$st" status --porcelain)"
 
@@ -192,6 +198,9 @@ check '--all moves the done request' yes "$(there requests/archive/2026-09/R-202
 check '--all moves the request tickets along' yes "$(there requests/archive/2026-09/R-20260901-1/issues/01-one.md)"
 check 'the done request is no longer live' no "$(there requests/R-20260901-1)"
 check '--all keeps the running request' yes "$(there requests/R-20260902-1/map.md)"
+check '--all keeps a done request whose parent is live' yes "$(there requests/R-20260903-1/map.md)"
+check 'and prints a skipped: line naming the live parent' yes \
+  "$(grep '^skipped: R-20260903-1 ' "$tmp/out" | grep -q T-002 && echo yes || echo no)"
 check '--all leaves a clean tree' '' "$(git -C "$st" status --porcelain)"
 
 # --- once the dependent closes, T-003 goes too ---------------------------------------------
