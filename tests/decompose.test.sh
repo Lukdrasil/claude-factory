@@ -230,6 +230,14 @@ headless none-with-prose 'none, a config file and a test with no code surface'
 headless file-only '`src/export/cli.py`'
 headless bare-none-on-a-feature 'none'
 
+# F29 (sim, 2026-09-25): the grill left a plan whose goal could not be an MR title, and only decompose.sh
+# refused it, after plan-check had signed that plan hash. plan-lint runs the same title check.
+lp="$state/repos/demo/plans/long-goal-plan-ready.md"
+awk '/^- goal: feat/ && !d { print "- goal: A new index module in the tags repo that keeps a tag index of note ids and writes it atomically as a versioned JSON file for callers"; d = 1; next } { print }' "$plan" > "$lp"
+sh "$bin/plan-lint.sh" "$lp" >/dev/null 2>"$tmp/lgerr"
+[ $? -eq 1 ]; check 'plan-lint refuses a goal that cannot be the MR title' $?
+grep -q 'MR title' "$tmp/lgerr"; check 'the refusal says it is the MR title' $?
+
 # --- T-253: the steps of a proposal become the block's `## Checklist` --------------------------------
 section() { # <file> <heading>: the non-blank lines under the heading, up to the next `## `
   awk -v h="$2" '$0 == h { on = 1; next } on && /^## / { exit } on && NF { print }' "$1"
