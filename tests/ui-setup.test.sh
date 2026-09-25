@@ -2,7 +2,8 @@
 # The setup flows in a browser: the fixture of tests/ui-fixture.sh with an init session holding the confirm ask of
 # the real factory-init.sh preview and a doctor session holding one round with a question per tool, then three
 # servers in turn: over the fixture state repo, with only /ui before a factory root exists, and over the state repo
-# factory-init.sh --yes made, with a clone registered through factory-add-repo.sh. tests/ui-setup.test.js drives
+# factory-init.sh --yes made, with a clone registered through factory-add-repo.sh, a CEO session, an onboarding report
+# and a pending add-repo file for the Repositories section. tests/ui-setup.test.js drives
 # each one in the Playwright container of tests/ui-page.test.sh and prints its own PASS and FAIL lines. Without
 # Docker it prints `SKIP ui-setup: no docker`.
 set -u
@@ -168,6 +169,19 @@ git -C "$tmp/demo" -c user.name=t -c user.email=t@t add -A
 git -C "$tmp/demo" -c user.name=t -c user.email=t@t commit -qm demo
 sh "$bin/factory-add-repo.sh" --root "$root" --repo "$tmp/demo" --yes > "$tmp/add.out" 2>&1
 is 'factory-add-repo.sh --yes exits 0'                        "$?" 0
+
+# the Repositories section: a CEO to send to, an onboarding report of demo (C5) and a pending add-repo file (C3)
+sh "$bin/ui-session.sh" --session s-ceo --pane w1:p9 --flow ceo --task ceo || bad 'ui-session.sh registers the CEO'
+{
+  printf -- '---\nrepo: demo\nstatus: done\nat: 2026-09-25T12:00:00Z\nsession: 5f1c\nstack: dotnet\n---\n# Onboarding of demo\n\n'
+  printf 'An onboarding session reports and proposes; it changes nothing. Send a proposal as a request to have a lead do it.\n\n'
+  printf '## Summary\nA **dotnet** fixture.\n\n## Checks\n- done registration: demo is in repos.yml\n'
+  printf -- '- failing ci: <script>window.pwned = 1</script> never runs dotnet test Fix: add a test job\n\n'
+  printf '## Proposals\n- P1 ci: add a CI job that runs "dotnet test"\n'
+} > "$root/state/repos/demo/onboarding.md"
+mkdir -p "$ui/setup/add-repo"
+printf '{"at":"2026-09-25T12:10:00Z","key":"fresh","url":"https://example.test/g/fresh.git","path":"/c/fresh","state":"pending","detail":"/c/fresh"}\n' \
+  > "$ui/setup/add-repo/fresh.json"
 
 if [ "$rc" = 0 ] && ready "$(cat "$ui/port")"; then
   is 'GET /api/setup over the new state repo is 200'          "$(http "$(cat "$ui/port")" /api/setup -H "X-Factory-Token: $token")" 200
