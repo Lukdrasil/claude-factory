@@ -11,6 +11,8 @@ that used to sit in that key lives here instead.
   (ADR-0049). A cwd under `WORK_DIR` that is no task worktree, such as `WORK_DIR/state` or `WORK_DIR/<key>`,
   may write only inside that top-level directory. The session hooks, `SessionStart`, `PreCompact`, the PreToolUse
   tripwire, run everywhere.
+- `ask-gate.sh` runs on `AskUserQuestion`: with `ui: docker` in herdr a session with a `FACTORY_ROLE` or `FACTORY_UNIT`
+  asks through `skills/_shared/ask.md`, so the terminal dialog is denied; a human's own session keeps it.
 - `attribution-gate.sh` runs on `Bash` as well as the write tools: a commit, a tag and a forge command
   carry their text in the command, an MR description and a progress file in a file. On `Bash` it also
   resolves the files the command reads - `--description-file`, `--body-file`, `git commit -F`, `-f key=@path`,
