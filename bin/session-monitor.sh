@@ -61,7 +61,9 @@
 # Every unit has a role: the step for a step, `repo-lead` for a lead, `pass` for a pass, and the agent of
 # model-for.sh --agent for a block or a leaf. A herdr spawn passes `--env FACTORY_ROLE=<role> --env
 # FACTORY_UNIT=<unit> --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on its create, and a printed line carries the same
-# three as a prefix of its `claude` command. The herdr agent name is plan 3.6's `<role>_<task id lowercased>`,
+# three as a prefix of its `claude` command. FACTORY_CLAUDE_ARGS, when set, is appended word by word to every
+# `claude` command line, spawned or printed (a test factory loads the plugin under test with `--plugin-dir` and its
+# own WORK_DIR with `--settings`). The herdr agent name is plan 3.6's `<role>_<task id lowercased>`,
 # `lead` for a lead, the leading `t-` dropped for an alias id and kept for a legacy one (`lead_ecs-12`,
 # `implementer_t-264-02`), and `pass_<alias>-<agent>` for a pass, cut at 31 characters.
 #
@@ -526,8 +528,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
     [ -z "$wt" ] || printf '%s\n' "$wt"
-    printf '  cd %s && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s" "%s"\n' \
-      "$cwd" "$role" "$id" "$model" "$label" "$prompt"
+    printf '  cd %s && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
+      "$cwd" "$role" "$id" "$model" "$label" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$prompt"
     continue
   fi
   lease "$id" "$role"
@@ -551,7 +553,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   if [ "$role" != pass ] && { [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; }; then
     echo "session-monitor: no tab record for $id, so its tab is not closed by the scripts" >&2
   fi
-  if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" --name "$label" 2>&1 >/dev/null); then
+  if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" --name "$label" ${FACTORY_CLAUDE_ARGS:-} 2>&1 >/dev/null); then
     case "$err" in
       *agent_not_ready*)
         # plan 3.7: a dialog at startup (trust, login) answers agent_not_ready at once and the name is already
