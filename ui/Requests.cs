@@ -9,6 +9,22 @@ public sealed record Ticket(
 
 public sealed record BlockInfo(string Id, string Status, string Goal, string Acceptance);
 
+public sealed record MapLinkHtml(string Title, string Gist);
+
+/// <summary>
+/// The markdown of a map rendered: its free-text sections, each empty when its section is, and the title and gist of
+/// every line of Decisions so far and Out of scope inline, in their order.
+/// </summary>
+public sealed record RequestHtml(string Destination, string Notes, string Terms, string Fog, List<MapLinkHtml> Decisions, List<MapLinkHtml> OutOfScope)
+{
+    public static RequestHtml Of(RequestMap map)
+    {
+        static List<MapLinkHtml> Lines(List<MapLink> links) => links.Select(l => new MapLinkHtml(Md.Inline(l.Title), Md.Inline(l.Gist))).ToList();
+        return new RequestHtml(Md.ToHtml(map.Destination), Md.ToHtml(map.Notes), Md.ToHtml(map.Terms), Md.ToHtml(map.Fog),
+            Lines(map.Decisions), Lines(map.OutOfScope));
+    }
+}
+
 public sealed record ParentInfo(string Id, string Repo, string Priority, string Status, string Goal, string Acceptance, List<BlockInfo> Blocks);
 
 public sealed record RequestDetail(
@@ -23,7 +39,8 @@ public sealed record RequestDetail(
     string Fog,
     List<Ticket> Tickets,
     List<string> Frontier,
-    List<ParentInfo> Parents);
+    List<ParentInfo> Parents,
+    RequestHtml Html);
 
 /// <summary>
 /// One <c>requests/&lt;R-id&gt;/map.md</c> in the shape of skills/wayfinder/references/format.md: the <c>Status:</c>
@@ -186,7 +203,7 @@ public sealed partial class StateReader
                     .ToList()))
             .ToList();
         return new RequestDetail(id, map.Status, map.Destination, map.Notes, map.Terms, archived, map.Decisions, map.OutOfScope,
-            map.Fog, tickets, Tickets.Frontier(tickets), parents);
+            map.Fog, tickets, Tickets.Frontier(tickets), parents, RequestHtml.Of(map));
     }
 
     /// <summary>Request folders holding a map.md, live first, an id archived and live at once read live.</summary>

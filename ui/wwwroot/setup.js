@@ -31,7 +31,7 @@ export function renderSetupTab(setup) {
     el.innerHTML = '<p class="muted">No doctor report yet. init, add-repo and doctor write it: run <code>/claude-factory:factory doctor</code> in a terminal.</p>';
     return el;
   }
-  const count = (s) => steps.filter((x) => x.state === s).length;
+  const count = (s) => steps.filter((x) => x.id !== 'doctor' && x.state === s).length; // why: the doctor step sums the others
   const ceo = steps.find((s) => s.id === 'ceo');
   const before = steps.filter((s) => s.id !== 'ceo' && s.id !== 'doctor' && s.state !== 'done').length;
   el.innerHTML = `<p class="muted">doctor.json of ${when(setup.doctorAt) || 'an unknown time'}: `
