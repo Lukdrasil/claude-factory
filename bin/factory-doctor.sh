@@ -185,9 +185,11 @@ check_claude() {
   else step claude failing "claude --version prints nothing" 'reinstall Claude Code'; fi
 }
 
-# the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside)
+# the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside);
+# an http(s) host keeps its port, the forge's own (a self-hosted GitLab on :8929), an ssh one drops the sshd's
 host_of() {
   case "$1" in
+    http://*|https://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*} ;;
     *://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*}; ho=${ho%%:*} ;;
     *@*:*) ho=${1#*@}; ho=${ho%%:*} ;;
     *) ho='' ;;
@@ -203,9 +205,12 @@ project_of() {
 }
 cli_of() { if [ "$1" = github.com ]; then echo gh; else echo glab; fi; }
 logins=' '
+# glab --hostname refuses a host:port ("invalid hostname"): its status is read off the status of every host, and
+# its api goes through GITLAB_HOST, as in forge.sh
 logged_in() { # <cli> <host>, one auth status per pair
   case "$logins" in *" $1@$2=1 "*) return 0 ;; *" $1@$2=0 "*) return 1 ;; esac
-  if "$1" auth status --hostname "$2" 2>&1 | grep -q "Logged in to $2"; then logins="$logins$1@$2=1 "; return 0; fi
+  case "$2" in *:*) set -- "$1" "$2" ;; *) set -- "$1" "$2" --hostname "$2" ;; esac
+  if "$1" auth status ${3:+"$3" "$4"} 2>&1 | grep -q "Logged in to $2 "; then logins="$logins$1@$2=1 "; return 0; fi
   logins="$logins$1@$2=0 "; return 1
 }
 
@@ -365,7 +370,10 @@ check_repo_mr_class() { # <key>
   if ! on_path "$mc"; then step "$id" missing "MR class of $1 not read: $mc is not installed" "install $mc, then rerun doctor"; return 0; fi
   if ! logged_in "$mc" "$mh"; then step "$id" missing "MR class of $1 not read: $mc is not logged in to $mh" "$mc auth login --hostname $mh"; return 0; fi
   if [ "$mc" = glab ]; then
-    mj=$(glab api --hostname "$mh" "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj=''
+    case "$mh" in
+      *:*) mj=$(GITLAB_HOST=$mh glab api "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+      *) mj=$(glab api --hostname "$mh" "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+    esac
     if [ -z "$mj" ]; then step "$id" failing "MR class of $1 not read: glab api projects/$mp failed on $mh" "check that $mu exists and glab reaches $mh"; return 0; fi
     mm=$(json_val "$mj" merge_method); sq=$(json_val "$mj" squash_option)
     req=$(json_val "$mj" only_allow_merge_if_pipeline_succeeds); skp=$(json_val "$mj" allow_merge_on_skipped_pipeline)

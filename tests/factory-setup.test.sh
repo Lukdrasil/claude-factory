@@ -44,11 +44,19 @@ cat > "$stub/glab" <<'EOF'
 #!/bin/sh
 case "$1 ${2:-}" in
   "auth status")
+    if [ $# -lt 4 ]; then
+      for h in ${GSTUB_HOSTS:-}; do echo "  Logged in to $h as tester (keyring)" >&2; done
+      exit 0
+    fi
+    case "$4" in *:*) echo "invalid hostname $4" >&2; exit 1 ;; esac
     case " ${GSTUB_HOSTS:-} " in
       *" $4 "*) echo "  Logged in to $4 as tester (keyring)" >&2 ;;
       *) echo "  $4: no token found" >&2; exit 1 ;;
     esac ;;
-  "api --hostname") cat "$GSTUB_JSON" ;;
+  "api --hostname")
+    case "$3" in *:*) echo "invalid hostname $3" >&2; exit 1 ;; esac
+    cat "$GSTUB_JSON" ;;
+  "api projects/"*) [ -n "${GITLAB_HOST:-}" ] || exit 1; echo "$GITLAB_HOST" > "$GSTUB_JSON.host"; cat "$GSTUB_JSON" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -356,6 +364,15 @@ GSTUB_JSON="$tmp/class-c.json" djson
 has "pipeline required and skipped not counted is class C, failing" '^failing .*class C' "$(step repo:alpha:mr-class)"
 has "the class C fix names the setting" '\| .*allow_merge_on_skipped_pipeline' "$(step repo:alpha:mr-class)"
 has "doctor is failing while a step fails" '^failing ' "$(step doctor)"
+
+# F10: an http(s) origin with a port, a self-hosted GitLab on :8929: the host keeps its port, and glab reads it
+# without --hostname, which refuses a host:port
+sed -i 's#https://gl.test/grp/alpha.git#http://localhost:8929/g/r.git#' "$st/repos.yml"
+GSTUB_JSON="$tmp/class-a.json" GSTUB_HOSTS='localhost:8929 gl.test' djson
+has "a login on localhost:8929 is done" '^done .*localhost:8929' "$(step forge-login)"
+has "the MR class of a host:port origin is read" '^done .*class A' "$(step repo:alpha:mr-class)"
+has "glab api gets the host:port through GITLAB_HOST" '^localhost:8929$' "$(cat "$tmp/class-a.json.host" 2>/dev/null)"
+git -C "$st" checkout -q -- repos.yml
 
 mv "$dhome/.config/herdr/config.toml" "$tmp/config.toml.off"
 djson
