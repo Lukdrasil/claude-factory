@@ -316,6 +316,12 @@ if [ -n "$pending" ]; then
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
+  elif [ "${FACTORY_ROLE:-}" = repo-lead ] && { [ ! -e "$bwt/.git" ] || [ "$bs" = ready ]; }; then
+    # why: a lead herds its blocks as sessions and session-monitor.sh claims each one it starts; a claim of the
+    # why: lead's own leaves it no ready block to dispatch (F36)
+    emit "Step 11 of 16: dispatch wave ${wave:-1} of $id" "every ready block of the wave printed <id> spawned from session-monitor.sh, which claimed it for its session."
+    [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
+    cmd "$bin/session-monitor.sh --task $id$wave_arg --spawn herdr"
   elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ]; then
     emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
