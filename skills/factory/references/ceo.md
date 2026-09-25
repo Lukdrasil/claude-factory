@@ -222,6 +222,13 @@ below goes through `_shared/ask.md` with flow `add-repo` and task `none`.
    - `skipped` with `capacity: sessions full`: one notice ask `add-repo-<key>-wait`,
      "onboarding of <key> waits for a free session: press Start onboarding again". Nothing waits in this session.
    - `skipped` with `runs already`: nothing to do.
+   - `still at a dialog` (exit 2): `herdr agent read onboard_<key> --source recent-unwrapped --lines 40`. The
+     folder trust dialog of the new clone is the human's call, since trusting runs the clone's own settings:
+     the confirm ask `add-repo-<key>-trust`, "Trust <path> for its onboarding session?", with what trusting
+     runs from `ls -a <path>/.claude/ <path>/.mcp.json` (settings, hooks, MCP servers), or "none". Yes:
+     `herdr agent send-keys onboard_<key> Down Enter`, then `herdr agent prompt onboard_<key>
+     "/claude-factory:factory onboard <key>"`. No: `herdr agent send-keys onboard_<key> Enter` (No, exit);
+     stop. Any other dialog: the error notice of step 2.
    - Exit 1 (no such key, or its `path:` is missing): the error notice of step 2.
 
 A line `onboard repo <key>` (Start onboarding, Run again): the key check of step 1, then step 4.
