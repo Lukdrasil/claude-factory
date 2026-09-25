@@ -320,4 +320,28 @@ check 'an existing directory that is no clone of the URL exits 1' $?
 [ -f "$clones/taken/notes.txt" ] && ! grep -q '^taken:' "$cstate/repos.yml" && has "$(aj taken)" '"state":"failed"'
 check 'it is left alone, nothing is registered, and the json is failed' $?
 
+# F6: a key registered with the same URL is neither fetched nor cloned again: with its origin gone, a second Send is
+# still nothing to do, json registered at the registered path, and no new directory
+mv "$tmp/origin/demo.git" "$tmp/origin/demo.away"
+before=$(ls -A "$clones")
+out=$(cadd --clone "file://$tmp/origin/demo/"); rc=$?
+[ "$rc" = 0 ] && has "$out" 'nothing to do: demo is registered'; check 'a registered key with the same URL is nothing to do, without the network' $?
+[ "$(printf '%s\n' "$out" | head -n1)" = demo ]; check 'the first stdout line is the key' $?
+! has "$out" '+ git clone' && [ "$(ls -A "$clones")" = "$before" ]; check 'nothing is cloned and no directory is made' $?
+j=$(aj demo)
+has "$j" '"state":"registered"' && has "$j" "\"path\":\"$clones/demo\"" && has "$j" '"detail":""'; check 'the json is registered at the registered path' $?
+mv "$tmp/origin/demo.away" "$tmp/origin/demo.git"
+mkorigin demo2
+out=$(cadd --clone "file://$tmp/elsewhere/demo.git"); rc=$?
+[ "$rc" = 1 ] && grep -qF "key demo is registered for file://$tmp/origin/demo.git" "$tmp/cerr"; check 'a key registered with another URL exits 1' $?
+has "$(aj demo)" '"state":"failed"'; check 'and its json is failed' $?
+printf 'gone: {url: "file://%s/origin/gone.git", default_branch: main, path: "%s/nowhere", alias: GON}\n' "$tmp" "$tmp" >> "$cstate/repos.yml"
+out=$(cadd --clone "file://$tmp/origin/gone.git"); rc=$?
+[ "$rc" = 1 ] && grep -qF "the path of gone, $tmp/nowhere, is no git clone: clone it there or change its path: in $cstate/repos.yml" "$tmp/cerr"
+check 'a registered path missing on disk exits 1 with the fix of the doctor' $?
+[ ! -e "$clones/gone" ] && has "$(aj gone)" '"state":"failed"'; check 'it is not cloned, and its json is failed' $?
+out=$(cadd --clone "file://$tmp/origin/demo2.git" --alias DEM); rc=$?
+[ "$rc" = 1 ] && grep -qF 'alias DEM is taken by demo' "$tmp/cerr"; check 'a taken alias exits 1' $?
+has "$(aj demo2)" '"detail":"alias DEM is taken by demo"' && [ ! -e "$clones/demo2" ]; check 'it is a failed json and nothing is cloned' $?
+
 exit "$fail"
