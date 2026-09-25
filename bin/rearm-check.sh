@@ -9,8 +9,11 @@
 #   a parent worktree <root>/<key>/<T-id>  that herd, when the monitor recorded herdr units for it
 #                                          (`<root>/<key>/.harness/<T-id>/herdr-tabs`) and it is not done or closed;
 #                                          a solve session with subagents records none and is never asked
-#   the state clone (repos.yml, repos/)    every parent with a `request:` that is in_progress or review, or has a
-#                                          block in_progress, tests_ready, review, changes_requested or blocked
+#   the state clone (repos.yml, repos/)    every parent with a `request:` that is in_progress or review, has a
+#                                          block in_progress, tests_ready, review, changes_requested or blocked,
+#                                          or has an open step record (`<T-id>-<step>` whose last line in
+#                                          `<root>/<key>/.harness/<T-id>/herdr-tabs` is not `closed`), so a
+#                                          herd in triage, chart, grill or decompose is one too
 #   anywhere else                          nothing
 #
 # It reads and never writes the state clone's files: the only file it writes is its counter
@@ -75,6 +78,12 @@ for f in $files; do
     case "$request" in -|null) continue ;; esac
     live=''
     case "$status" in in_progress|review) live=1 ;; esac
+    if [ -z "$live" ]; then
+      key=${f#"$state"/repos/}; key=${key%%/*}
+      awk -v t="$id-" 'index($1, t) == 1 && substr($1, length(t) + 1) ~ /^[a-z]/ { l[$1] = $NF }
+        END { for (u in l) if (l[u] != "closed") o = 1; exit !o }' \
+        "$(dirname -- "$state")/$key/.harness/$id/herdr-tabs" 2>/dev/null && live=1
+    fi
     if [ -z "$live" ]; then
       for b in $requested; do
         case "$b" in */"$id"-*) ;; *) continue ;; esac
