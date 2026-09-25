@@ -227,6 +227,8 @@ printf -- '---\nid: T-103\nrepo: demo\nstatus: in_progress\narchetype: feature\n
 printf -- '---\nid: T-103-01\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): a block\n\nDesign (approved in the grill):\n\n### `src/g.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
   > "$hstate/repos/demo/tasks/T-103-01.md"
 
+# the stub starts no agent, so the one herdr would report once claude is up is set beforehand
+herdr_agent implementer_t-101 idle pane-1 sess-101
 out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn herdr --state "$hstate" 2>/dev/null)
 check 'a herdr spawn of a leaf goes out'        '^T-101 spawned '
 out=$(cat "$HERDR_STUB_LOG")
@@ -234,6 +236,7 @@ check 'the tab carries the session name'        '^tab create .*--label "🦊 dem
 check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🦊 demo T-101"'
 out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
 check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
+check 'the record gains the session id once claude is up, for reattach after a herdr restart' '^T-101 tab-1 pane-1 sess-101$'
 
 : > "$HERDR_STUB_LOG"
 out=$(FACTORY_CLAUDE_ARGS='--plugin-dir /sim/plugin --settings /sim/settings.json' \
