@@ -542,3 +542,10 @@ commitlint_cap() { # <clone dir>
   case "${cc_n:-}" in ''|*[!0-9]*|0) cc_n=100 ;; esac
   printf '%s\t%s\n' "$cc_n" "${cc_cfg:-$cc_ci}"
 }
+
+# A line with the userinfo of every scheme URL cut out (https://user:token@host becomes https://host), the redact of
+# factory-doctor.sh: git echoes the URL it was given in its errors, so a token typed into a URL would otherwise reach
+# the terminal, a json file or the state repo. An scp-style git@host:path carries no secret and is kept.
+redact_urls() { # <text>
+  printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'
+}
