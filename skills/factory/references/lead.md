@@ -87,7 +87,8 @@ block session through `herdr agent prompt <role>_<unit> "<line>"`; a `working` s
 of its turn, a `blocked` one refuses it and you send it again until it lands (`skills/herdr/SKILL.md`). Never
 another lead, never another task's sessions. Messages coordinate: a phase reached, a question for the CEO,
 "role full, waiting". A line from the CEO arrives as a prompt in this session. The state repo is the record,
-and a message never carries an approval.
+and a message never carries an approval. `<block> ready again` from the CEO means the human approved a blocked block back to `ready`
+in the state: check it there, then `sh <plugin-root>/bin/solve-next.sh <T-id>` sends it out again.
 
 ## A cross-repo need
 

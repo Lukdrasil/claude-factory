@@ -131,7 +131,9 @@ The settings the state repo holds are changed through the CEO, since `/state` is
 Org tab sends `set capacity <name> <N>`, a repository's default branch Set on the Setup tab `set default branch <key>
 <branch>`, and a draft, triaged or ready parent's base branch Set in its Approve panel `set base <T-id> <branch>`; the
 New request box's Base branch rides on the request as `, base <branch>`. The CEO writes them with `bin/state-set.sh`
-and `bin/state-report.sh --base-branch`.
+and `bin/state-report.sh --base-branch`. Unblock under each blocked task or block of the drawer sends `unblock <T-id>`,
+the human's approval back to `ready`: the CEO runs `bin/task-approve.sh` and tells the parent's lead. It is disabled
+while no CEO session runs.
 
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or

@@ -172,6 +172,7 @@ function group(id) {
     staged: S.staged,
     cursor: S.cursor,
     detail: S.detail?.task.id === id ? S.detail : null,
+    ceo: S.org?.ceo,
     token,
   };
 }
@@ -476,6 +477,7 @@ app.addEventListener('click', (e) => {
     return track(b, () => tellCeo(`set capacity ${b.dataset.name} ${n}`, 'capNote'), false);
   }
   if (act === 'onboard') return track(b, () => tellCeo(onboardLine(b.dataset.key)));
+  if (act === 'unblock') return track(b, () => tellCeo(`unblock ${b.dataset.id}`, 'unblockNote'));
   if (act === 'propose') return track(b, () => propose(b));
   if (act === 'redraw') return track(b, () => redraw(b.closest('[data-visual]')));
   if (act === 'close') return close();

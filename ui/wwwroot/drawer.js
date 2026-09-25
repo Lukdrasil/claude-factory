@@ -46,7 +46,7 @@ export function renderDrawer(group) {
   const ctx = el.querySelector('.context');
   if (group.detail) {
     const task = { ...group.detail, sessions: group.sessions };
-    ctx.before(...[renderBlockedQuestion(task, group.sessions), renderWave(task, group.allSessions), renderTaskPanels(task)].filter(Boolean));
+    ctx.before(...[renderBlockedQuestion(task, group.sessions, group.ceo), renderWave(task, group.allSessions), renderTaskPanels(task)].filter(Boolean));
   }
   ctx.before(...group.sessions.filter((s) => s.visual).map((s) => renderVisual({
     ...s.visual,

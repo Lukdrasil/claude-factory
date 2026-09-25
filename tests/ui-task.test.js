@@ -576,6 +576,26 @@ async function confirmYes(page, name, key) {
     await until('no stale cue', async () => !(await cue.count()), 5000);
   });
 
+  // --- Unblock: disabled with no CEO session, then sends unblock <T-id> to the CEO -----------------------------------
+  const unblock = () => panel(page, 'blocked').locator('[data-act="unblock"][data-id="T-025-01"]');
+  await check('with no CEO session Unblock T-025-01 is disabled and says nothing goes out', async () => {
+    await openTask(page, 'T-025');
+    ok(await unblock().isDisabled(), 'Unblock is enabled');
+    holds(await panelText(page, 'blocked'), ['No CEO session runs, so nothing goes out.']);
+  });
+
+  await check('with a CEO session Unblock T-025-01 posts unblock T-025-01 to the CEO', async () => {
+    fs.mkdirSync(path.join(UI, 'sessions', 's-ceo'), { recursive: true });
+    fs.writeFileSync(path.join(UI, 'sessions', 's-ceo', 'session.md'),
+      '---\nsid: s-ceo\npane: w1:p9\nflow: ceo\ntask: ceo\nstep: \nupdated: 2026-09-25T00:00:00Z\n---\n');
+    await openTask(page, 'T-025');
+    await until('Unblock enabled', async () => !(await unblock().isDisabled()));
+    await unblock().click();
+    const files = await until('an answer file for the CEO', () => answers('s-ceo').length && answers('s-ceo'));
+    const text = fs.readFileSync(path.join(UI, 'sessions', 's-ceo', 'answers', files[0]), 'utf8');
+    ok(text === 'unblock T-025-01', `file: ${JSON.stringify(text)}`);
+  });
+
   await browser.close();
   process.exit(failed);
 })().catch((e) => {

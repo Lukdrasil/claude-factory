@@ -89,8 +89,8 @@ Every line that asks for an action goes on to a session of its own, `sh <plugin-
 ... --spawn herdr` in your workspace, and you only act on what that session reports. A line whose shape is known
 goes straight to its handler; anything else the human says goes to a route session, which judges it. You never
 judge a line whose shape is in the table, and you never ask the human which handler it goes to: a doubt is a
-route session's to settle. The `set` lines are the exception to a session of their own: each is one script you
-run yourself, then one line to the human with what it printed, or its refusal.
+route session's to settle. The `set` lines and `unblock` are the exception to a session of their own: each is one
+script you run yourself, then one line to the human with what it printed, or its refusal.
 
 | the line | you dispatch |
 |---|---|
@@ -105,6 +105,7 @@ run yourself, then one line to the human with what it printed, or its refusal.
 | `set capacity <sessions|role> <N>` | you run `sh <plugin-root>/bin/state-set.sh capacity <name> <N>` |
 | `set default branch <key> <branch>` | you run `sh <plugin-root>/bin/state-set.sh default-branch <key> <branch>` |
 | `set base <T-id> <branch>` | you run `sh <plugin-root>/bin/state-report.sh --task <T-id> --no-status --base-branch <branch>` |
+| `unblock <T-id>` | the human's approval of a `blocked` task or block, the Unblock of the UI: you run `sh <plugin-root>/bin/task-approve.sh <T-id> --state <state>`, then `herdr agent prompt lead_<unit> "<T-id> ready again"` to the lead of its parent when one runs, else `sh <plugin-root>/bin/session-monitor.sh --queue`. A `<T-id>` the state does not show `blocked` is one line to the human, nothing run |
 | anything else from the human | `--step route --message "<the message as received>"` (`references/route.md`) |
 
 What those sessions report arrives as a prompt in this session, a claim like a lead's, which you check against the
