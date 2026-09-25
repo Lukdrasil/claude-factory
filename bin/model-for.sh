@@ -2,7 +2,8 @@
 # The coordinator's model pick per phase/attempt/complexity (T-007) over the archetype x tier table: complexity
 # high or attempt >= 1 escalates to opus at every phase; otherwise
 # phase tests -> opus, phase implement -> opus; with no phase, archetype review/feature/bugfix/refactor -> opus
-# (generated code never runs below opus), triage/ops or tier green -> haiku, everything else -> sonnet.
+# (generated code never runs below opus), tier green -> haiku, everything else (triage and ops included) -> sonnet.
+# Triage and ops run as their own herdr session, which must be in auto mode, and haiku has no auto mode.
 #
 # Phase implement answers opus at every tier: the implement agents (agents/implementer*.md) fix
 # `model: opus` and the coordinator passes no override, so a cheaper answer here would only disagree with the
@@ -62,7 +63,7 @@ esac
 
 case "$archetype" in
   review|feature|bugfix|refactor) echo opus ;;
-  triage|ops) echo haiku ;;
+  triage|ops) echo sonnet ;;
   *)
     if [ "$tier" = green ]; then echo haiku; else echo sonnet; fi
     ;;
