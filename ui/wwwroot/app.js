@@ -13,6 +13,7 @@ const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
   tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, stale: false,
+  busy: new Map(),
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -45,12 +46,14 @@ function keep() {
 /** A selector for the focused control that finds its twin after a render: its card, question and data attributes. */
 function focusPath(el) {
   if (!el || el === document.body || !app.contains(el)) return null;
-  const own = ['act', 'k', 'key', 'tab', 'drawer', 'request', 'kind', 'scope'].filter((k) => el.dataset[k] !== undefined)
+  const own = ['act', 'k', 'key', 'id', 'tab', 'drawer', 'request', 'kind', 'scope'].filter((k) => el.dataset[k] !== undefined)
     .map((k) => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
   if (!own && el.tagName !== 'TEXTAREA') return null;
   const ask = el.closest('[data-ask]')?.dataset.ask;
   const q = el.closest('[data-q]')?.dataset.q;
-  const scope = `${el.closest('[data-intake]') ? '[data-intake] ' : ''}${ask ? `[data-ask="${CSS.escape(ask)}"] ` : ''}${q ? `[data-q="${CSS.escape(q)}"] ` : ''}`;
+  const visual = el.closest('[data-visual]')?.dataset.visual;
+  const scope = `${el.closest('[data-intake]') ? '[data-intake] ' : ''}${visual ? `[data-visual="${CSS.escape(visual)}"] ` : ''}`
+    + `${ask ? `[data-ask="${CSS.escape(ask)}"] ` : ''}${q ? `[data-q="${CSS.escape(q)}"] ` : ''}`;
   return { at: `${scope}${el.tagName.toLowerCase()}${own}`, question: q && scope.trim(), caret: el.selectionStart };
 }
 
@@ -187,6 +190,7 @@ function renderTab() {
 function render() {
   const focus = focusPath(document.activeElement);
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
+  const down = app.querySelector('.grid-wrap')?.scrollTop ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
   const page = renderTop(S.sessions, S.tab);
@@ -195,12 +199,19 @@ function render() {
   app.replaceChildren(page);
   staleCue();
   const grid = app.querySelector('.grid-wrap');
-  if (grid) grid.scrollLeft = left;
+  if (grid) Object.assign(grid, { scrollLeft: left, scrollTop: down });
   if (S.drawer) {
     app.append(renderDrawer(group(S.drawer)));
     if (details) app.querySelector('aside .details')?.setAttribute('open', '');
     app.querySelector('aside').scrollTop = top;
     app.querySelector('aside').dispatchEvent(new Event('scroll'));
+  }
+  for (const [at, state] of S.busy) {
+    for (const b of app.querySelectorAll(at)) {
+      b.disabled = true;
+      b.classList.add(state);
+      b.setAttribute('aria-busy', String(state === 'sending'));
+    }
   }
   keep();
   if (!focus) return;
@@ -264,14 +275,36 @@ async function redraw(visual) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ask: visual.dataset.redraw, text: `Q${visual.dataset.row} redraw` }),
     });
+    return true;
   } catch (err) {
     showError(err);
+    return false;
   }
+}
+
+/** A button whose click posts to a session: disabled and marked sending while the post runs, then, with `hold`, sent
+ * for 20 s, so a second click cannot repeat it; a failed post frees it at once. `post` resolves true once sent. A form
+ * that empties once sent holds nothing, so its next message goes out at once. */
+async function track(b, post, hold = true) {
+  const at = focusPath(b)?.at;
+  if (!at || S.busy.has(at)) return;
+  S.busy.set(at, 'sending');
+  render();
+  if ((await post()) && hold) {
+    S.busy.set(at, 'sent');
+    setTimeout(() => {
+      S.busy.delete(at);
+      render();
+    }, 20000);
+  } else {
+    S.busy.delete(at);
+  }
+  render();
 }
 
 /** A new request from the Pipeline tab's box: a free message to the CEO, as the Memory tab's start buttons send. */
 async function sendRequest() {
-  if (!intake.text.trim()) return;
+  if (!intake.text.trim()) return false;
   const text = `request: ${intake.text.trim()}, priority ${intake.priority}`;
   try {
     await api(`/api/answers/${S.org.ceo.sid}`, {
@@ -281,10 +314,11 @@ async function sendRequest() {
     });
     intake.text = '';
     S.intakeNote = { text: `Sent to the CEO: ${text}` };
+    return true;
   } catch (err) {
     S.intakeNote = { text: `Couldn't send "${text}": ${err.message}. Your request is kept, try Send again.`, error: true };
+    return false;
   }
-  render();
 }
 
 /** A memory pass the human starts: a free message, no ask, typed into the CEO's pane by the relay. */
@@ -297,10 +331,11 @@ async function startPass(b) {
       body: JSON.stringify({ ask: '', text }),
     });
     S.passNote = { text: `Sent to the CEO: ${text}` };
+    return true;
   } catch (err) {
     S.passNote = { text: `Couldn't send "${text}": ${err.message}.`, error: true };
+    return false;
   }
-  render();
 }
 
 /** A line of the Setup tab's Repositories section, a free message to the CEO like the New request box sends; true once sent. */
@@ -321,18 +356,18 @@ async function tellCeo(text) {
 
 /** Send of the Add repository form: the C1 add repo line, the draft kept until the CEO has it. */
 async function sendRepo() {
-  if (!repoForm.url.trim() || urlProblem(repoForm.url.trim()) || aliasProblem(repoForm.alias)) return;
-  if (await tellCeo(addRepoLine(repoForm))) Object.assign(repoForm, { open: false, url: '', alias: '' });
-  render();
+  if (!repoForm.url.trim() || urlProblem(repoForm.url.trim()) || aliasProblem(repoForm.alias)) return false;
+  const sent = await tellCeo(addRepoLine(repoForm));
+  if (sent) Object.assign(repoForm, { open: false, url: '', alias: '' });
+  return sent;
 }
 
 /** Make it a request of one proposal of a report, at the priority picked for that report, P3 unless picked. */
 async function propose(b) {
   const key = b.dataset.key;
   const p = (S.setup.onboarding || []).find((o) => o.repo === key)?.proposals.find((x) => x.id === b.dataset.id);
-  if (!p) return;
-  await tellCeo(proposalLine(key, p, repoForm.prio[key] || 'P3'));
-  render();
+  if (!p) return false;
+  return tellCeo(proposalLine(key, p, repoForm.prio[key] || 'P3'));
 }
 
 function toggle(staged, act, q, text) {
@@ -353,16 +388,16 @@ app.addEventListener('click', (e) => {
   if (b.dataset.drawer) return open(b.dataset.drawer);
   const act = b.dataset.act;
   if (act === 'next') return next();
-  if (act === 'pass') return startPass(b);
-  if (act === 'intake') return sendRequest();
+  if (act === 'pass') return track(b, () => startPass(b));
+  if (act === 'intake') return track(b, sendRequest, false);
   if (act === 'add-repo-form') {
     repoForm.open = !repoForm.open;
     return render();
   }
-  if (act === 'add-repo') return sendRepo();
-  if (act === 'onboard') return tellCeo(onboardLine(b.dataset.key)).then(render);
-  if (act === 'propose') return propose(b);
-  if (act === 'redraw') return redraw(b.closest('[data-visual]'));
+  if (act === 'add-repo') return track(b, sendRepo, false);
+  if (act === 'onboard') return track(b, () => tellCeo(onboardLine(b.dataset.key)));
+  if (act === 'propose') return track(b, () => propose(b));
+  if (act === 'redraw') return track(b, () => redraw(b.closest('[data-visual]')));
   if (act === 'close') return close();
   const key = b.closest('[data-ask]')?.dataset.ask;
   if (!key) return;
@@ -384,8 +419,9 @@ app.addEventListener('click', (e) => {
 
 app.addEventListener('input', (e) => {
   const act = e.target.dataset.act;
-  if (act === 'find' || act === 'finished') {
+  if (act === 'find' || act === 'finished' || act === 'repo') {
     if (act === 'find') view.q = e.target.value;
+    else if (act === 'repo') view.repo = e.target.value;
     else view.finished = e.target.checked;
     return render();
   }

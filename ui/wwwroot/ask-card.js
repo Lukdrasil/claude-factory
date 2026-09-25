@@ -154,7 +154,7 @@ export function renderAsk(ask, given) {
     h += `<footer class="ask-f">${staged.error ? `<span class="bad">${esc(staged.error)}</span>` : ''}`
       + `<div class="will">${text ? `<b>Will be sent:</b><ul class="preview">${preview(view, staged.items)}</ul>` : ''}`
       + `<output aria-label="Exact text">${esc(text)}</output></div>`
-      + `<button class="btn primary" data-act="send" ${text && !staged.sending ? '' : 'disabled'}>Send answer${answered > 1 ? 's' : ''}</button></footer>`;
+      + `<button class="btn primary${staged.sending ? ' sending' : ''}" data-act="send" ${text && !staged.sending ? '' : 'disabled'}>Send answer${answered > 1 ? 's' : ''}</button></footer>`;
   }
   h += `<p class="sid muted">${esc(ask.task)} · ${esc(ask.flow)} · session ${esc(ask.sid)}</p>`;
   el.innerHTML = h;

@@ -31,6 +31,10 @@ ul { margin: 0; padding-left: 18px; }
 .btn.sm { padding: 2px 8px; font-size: 12px; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sending:disabled { opacity: .7; cursor: progress; }
+.btn.sending::after { content: "…"; }
+.btn.sent:disabled { opacity: 1; cursor: default; border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }
+.btn.sent::after { content: " ✓"; }
 .btn.on { border-color: var(--accent); background: var(--accent-soft); }
 .chip { display: inline-block; font: 11px/1.6 var(--mono); padding: 0 6px; margin-right: 4px; border-radius: 4px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
 .chip.accent { background: var(--accent-soft); color: var(--accent); }
@@ -108,24 +112,35 @@ ul { margin: 0; padding-left: 18px; }
 .proposals h4 { margin: 8px 0 4px; }
 .proposals ul { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
 
-.grid-wrap { overflow-x: auto; max-width: 100%; }
+.grid-wrap { overflow: auto; max-width: 100%; max-height: calc(100dvh - 48px); }
 .grid-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 4px; font-weight: 400; }
-.grid-filter input[type="search"] { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: var(--panel); color: var(--ink); font: inherit; }
-table { border-collapse: collapse; min-width: 1100px; width: 100%; background: var(--panel); }
+.grid-filter label { flex-basis: 100%; }
+.grid-filter input[type="search"], .grid-filter select { flex: 1 1 110px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; background: var(--panel); color: var(--ink); font: inherit; }
+table { border-collapse: separate; border-spacing: 0; table-layout: fixed; min-width: 1240px; width: 100%; background: var(--panel); }
 th, td { border-bottom: 1px solid var(--line); padding: 6px; text-align: center; vertical-align: top; }
 th { font-size: 12px; font-weight: 600; color: var(--muted); }
 th small { display: block; font-weight: 400; }
-th.task, td.task { text-align: left; width: 280px; }
+thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); vertical-align: bottom; }
+thead th:nth-child(2) { width: 56px; }
+th.task, td.task { position: sticky; left: 0; z-index: 1; width: 280px; text-align: left; background: var(--panel); border-right: 1px solid var(--line); }
+thead th.task { z-index: 3; }
 td.task button { display: block; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; padding: 0; }
-td.task .goal { display: block; color: var(--muted); font-size: 12px; }
-td.done { color: var(--ok); }
+td.task .goal { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; color: var(--muted); font-size: 12px; }
+td.done { color: var(--ok); font-weight: 700; }
 td.cur { background: var(--accent-soft); }
 tr.sub td { background: var(--bg); text-align: left; font-size: 12px; }
 tr.sub td.task { padding-left: 24px; }
+.bline { display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+.bline .goal { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--muted); }
+tbody tr:not(.req):hover > td:not(.cur) { background: var(--sunk); }
+@media (max-width: 640px) {
+  .grid-wrap { max-height: calc(100dvh - 84px); }
+  th.task, td.task { width: 190px; }
+}
 tr.req th { background: var(--sunk); text-align: left; font-weight: 400; color: var(--ink); }
 tr.req button { border: 0; background: none; padding: 0; margin-right: 6px; font-weight: 600; color: var(--accent); cursor: pointer; }
 
-aside { position: fixed; top: 48px; right: 0; bottom: 0; width: 560px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -4px 0 16px rgb(0 0 0 / .08); }
+aside { position: fixed; z-index: 4; top: 48px; right: 0; bottom: 0; width: 560px; overflow-y: auto; background: var(--panel); border-left: 1px solid var(--line); box-shadow: -4px 0 16px rgb(0 0 0 / .08); }
 aside.decide { width: max(560px, 64vw); }
 @media (max-width: 720px) { aside, aside.decide { left: 0; width: auto; border-left: 0; } }
 @media (max-width: 640px) {

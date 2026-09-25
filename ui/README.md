@@ -123,9 +123,14 @@ The header holds six tabs, and every tab keeps the counter, the setup strip and 
 - Pipeline: the New request box (a text, a priority P0 to P3, P2 by default), which posts `request: <text>,
   priority <P>` as a free message to the CEO's session and is disabled with the command that starts the CEO when
   there is none; the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid, with Search
-  tasks and Show done and closed in its Task header. The grid hides the tasks at `done` or `closed` until that box
-  is ticked, and Search tasks keeps the tasks whose id, goal, repo or request, or a block's id or goal, holds the
-  text, any case; with nothing left the grid reads No task matches. Both last until a reload. A step is
+  tasks, Repository and Show done and closed in its Task header. The grid hides the tasks at `done` or `closed`
+  until that box is ticked, Search tasks keeps the tasks whose id, goal, repo or request, or a block's id or goal,
+  holds the text, any case, and Repository, shown once the board holds more than one repository, keeps the tasks of
+  the one picked; with nothing left the grid reads No task matches. The filters last until a reload. The grid scrolls
+  inside its own box, one viewport high at most, with its header row and Task column in view, its 14 step columns
+  equally wide; a render keeps it scrolled where it was. A status chip reads its meaning: `failed` and `blocked` bad,
+  `triaged` and `review` warn, `ready` to `tests_ready` accent, `done` ok. A task's goal shows two lines, a block's
+  one, each whole in its title. A step is
   ticked from the `steps` the state records, the step a session reports is only marked current. The tasks of one
   request sit under its header row (id, priority, status, destination), the request with the best priority first,
   then the newest, the tasks without a request last; without any request there is no header row. Each task shows
@@ -161,7 +166,12 @@ The page reads `/api/org`, `/api/requests` and `/api/requests/{id}` so that any 
 and treats a missing field as empty, so it runs against a server that lacks them. Besides every stream event it
 reloads every 5 s, since the leases under `.capacity` never reach the stream: the capacity and the Org tab follow them.
 
-On a narrow screen the grid scrolls sideways inside its container, the tabs scroll inside the header and the drawer
+A button whose click posts to a session is disabled and reads `…` while its post runs: Send of New request and of
+Add repository, Start daily and Start weekly, Start onboarding and its reruns, Make it a request and Redraw. All but
+the two Sends, whose form empties once sent, then read `✓` and stay disabled for 20 s, so a second click repeats
+nothing. A failed post frees the button at once. Send of an ask reads `…` while it sends.
+
+On a narrow screen the grid scrolls sideways inside its box, the tabs scroll inside the header and the drawer
 takes the full width, decision mode included.
 
 ## Tests

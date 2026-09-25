@@ -206,6 +206,106 @@ async function stage(q, button, text) {
     ok(got.grid <= 180 && got.below, `positions: ${JSON.stringify(got)}`);
   });
 
+  // a board of 30 tasks with blocks, every status once, long goals: the grid overflows its box both ways
+  const STATUSES = ['draft', 'triaged', 'ready', 'claimed', 'in_progress', 'tests_ready', 'review', 'blocked', 'failed', 'done', 'closed'];
+  const LONG = 'A goal long enough to wrap over several lines in the Task column of the grid, so the row shows only its start and the rest in its title.';
+  const big = [];
+  for (let n = 1; n <= 30; n += 1) {
+    const id = `T-${String(100 + n)}`;
+    const repo = n % 2 ? 'arthurcore' : 'claude-factory';
+    big.push({ id, status: STATUSES[n % STATUSES.length], goal: `${id} ${LONG}`, repo, priority: 'P2', steps: ['3', '4'] });
+    if (n % 5 === 0) big.push({ id: `${id}-01`, status: 'failed', goal: `${id}-01 ${LONG} ${LONG}`, repo });
+  }
+  // why: a page left open keeps its change stream, and six of them take every connection the browser gives the server
+  const withBig = async (w, h, fn) => {
+    const p = await context.newPage();
+    try {
+      await p.setViewportSize({ width: w, height: h });
+      await p.route('**/api/board', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(big) }));
+      await p.goto(`${BASE}/#${TOKEN}`);
+      await until('the big board', async () => (await taskRowIds(p)).includes('T-101'));
+      await p.getByRole('checkbox', { name: /^Show done and closed/ }).check();
+      await until('the done rows', async () => (await taskRowIds(p)).includes('T-109'));
+      return await fn(p);
+    } finally {
+      await p.close();
+    }
+  };
+
+  await check('with 30 tasks the grid scrolls inside its box and its header row stays at the top of it', async () => {
+    const got = await withBig(1280, 700, (p) => p.evaluate(() => {
+      const wrap = document.querySelector('.grid-wrap');
+      wrap.scrollTop = 800;
+      const th = wrap.querySelector('thead th:nth-child(3)');
+      return { scrolled: wrap.scrollTop, wrap: Math.round(wrap.getBoundingClientRect().top), th: Math.round(th.getBoundingClientRect().top) };
+    }));
+    ok(got.scrolled === 800, `the grid does not scroll inside its box: ${JSON.stringify(got)}`);
+    ok(Math.abs(got.th - got.wrap) <= 1, `the header row left the top of the grid: ${JSON.stringify(got)}`);
+  });
+
+  await check('scrolled sideways the Task column stays at the left edge of the grid', async () => {
+    const got = await withBig(390, 844, (p) => p.evaluate(() => {
+      const wrap = document.querySelector('.grid-wrap');
+      wrap.scrollLeft = 400;
+      const left = Math.round(wrap.getBoundingClientRect().left);
+      return { scrolled: wrap.scrollLeft, cells: [...wrap.querySelectorAll('th.task, td.task')].slice(0, 3).map((c) => Math.round(c.getBoundingClientRect().left) - left) };
+    }));
+    ok(got.scrolled === 400, `the grid does not scroll sideways: ${JSON.stringify(got)}`);
+    ok(got.cells.every((x) => Math.abs(x) <= 1), `the Task column moved: ${JSON.stringify(got)}`);
+  });
+
+  await check('the 14 step columns of the grid are equally wide', async () => {
+    const widths = await withBig(1440, 900, (p) => p.locator('thead th').evaluateAll((ths) => ths.slice(2).map((th) => Math.round(th.getBoundingClientRect().width))));
+    ok(widths.length === 14 && Math.max(...widths) - Math.min(...widths) <= 1, `widths: ${widths.join(' ')}`);
+  });
+
+  await check('a status chip reads its meaning: failed and blocked bad, triaged and review warn, ready to tests_ready accent, done ok, draft and closed plain', async () => {
+    const got = await withBig(1440, 900, (p) => p.evaluate(() => [...document.querySelectorAll('td.task .status')]
+      .map((c) => `${c.textContent}=${c.className.replace(/\b(chip|status)\b/g, '').trim() || 'plain'}`)));
+    const want = { draft: 'plain', triaged: 'warn', ready: 'accent', claimed: 'accent', in_progress: 'accent', tests_ready: 'accent', review: 'warn',
+      blocked: 'bad', failed: 'bad', done: 'ok', closed: 'plain' };
+    const wrong = [...new Set(got)].filter((g) => { const [st, tone] = g.split('='); return want[st] !== tone; });
+    ok(got.length >= 36 && !wrong.length, `chips: ${[...new Set(got)].join(' ')}`);
+  });
+
+  await check('a task goal shows at most two lines and a block goal one, each whole in its title', async () => {
+    const got = await withBig(1440, 900, (p) => p.evaluate(() => {
+      const lines = (el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight));
+      const goal = document.querySelector('td.task .goal');
+      const block = document.querySelector('tr.sub .goal');
+      return { goal: lines(goal), block: lines(block), goalTitle: goal.title, blockTitle: block.title };
+    }));
+    ok(got.goal <= 2 && got.block === 1, `lines: ${JSON.stringify(got)}`);
+    ok(got.goalTitle === `T-101 ${LONG}` && got.blockTitle === `T-105-01 ${LONG} ${LONG}`, `titles: ${got.goalTitle} | ${got.blockTitle}`);
+  });
+
+  await check('Repository offers every repository of the board and keeps only the tasks of the one picked, with their blocks', async () => {
+    const got = await withBig(1440, 900, async (p) => {
+      const pick = p.getByRole('combobox', { name: 'Repository' });
+      const options = await pick.locator('option').allInnerTexts();
+      await pick.focus();
+      await pick.selectOption('claude-factory');
+      const ids = await until('only claude-factory', async () => {
+        const now = await taskRowIds(p);
+        return !now.includes('T-101') && now;
+      });
+      return { options, ids, focused: await pick.evaluate((el) => document.activeElement === el) };
+    });
+    ok(got.options.join('|') === 'All repositories|arthurcore|claude-factory', `options: ${got.options.join('|')}`);
+    ok(got.ids.length === 18 && got.ids.every((id) => Number(id.slice(2, 5)) % 2 === 0) && got.ids.includes('T-110-01'), `rows: ${got.ids.join(' ')}`);
+    ok(got.focused, 'the focus left Repository');
+  });
+
+  await check('a render keeps the grid scrolled where it was, down and sideways', async () => {
+    const got = await withBig(1024, 600, async (p) => {
+      await p.evaluate(() => Object.assign(document.querySelector('.grid-wrap'), { scrollTop: 500, scrollLeft: 200 }));
+      await p.getByRole('checkbox', { name: /^Show done and closed/ }).click();
+      await until('T-109 hidden', async () => !(await taskRowIds(p)).includes('T-109'));
+      return p.evaluate(() => [document.querySelector('.grid-wrap').scrollTop, document.querySelector('.grid-wrap').scrollLeft]);
+    });
+    ok(got[0] > 0 && got[1] === 200, `scroll after the render: ${got.join(' ')}`);
+  });
+
   await check('with no state repo the setup chip reads No state repo: run factory init', async () => {
     const p = await context.newPage();
     await p.route('**/api/setup', async (r) => {
@@ -226,6 +326,10 @@ async function stage(q, button, text) {
       return ids.length >= 4 && ids;
     });
     ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003', `rows: ${ids.join(' ')}`);
+  });
+
+  await check('with every task in one repository the grid offers no Repository', async () => {
+    ok(!(await page.getByRole('combobox', { name: 'Repository' }).count()), 'Repository is shown');
   });
 
   await check('the grid hides the done T-004 and the closed T-005, and Show done and closed reads their count', async () => {

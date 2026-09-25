@@ -24,9 +24,12 @@ const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
 /** The New request box's draft, kept across the page's re-renders; app.js empties `text` once the CEO has it. */
 export const intake = { text: '', priority: 'P2' };
 
-/** The grid's filter, kept across the page's re-renders: the done and closed tasks shown or not, and the search text. */
-export const view = { finished: false, q: '' };
+/** The grid's filter, kept across the page's re-renders: the done and closed tasks shown or not, the search text and
+ * the repository picked, '' for all. */
+export const view = { finished: false, q: '', repo: '' };
 const FINISHED = new Set(['done', 'closed']);
+const TONE = { failed: 'bad', blocked: 'bad', triaged: 'warn', review: 'warn', ready: 'accent', claimed: 'accent', in_progress: 'accent', tests_ready: 'accent', done: 'ok' };
+const statusChip = (s) => `<span class="chip status ${TONE[s] || ''}">${esc(s)}</span>`;
 
 /** The drawer a task id or an ask's task belongs to: the parent task (`T-<n>` or `T-<ALIAS>-<n>`) of a block or
  * step, or setup for none. */
@@ -68,12 +71,13 @@ function taskRow(t, sessions) {
     return tick ? `<td class="done">${tick}</td>` : '<td></td>';
   });
   return `<tr><td class="task"><button data-drawer="${esc(t.id)}"><span class="id">${esc(t.id)}</span> ${t.repo ? `<span class="chip repo">${esc(t.repo)}</span>` : ''}`
-    + `<span class="chip">${esc(t.status)}</span><span class="goal">${esc(t.goal)}</span>${at < 0 ? count : ''}</button></td><td>${prio(t.priority)}</td>${cells.join('')}</tr>`;
+    + `${statusChip(t.status)}<span class="goal" title="${esc(t.goal)}">${esc(t.goal)}</span>${at < 0 ? count : ''}</button></td><td>${prio(t.priority)}</td>${cells.join('')}</tr>`;
 }
 
 function blockRow(b, parent, sessions) {
-  return `<tr class="sub"><td class="task"><button data-drawer="${esc(parent)}"><span class="id">${esc(b.id)}</span> <span class="chip">${esc(b.status)}</span></button></td>`
-    + `<td colspan="${STEPS.length + 1}">${sessions.filter((s) => s.task === b.id).map(sessionChip).join('')} ${esc(b.goal)}</td></tr>`;
+  return `<tr class="sub"><td class="task"><button data-drawer="${esc(parent)}"><span class="id">${esc(b.id)}</span> ${statusChip(b.status)}</button></td>`
+    + `<td colspan="${STEPS.length + 1}"><div class="bline">${sessions.filter((s) => s.task === b.id).map(sessionChip).join('')}`
+    + `<span class="goal" title="${esc(b.goal)}">${esc(b.goal)}</span></div></td></tr>`;
 }
 
 function requestRow(id, r) {
@@ -144,7 +148,9 @@ export function renderPipeline(board, sessions, requests = [], capacity = null, 
   const q = view.q.trim().toLowerCase();
   const hit = (t) => [t.id, t.goal, t.repo, t.request].some((v) => v && v.toLowerCase().includes(q));
   const finished = all.filter((t) => FINISHED.has(t.status)).length;
-  const roots = all.filter((t) => (view.finished || !FINISHED.has(t.status)) && (!q || hit(t) || blocksOf(t).some(hit)));
+  const repos = [...new Set(all.map((t) => t.repo).filter(Boolean))].sort();
+  const roots = all.filter((t) => (view.finished || !FINISHED.has(t.status)) && (!view.repo || t.repo === view.repo)
+    && (!q || hit(t) || blocksOf(t).some(hit)));
   const groups = byRequest(roots, requests);
   const heads = groups.some(([k]) => k);
   const bodies = groups.map(([k, ts]) => `<tbody>${heads ? requestRow(k, requests.find((r) => r.id === k)) : ''}${ts.map((t) => taskRow(t, sessions)
@@ -152,6 +158,8 @@ export function renderPipeline(board, sessions, requests = [], capacity = null, 
   // why: the filter sits in the Task header, so on a phone the rows still start right under the page header
   const filter = all.length ? '<span class="grid-filter">'
     + `<input type="search" data-act="find" aria-label="Search tasks" placeholder="Search tasks" value="${esc(view.q)}">`
+    + (repos.length > 1 ? `<select data-act="repo" aria-label="Repository"><option value="">All repositories</option>`
+      + `${repos.map((r) => `<option${r === view.repo ? ' selected' : ''}>${esc(r)}</option>`).join('')}</select>` : '')
     + `<label><input type="checkbox" data-act="finished"${view.finished ? ' checked' : ''}> Show done and closed (${finished})</label></span>` : '';
   const el = document.createElement('div');
   el.className = 'pipeline';

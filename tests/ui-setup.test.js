@@ -618,6 +618,48 @@ async function tabs(page) {
     ok(note.includes('start the daily pass for repo-agent:ecs/implementer'), `note: ${note.slice(0, 300)}`);
   });
 
+  await check('Start daily is disabled and marked sending while its post runs, then sent, and a second click posts nothing', async () => {
+    const { p, posted } = await withTab(context, 'Memory', full, CEO);
+    let release;
+    const held = new Promise((r) => { release = r; });
+    await p.route('**/api/answers/**', async (r) => {
+      posted.push(r.request().postDataJSON());
+      await held;
+      await r.fulfill({ status: 201, contentType: 'application/json', body: '{"file":"1-x.txt"}' });
+    });
+    try {
+      const row = p.locator('[data-passes] tbody tr', { hasText: 'repo-agent:ecs/implementer' });
+      const start = row.getByRole('button', { name: /start daily/i });
+      await until('the row', () => row.isVisible());
+      await start.click();
+      const during = await until('the sending mark', () => start.evaluate((b) => b.classList.contains('sending') && b.disabled && b.getAttribute('aria-busy')));
+      release();
+      const after = await until('the sent mark', () => start.evaluate((b) => b.classList.contains('sent') && b.disabled && getComputedStyle(b, '::after').content));
+      await start.click({ force: true });
+      await p.waitForTimeout(300);
+      ok(during === 'true', `aria-busy while sending: ${during}`);
+      ok(after.includes('✓'), `the sent mark reads ${after}`);
+      ok(posted.length === 1, `${posted.length} posts`);
+    } finally {
+      await p.close();
+    }
+  });
+
+  await check('a Start daily whose post fails is enabled again with no mark', async () => {
+    const { p } = await withTab(context, 'Memory', full, CEO);
+    await p.route('**/api/answers/**', (r) => r.fulfill({ status: 500, body: '' }));
+    try {
+      const start = p.locator('[data-passes] tbody tr', { hasText: 'repo-agent:ecs/implementer' }).getByRole('button', { name: /start daily/i });
+      await until('the button', () => start.isVisible());
+      await start.click();
+      await until('the failed note', async () => /Couldn't send/.test(await p.locator('[data-memory-tab]').innerText()));
+      const got = await start.evaluate((b) => [b.disabled, b.className].join(' '));
+      ok(got === 'false btn sm', `the button after a failed post: ${got}`);
+    } finally {
+      await p.close();
+    }
+  });
+
   await check('Start weekly of global posts start the weekly pass for global', async () => {
     const { p, posted } = await withTab(context, 'Memory', full, CEO);
     const row = p.locator('[data-passes] tbody tr', { has: p.locator('td:first-child', { hasText: /^\s*global\s*$/ }) });
