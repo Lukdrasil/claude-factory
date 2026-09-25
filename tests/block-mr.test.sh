@@ -309,4 +309,57 @@ printf 'block: T-700-03\ntests: 1 run, 0 passed, 1 failed\ncrap:  not bound\nver
 run T-700-03 --dry-run
 check 'a block block-verify.sh found red is refused' 1 "$rc"
 
+# --- Why is the reason, not the title again (F17) ----------------------------------
+section() { # <id> <heading> <text>: appends a section to the task file
+  printf '\n%s\n%s\n' "$2" "$3" >> "$state/repos/demo/tasks/$1.md"
+}
+mkdir -p "$state/repos/demo/plans"
+printf -- '---\nrepo: demo\n---\n\n# Spec\nSearch finds a note by term so nobody scrolls. The rest.\n\n## Terms\n' \
+  > "$state/repos/demo/plans/notes-plan-ready.md"
+plan_line='From the plan `repos/demo/plans/notes-plan-ready.md`'
+
+parent T-600
+section T-600 '## Context' 'Users lose track of notes
+once there are many. They asked for search.'
+block T-600-01
+section T-600-01 '## Context' "$plan_line
+The search reads the title and the body. It skips archived notes.
+
+Design (approved in the grill):
+none"
+review T-600-01 '`ok`: clean.'
+run T-600-01 --dry-run
+check 'Why: a block takes the first sentence of its own ## Context, not the plan line' \
+  '**Why** - The search reads the title and the body.' "$(printf '%s\n' "$out" | grep -F '**Why**')"
+
+block T-600-02
+section T-600-02 '## Context' "$plan_line
+
+Design (approved in the grill):
+none"
+review T-600-02 '`ok`: clean.'
+run T-600-02 --dry-run
+check 'Why: a block with no context of its own takes the first sentence of its parent'"'"'s' \
+  '**Why** - Users lose track of notes once there are many.' "$(printf '%s\n' "$out" | grep -F '**Why**')"
+
+parent T-610
+block T-610-01
+section T-610-01 '## Context' "$plan_line"
+review T-610-01 '`ok`: clean.'
+run T-610-01 --dry-run
+check 'Why: with no context sentence the block takes the plan'"'"'s # Spec sentence' \
+  '**Why** - Search finds a note by term so nobody scrolls.' "$(printf '%s\n' "$out" | grep -F '**Why**')"
+
+parent T-620
+block T-620-01
+review T-620-01 '`ok`: clean.'
+run T-620-01 --dry-run
+check 'Why: with no context and no plan the block falls back to the goal' \
+  '**Why** - feat(demo): ship T-620-01' "$(printf '%s\n' "$out" | grep -F '**Why**')"
+
+section T-620-01 '## Context' "$(awk 'BEGIN { for (i = 0; i < 120; i++) printf "word " }')."
+run T-620-01 --dry-run
+check 'Why: a context sentence that runs the description over 120 words is refused' 1 "$rc"
+has 'the refusal names the 120 words' 'caps it at 120' "$err"
+
 exit $fail

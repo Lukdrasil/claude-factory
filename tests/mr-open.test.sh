@@ -133,4 +133,22 @@ out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp
 check 'block-mr.sh routes an http://localhost:8929 origin to glab' 'glab mr create' \
   "$(printf '%s\n' "$out" | grep -o '^glab mr create' | head -n1)"
 
+# F17: **Why** is the reason, not the title again: the task's ## Context first sentence, else the # Spec
+# sentence of the plan the task names, else the goal
+why() { sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1 | grep -F '**Why**'; }
+check 'Why: with no context and no plan the task MR falls back to the goal' '**Why** - feat(demo): ship T-700' "$(why)"
+
+mkdir -p "$state/repos/demo/plans"
+printf -- '---\nrepo: demo\n---\n\n# Spec\nSearch finds a note\nby term so nobody scrolls. The rest.\n' \
+  > "$state/repos/demo/plans/notes-plan-ready.md"
+printf '\n## Context\nFrom the plan `repos/demo/plans/notes-plan-ready.md`\n' >> "$state/repos/demo/tasks/T-700.md"
+check 'Why: with no context sentence the task MR takes the plan'"'"'s # Spec sentence' \
+  '**Why** - Search finds a note by term so nobody scrolls.' "$(why)"
+
+task T-700 feat/T-700-demo
+printf '\n## Context\nUsers lose track of notes once there are many! They asked for search.\n\n## Acceptance\n- x\n' \
+  >> "$state/repos/demo/tasks/T-700.md"
+check 'Why: the task MR takes the first sentence of the task'"'"'s ## Context' \
+  '**Why** - Users lose track of notes once there are many!' "$(why)"
+
 exit $fail
