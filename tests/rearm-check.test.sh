@@ -4,8 +4,11 @@
 # in_progress or review, has a block in flight, or has an open step record; anywhere else nothing); exit 2 with one herd-list line
 # `<request> <priority> <T-id> <repo> <status>` per herd that no unfinished entry of `background_tasks`, of any
 # type, watches with herd-watch.sh; never with stop_hook_active; at most twice per session through `.harness-rearm-<sid>`;
-# nothing written in the state clone.
+# nothing written in the state clone. The state clone asks only the CEO (FACTORY_ROLE=ceo): a memory pass or a
+# human's own session there gets nothing; a parent worktree asks whatever the role.
 set -u
+FACTORY_ROLE=ceo
+export FACTORY_ROLE
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -127,6 +130,15 @@ is 'the CEO counter sits in the git dir of the state clone' 2 "$(cat "$state/.gi
 is 'and nothing lands in the factory root' '' "$(ls -A "$work" | grep 'harness-rearm')"
 is 'the state clone stays clean' '' "$(git -C "$state" status --porcelain)"
 
+# --- the state clone asks the CEO only ----------------------------------------------------
+r=$(FACTORY_ROLE=pass; stop "$state" r1 '[]')
+is 'a pass session in the state clone exits 0' 0 "$(rc "$r")"
+is 'and prints nothing' '' "$(err "$r")"
+r=$(unset FACTORY_ROLE; stop "$state" r2 '[]')
+is 'a session with no role in the state clone exits 0' 0 "$(rc "$r")"
+is 'and prints nothing' '' "$(err "$r")"
+is 'a ceo session in the state clone is asked' 2 "$(rc "$(stop "$state" r3 '[]')")"
+
 # --- a parent worktree: that herd only ---------------------------------------------------
 r=$(stop "$work/cf/T-CF-3" p1 '[]')
 e=$(err "$r")
@@ -134,6 +146,8 @@ is 'a parent worktree with no watcher exits 2' 2 "$(rc "$r")"
 has 'it lists its own herd' "$req P1 T-CF-3 cf in_progress" "$e"
 lacks 'and no other' 'T-CF-4|T-CF-8' "$e"
 is 'its counter sits in the stamp directory of the task' 1 "$(cat "$work/cf/.harness/T-CF-3/.harness-rearm-p1" 2>/dev/null)"
+is 'a lead (repo-lead) in its parent worktree is asked' 2 "$(rc "$(FACTORY_ROLE=repo-lead; stop "$work/cf/T-CF-3" p6 '[]')")"
+is 'a session with no role in a parent worktree is asked' 2 "$(rc "$(unset FACTORY_ROLE; stop "$work/cf/T-CF-3" p7 '[]')")"
 is 'a parent worktree whose herd is watched exits 0' 0 "$(rc "$(stop "$work/cf/T-CF-3" p2 "[$(mon T-CF-3)]")")"
 is 'a parent worktree with no herdr unit is no herd' 0 "$(rc "$(stop "$work/cf/T-CF-6" p3 '[]')")"
 is 'a done parent needs no watcher' 0 "$(rc "$(stop "$work/cf/T-CF-7" p4 '[]')")"
