@@ -68,6 +68,14 @@ check "the step is for the later block"   "Step 11 of 16: worktree and claim for
 if printf '%s\n' "$out" | grep -q 'waits for the developer'; then printf 'FAIL open MR stalls the stack\n'; fail=1
 else printf 'PASS open MR does not stall the stack\n'; fi
 
+# F36: a lead herds its blocks as sessions, so step 11 hands it the wave dispatch, which claims each block itself;
+# the single-session claim would leave session-monitor.sh nothing to dispatch
+out=$(FACTORY_ROLE=repo-lead sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
+check 'a lead dispatches the wave'      "Step 11 of 16: dispatch wave 2 of T-001" "$out"
+check 'through session-monitor'         "session-monitor.sh --task T-001 --wave 2 --spawn herdr" "$out"
+if printf '%s\n' "$out" | grep -q 'set-status in_progress'; then printf 'FAIL a lead claims the block itself\n'; fail=1
+else printf 'PASS a lead leaves the claim to session-monitor\n'; fi
+
 block T-001-02 review https://forge.test/mr/2
 out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
 check 'the reminder is the step'         'Step 11 of 16: T-001 waits for the developer' "$out"
