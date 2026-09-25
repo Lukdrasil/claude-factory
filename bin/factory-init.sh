@@ -9,7 +9,7 @@
 # An existing <root>/state with a repos.yml is adopted byte for byte; only the missing pieces are added.
 # --from <url> makes <root>/state a clone of an existing state repo (a second machine): the preview clones it into
 # a scratch directory to show what it lacks, the apply moves that clone into place. A new factory.yml carries the
-# capacity defaults. Every run refreshes the doctor.json of the Setup tab.
+# capacity defaults and context_window: 1000000. Every run refreshes the doctor.json of the Setup tab.
 set -eu
 
 root='' settings="$HOME/.claude/settings.json" yes=0 spawn='' ui='' from=''
@@ -86,6 +86,8 @@ printf '%s\n' \
 printf '%s\n' \
   '# standalone factory config (ADR-0052): curation: auto|manual' \
   'curation: auto' \
+  '# the context window of the sessions in tokens (compact-tripwire.sh): 1000000 on a 1M model, 200000 otherwise' \
+  'context_window: 1000000' \
   '# how session-monitor.sh starts a task: herdr|manual' \
   "spawn: $spawn" \
   '# the Factory UI: docker|off, and the port it listens on' \
