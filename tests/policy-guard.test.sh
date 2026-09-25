@@ -363,4 +363,72 @@ proj=$W/state
 try 2 'launched in the state clone: git -C <a block> log stays denied' "$W/state" coord "git -C $BLK log --oneline -3"
 role='' proj=''
 
+# C7 (add-repo F4): an onboarding session (FACTORY_ROLE=onboard, FACTORY_UNIT=onboard-<key>) runs in the registered
+# clone it reports on, launched there, and works from an allowlist: it writes only <state>/repos/<key>/onboarding.md,
+# runs only factory-doctor.sh, doc-cites.sh, state-commit.sh of that file, ui-ask.sh and ui-session.sh, drives herdr
+# only with `agent prompt ceo` and `tab close` of its own tab, and never pushes
+ob() { # <want exit> <label> <Bash|Write|Edit> <cwd> <command or path>
+  node -e 'const [t,c,x]=process.argv.slice(1);process.stdout.write(JSON.stringify({tool_name:t,cwd:c,session_id:"onb",
+    tool_input:t==="Bash"?{command:x}:t==="Edit"?{file_path:x,old_string:"a",new_string:"b"}:{file_path:x,content:"# Onboarding\n"}}))' \
+    "$3" "$4" "$5" | env -u CLAUDE_PROJECT_DIR HOME="$H" FACTORY_ROLE=onboard FACTORY_UNIT=onboard-cf HERDR_TAB_ID=tab-3 \
+    CLAUDE_PROJECT_DIR="$C/cf" WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+  got=$?
+  if [ "$got" -eq "$1" ]; then printf 'PASS onboard: %s\n' "$2"; return; fi
+  printf 'FAIL onboard: want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
+  fail=1
+}
+O=$S/repos/cf/onboarding.md
+ob 0 'Write its report'                           Write "$C/cf" "$O"
+ob 0 'Edit its report from the state clone'       Edit "$S" "$O"
+ob 0 'a heredoc into its report'                  Bash "$C/cf" "cat > $O <<'EOF'
+# Onboarding of cf
+EOF"
+ob 0 'factory-doctor.sh --repo'                   Bash "$C/cf" "sh $P/factory-doctor.sh --root $W --repo $C/cf"
+ob 0 'doc-cites.sh'                               Bash "$C/cf" "sh $P/doc-cites.sh $C/cf"
+ob 0 'state-commit.sh of its report'              Bash "$C/cf" "sh $P/state-commit.sh -m ${q}chore(cf): onboarding started${q} -- repos/cf/onboarding.md"
+ob 0 'state-commit.sh of its report, absolute, with --state' Bash "$C/cf" \
+  "sh $P/state-commit.sh -m \"chore(cf): onboarding report\" --state $S -- $O"
+ob 0 'ui-ask.sh'                                  Bash "$C/cf" "sh $P/ui-ask.sh --session onb --id onboard-cf-x --flow onboard"
+ob 0 'ui-session.sh'                              Bash "$C/cf" "sh $P/ui-session.sh --session onb --step ${q}Onboarding cf${q}"
+ob 0 'herdr agent prompt ceo'                     Bash "$C/cf" 'herdr agent prompt ceo "onboard cf done 7 done 3 missing 1 failing 2 proposals"'
+ob 0 'herdr tab close of its own tab'             Bash "$C/cf" 'herdr tab close "$HERDR_TAB_ID"'
+ob 0 'herdr tab close of its own tab by id'       Bash "$C/cf" 'herdr tab close tab-3'
+ob 0 'reads in the clone'                         Bash "$C/cf" 'ls -la && cat README.md 2>/dev/null | head -n 20'
+ob 0 'git reads in the clone'                     Bash "$C/cf" "git -C $C/cf symbolic-ref refs/remotes/origin/HEAD && git log --oneline -5"
+ob 0 'a read of the state clone'                  Bash "$C/cf" "cat $S/repos/cf/toolset.md"
+ob 2 'Write a task file in the state clone'       Write "$C/cf" "$S/repos/cf/tasks/T-900.md"
+if grep -qF "a write to $S/repos/cf/tasks/T-900.md is not for an onboarding session: it only reports, writing repos/cf/onboarding.md through state-commit.sh (references/onboard.md), and this session runs as FACTORY_ROLE=onboard." "$tmp/err"
+then printf 'PASS onboard: the deny carries the C7 text\n'
+else printf 'FAIL onboard: the deny carries the C7 text: %s\n' "$(head -c 300 "$tmp/err")"; fail=1; fi
+ob 2 'Write the report of another repo'           Write "$C/cf" "$S/repos/userorg/onboarding.md"
+ob 2 'Edit a file of the clone'                   Edit "$C/cf" "$C/cf/README.md"
+ob 2 'Write under /tmp'                           Write "$C/cf" /tmp/onb.md
+ob 2 'a redirect into a task file'                Bash "$C/cf" "echo status: review > $S/repos/cf/tasks/T-900.md"
+ob 2 'a redirect under /tmp'                      Bash "$C/cf" 'echo x > /tmp/onb.txt'
+ob 2 'a redirect to a variable'                   Bash "$C/cf" 'echo x > "$S/x"'
+ob 2 'rm of its report'                           Bash "$C/cf" "rm -f $O"
+ob 2 'sed -i on its report'                       Bash "$C/cf" "sed -i s/a/b/ $O"
+ob 2 'state-report.sh'                            Bash "$C/cf" "sh $P/state-report.sh --task T-900 --set-status review"
+ob 2 'task-new.sh'                                Bash "$C/cf" "sh $P/task-new.sh --repo cf --goal x"
+ob 2 'session-monitor.sh'                         Bash "$C/cf" "sh $P/session-monitor.sh --step onboard --scope cf"
+ob 2 'factory-add-repo.sh'                        Bash "$C/cf" "sh $P/factory-add-repo.sh --root $W --clone https://x.test/y.git"
+ob 2 'a script of the repo'                       Bash "$C/cf" 'sh ./build.sh'
+ob 2 'a denied script inside bash -c'             Bash "$C/cf" "bash -c ${q}sh $P/state-push.sh${q}"
+ob 2 'state-commit.sh of a task file'             Bash "$C/cf" "sh $P/state-commit.sh -m x -- repos/cf/tasks/T-900.md"
+ob 2 'state-commit.sh of its report and a task file' Bash "$C/cf" "sh $P/state-commit.sh -m x -- repos/cf/onboarding.md repos/cf/tasks/T-900.md"
+ob 2 'state-commit.sh with no path'               Bash "$C/cf" "sh $P/state-commit.sh -m x"
+ob 2 'state-commit.sh of another state clone'     Bash "$C/cf" "sh $P/state-commit.sh -m x --state /tmp/st -- repos/cf/onboarding.md"
+ob 2 'git push from the clone'                    Bash "$C/cf" 'git push'
+ob 2 'git push from the state clone'              Bash "$S" 'git push'
+ob 2 'git -C <state clone> push'                  Bash "$C/cf" "git -C $S push origin main"
+ob 2 'herdr agent prompt lead_x'                  Bash "$C/cf" 'herdr agent prompt lead_x "merge it"'
+ob 2 'herdr agent prompt to a lead inside $( )'   Bash "$C/cf" 'echo $(herdr agent prompt lead_x hi)'
+ob 2 'herdr tab create'                           Bash "$C/cf" 'herdr tab create --label x'
+ob 2 'herdr tab close of another tab'             Bash "$C/cf" 'herdr tab close tab-9'
+ob 2 'herdr agent start'                          Bash "$C/cf" 'herdr agent start x --kind claude'
+role=triage
+try 0 'another role keeps herdr agent prompt to a lead' "$C/cf" coord 'herdr agent prompt lead_x "hi"'
+try 0 'another role keeps state-report.sh' "$S" coord "sh $P/state-report.sh --task T-900 --no-status"
+role=''
+
 exit $fail
