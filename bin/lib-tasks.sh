@@ -495,6 +495,27 @@ mr_title_check() { # <title> [<repo key>] -> 0, or the reason on stdout and 1
   return 1
 }
 
+# Every `goal:` of a plan's `## Proposed tasks` that cannot be the MR title it becomes, one reason per line;
+# triage and research goals never become titles. decompose.sh refuses on it and plan-lint.sh checks it earlier,
+# before plan-check signs the plan hash.
+plan_goal_violations() { # <plan-ready.md> [<repo key>]
+  awk '
+    function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
+    /^##[ \t]+Proposed tasks[ \t]*$/ { ps = 1; next }
+    /^##[ \t]/ { if (ps && have) { print arch "\t" goal; have = 0 } ; ps = 0; next }
+    !ps { next }
+    /^###[ \t]/ { if (have) print arch "\t" goal; arch = ""; goal = ""; have = 1; next }
+    /^-[ \t]*goal:/ { g = $0; sub(/^-[ \t]*goal:[ \t]*/, "", g); goal = trim(g); next }
+    /^-[ \t]*archetype:/ { a = $0; sub(/^-[ \t]*archetype:[ \t]*/, "", a); sub(/[ \t,].*$/, "", a); arch = trim(a); next }
+    END { if (ps && have) print arch "\t" goal }
+  ' "$1" | while IFS="$(printf '\t')" read -r pg_arch pg_goal; do
+    [ -n "$pg_goal" ] || continue
+    case "$pg_arch" in triage|research) continue ;; esac
+    pg_reason=$(mr_title_check "$pg_goal" "${2:-}") \
+      || printf 'the `goal:` of a proposal cannot be the MR title it becomes: %s (`%s`)\n' "$pg_reason" "$pg_goal"
+  done
+}
+
 # Does this clone lint its own MR titles, and at what length? A commitlint config, or a CI file that names
 # commitlint or CI_MERGE_REQUEST_TITLE, means the forge judges the title a second time, and the factory's cap
 # has to be no larger than that one (MR !412). An explicit `header-max-length` in the commitlint config wins;
