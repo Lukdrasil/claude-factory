@@ -7,6 +7,11 @@ The rules it checks: the sections **What changed**, **Why**, **Issues**, **How t
 **Follow-ups**, in that order, one with nothing to say left out, the whole thing **under 120 words**, short
 sentences, written for whoever reviews the MR and not for the factory.
 
+**Why** is the reason for the change, never the title again: the first sentence of the task's `## Context`
+(a block's own, else its parent's; the `From the plan` line is skipped), else the `# Spec` sentence of the
+plan the task names, else the goal as the last resort. So write that first sentence as the reason, and it
+counts toward the 120 words.
+
 A block MR into the work branch (`sh <plugin-root>/bin/block-mr.sh <block-id>`) keeps **What changed**,
 **Why** and **How to verify** under the same 120 words, and adds what the lead merges it on: **Risk** (low,
 medium or high with the sentence and the five reasons of `.harness/<block>/arch.md`: blast radius,

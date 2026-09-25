@@ -87,6 +87,29 @@ verify=$(bullets '## Evidence' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 follow=$(bullets '## Follow-ups')
 
+# why: the title said it already, so a Why that repeated the goal told the reviewer nothing (F17). The task's
+# `## Context`, else the `# Spec` of the plan it names, else the goal; bin/block-mr.sh adds a block's parent.
+first_sentence() { # <heading> <file>: the first sentence of the first paragraph under the heading
+  # the `From the plan` line decompose writes points at the plan and gives no reason, so it is skipped
+  awk -v h="$1" '
+    $0 == h { f = 1; next }
+    !f { next }
+    /^#/ { exit }
+    /^From the plan[[:space:]]/ { s = 1; next }
+    !NF { if (s) exit; next }
+    { s = 1; sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); p = p == "" ? $0 : p " " $0 }
+    END { if (p == "") exit; if (match(p, /[.!?][[:space:]]/)) p = substr(p, 1, RSTART); print p }
+  ' "$2"
+}
+why=$(first_sentence '## Context' "$task")
+if [ -z "$why" ]; then
+  plan=$(plan_slug < "$task")
+  if [ -n "$plan" ] && [ -f "$state/repos/$key/plans/$plan-plan-ready.md" ]; then
+    why=$(first_sentence '# Spec' "$state/repos/$key/plans/$plan-plan-ready.md")
+  fi
+fi
+[ -n "$why" ] || why=$goal
+
 issue_line=''
 if [ -n "$issues" ]; then
   [ -f "$issues" ] || die "no issues file at $issues"
@@ -106,7 +129,7 @@ mkdir -p "$desc_dir"
 desc="$desc_dir/mr.md"
 {
   printf '**What changed** - %s\n' "$changed"
-  printf '**Why** - %s\n' "$goal"
+  printf '**Why** - %s\n' "$why"
   if [ -n "$issue_line" ]; then printf '**Issues** - %s\n' "$issue_line"; fi
   printf '**How to verify** - %s\n' "$verify"
   if [ -n "$follow" ]; then
@@ -117,7 +140,7 @@ desc="$desc_dir/mr.md"
 
 words=$(wc -w < "$desc" | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress"
+  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
 
 # the block MRs of the task, each with the risk its architecture audit rated; the audits sit beside this task's
 # own stamp folder, in <root>/<key>/.harness/<block>/

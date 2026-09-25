@@ -6,14 +6,14 @@
 #
 #   block-mr.sh <block-id> [--dry-run] [--state <dir>] [--worktree <dir>]
 #
-# The description is **What changed**, **Why** and **How to verify** from the block's progress file, as
-# mr-open.sh builds them for the parent and under the same 120 words, then **Risk** from
+# The description is **What changed** and **How to verify** from the block's progress file and **Why** from its
+# task file, as mr-open.sh builds them for the parent and under the same 120 words, then **Risk** from
 # `.harness/<block>/arch.md` (the level, its sentence and the five reasons: blast radius, contracts, security,
 # data, drift), **Verified** from the `.harness/<block>/verify.txt` block-verify.sh wrote, and **Review** from
-# the verdict of `.harness/<block>/review.md`. The 120 words bound the part the progress file writes; the other
-# three are bounded by the agents' own contracts. A block with no review.md is refused, and so is a block whose
-# worktree has docs/architecture/ but no arch.md; without docs/architecture/ the auditor skips and the risk
-# reads `not rated`. A verify.txt that says red is refused too.
+# the verdict of `.harness/<block>/review.md`. The 120 words bound the part the progress and task files write;
+# the other three are bounded by the agents' own contracts. A block with no review.md is refused, and so is a
+# block whose worktree has docs/architecture/ but no arch.md; without docs/architecture/ the auditor skips and
+# the risk reads `not rated`. A verify.txt that says red is refused too.
 #
 # The pipeline of a block MR is skipped. The forge settings are read once per task, from the forge on the first
 # block, into `.harness/<T-id>/forge.json` (`merge_method`, `pipeline_must_succeed`, `skipped_counts_as_success`),
@@ -99,8 +99,8 @@ progress="$state/repos/$key/progress/$id.md"
 # why: the base is what worktree-add.sh recorded when it cut the branch; the parent's branch is the fallback
 # why: because that is where a block with no dependency was cut from anyway
 base=$(sed -n 's/^base:[[:space:]]*//p' "$progress" | head -n1)
+ptask=$(task_of "$parent" || :)
 if [ -z "$base" ]; then
-  ptask=$(task_of "$parent" || :)
   [ -n "$ptask" ] || die "block $id has no 'base:' in $progress and its parent $parent resolves to no task file"
   base=$(sed -n 's/^branch:[[:space:]]*//p' "$ptask" | head -n1)
   [ -n "$base" ] && [ "$base" != null ] || die "block $id has no 'base:' in $progress and $parent has no branch:"
@@ -127,10 +127,36 @@ changed=$(bullets '## Done' | oneline)
 verify=$(bullets '## Evidence' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 
-words=$(printf '**What changed** - %s\n**Why** - %s\n**How to verify** - %s\n' "$changed" "$goal" "$verify" \
+# see: bin/mr-open.sh, the same Why. why: the title said it already, so a Why that repeated the goal told the
+# reviewer nothing (F17). The block's own `## Context`, else its parent's, else the plan's `# Spec`, else the goal.
+first_sentence() { # <heading> <file>: the first sentence of the first paragraph under the heading
+  # the `From the plan` line decompose writes points at the plan and gives no reason, so it is skipped
+  awk -v h="$1" '
+    $0 == h { f = 1; next }
+    !f { next }
+    /^#/ { exit }
+    /^From the plan[[:space:]]/ { s = 1; next }
+    !NF { if (s) exit; next }
+    { s = 1; sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); p = p == "" ? $0 : p " " $0 }
+    END { if (p == "") exit; if (match(p, /[.!?][[:space:]]/)) p = substr(p, 1, RSTART); print p }
+  ' "$2"
+}
+plan_why() { # <task file>: the `# Spec` sentence of the plan the task names
+  pw=$(plan_slug < "$1")
+  [ -n "$pw" ] || return 0
+  pw="$state/repos/$key/plans/$pw-plan-ready.md"
+  if [ -f "$pw" ]; then first_sentence '# Spec' "$pw"; fi
+}
+why=$(first_sentence '## Context' "$task")
+if [ -z "$why" ] && [ -n "$ptask" ]; then why=$(first_sentence '## Context' "$ptask"); fi
+[ -n "$why" ] || why=$(plan_why "$task")
+if [ -z "$why" ] && [ -n "$ptask" ]; then why=$(plan_why "$ptask"); fi
+[ -n "$why" ] || why=$goal
+
+words=$(printf '**What changed** - %s\n**Why** - %s\n**How to verify** - %s\n' "$changed" "$why" "$verify" \
   | wc -w | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress"
+  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
 
 if [ -z "$worktree" ]; then
   [ -n "${WORK_DIR:-}" ] || die "WORK_DIR is not set, so the block worktree is unknown; pass --worktree <dir>"
@@ -175,7 +201,7 @@ fi
 
 {
   printf '**What changed** - %s\n' "$changed"
-  printf '**Why** - %s\n' "$goal"
+  printf '**Why** - %s\n' "$why"
   printf '**Risk** - %s\n' "$risk_line"
   # why: markdown reads a line right after a list item as part of that item, so the list ends on a blank line
   if [ -n "$reasons" ]; then printf '%s\n\n' "$reasons"; fi
