@@ -1,6 +1,6 @@
 {
   "name": "claude-factory",
-  "version": "0.14.5",
+  "version": "0.15.0",
   "description": "The factory harness: archetype skills, agents and the policy hooks in one plugin (ADR-0049). Outside WORK_DIR the hooks waive only the cwd rule (ADR-0049): a plain session keeps the force-push, --force-with-lease, dotnet test-cap, status-word and registered-clone rules, and gets no per-task scope. Never install into a product repo (ADR-0001).",
   "dependencies": [
     { "name": "mattpocock-skills", "marketplace": "mattpocock" }
