@@ -56,6 +56,22 @@ public sealed class OrgTests
     }
 
     [Theory]
+    [InlineData("never", "never", true, true, "both")]
+    [InlineData("never", "never", true, false, "daily")]
+    [InlineData("never", "never", false, true, "weekly")]
+    [InlineData("never", "never", false, false, "none")]
+    [InlineData("2026-09-24T12:00:00Z", "2026-09-18T12:00:00Z", true, true, "both")]
+    [InlineData("2026-09-24T12:00:01Z", "2026-09-18T12:00:01Z", true, true, "none")]
+    [InlineData("2026-09-25T06:00:00Z", "2026-09-10T00:00:00Z", true, true, "weekly")]
+    [InlineData("yesterday", "2026-09-25T06:00:00Z", true, true, "daily")]
+    public void A_pass_is_due_with_work_once_its_stamp_is_24_h_or_7_d_old_never_or_unreadable(string daily, string weekly, bool dailyWork, bool weeklyWork, string due)
+    {
+        var now = new DateTimeOffset(2026, 9, 25, 12, 0, 0, TimeSpan.Zero);
+
+        Assert.Equal(due, Passes.Due(new PassInfo("global", daily, weekly), dailyWork, weeklyWork, now));
+    }
+
+    [Theory]
     [InlineData("memory/global/passes.yml", "global")]
     [InlineData("repos/ecs/memory/passes.yml", "repo:ecs")]
     [InlineData("agents/scout/memory/passes.yml", "agent:scout")]
