@@ -140,4 +140,72 @@ red=$(. "$bin/lib-tasks.sh"; redact_urls "fatal: unable to access 'https://u:tok
 red=$(. "$bin/lib-tasks.sh"; redact_urls 'git@h.test:g/x.git and https://h.test/a@b')
 [ "$red" = 'git@h.test:g/x.git and https://h.test/a@b' ]; check 'redact_urls keeps an scp-style URL and an @ in the path' $?
 
+# --- --clone: clones a URL into the clones: directory of factory.yml, then registers it --------------------------------
+# A factory of its own under $tmp/cf, bare origins served over file://, and the status json of the Setup tab under
+# $tmp/ui/setup/add-repo/<key>.json (contract C3 of the add-repo design).
+cf="$tmp/cf"
+cstate="$cf/state"
+mkdir -p "$cstate" "$tmp/clones"
+clones=$(CDPATH= cd -P -- "$tmp/clones" && pwd)
+: > "$cstate/repos.yml"
+printf 'clones: %s\n' "$clones" > "$cstate/factory.yml"
+git -C "$cstate" init -q
+git -C "$cstate" add -A
+git -C "$cstate" -c user.name=t -c user.email=t@t commit -q -m init
+mkdir -p "$tmp/ui"
+
+mkorigin() { # <key> [<default branch>]: a bare origin at <tmp>/origin/<key>.git with one dotnet commit
+  git init -q --bare "$tmp/origin/$1.git"
+  git -C "$tmp/origin/$1.git" symbolic-ref HEAD "refs/heads/${2:-main}"
+  mkdir -p "$tmp/seed/$1"
+  git -C "$tmp/seed/$1" init -q
+  : > "$tmp/seed/$1/App.sln"
+  git -C "$tmp/seed/$1" add -A
+  git -C "$tmp/seed/$1" -c user.name=t -c user.email=t@t commit -q -m init
+  git -C "$tmp/seed/$1" push -q "$tmp/origin/$1.git" "HEAD:refs/heads/${2:-main}"
+}
+cadd() { sh "$bin/factory-add-repo.sh" --root "$cf" "$@" 2>"$tmp/cerr"; }
+aj() { cat "$tmp/ui/setup/add-repo/$1.json" 2>/dev/null; }
+has() { printf '%s\n' "$1" | grep -qF -- "$2"; }
+
+# the URL guard runs before anything else: a charset with no quote, space or shell character, no leading - (a git
+# option), and http, https, ssh, file or the scp form; a refused URL writes no json
+for bad in '-uhttps://h.test/g/badurl.git' "https://h.test/g/badurl.git';id" 'https://h.test/g/bad url.git' \
+  'ftp://h.test/g/badurl.git' 'h.test/g/badurl.git'; do
+  out=$(cadd --clone "$bad"); rc=$?
+  [ "$rc" = 1 ] && grep -qF 'is not a URL' "$tmp/cerr"; check "--clone '$bad' is refused with exit 1" $?
+done
+[ ! -e "$tmp/ui/setup/add-repo/badurl.json" ]; check 'a refused URL writes no json' $?
+out=$(cadd --clone "file://$tmp/origin/x.git" --repo "$tmp/fixture"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'exclude each other' "$tmp/cerr"; check '--clone and --repo exclude each other' $?
+
+# the clones directory: only clones: of factory.yml, absolute, resolved with cd -P, outside the root
+mkorigin nodir
+curl_nodir="file://$tmp/origin/nodir.git"
+: > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF "no clones directory: add clones: <absolute dir> to $cstate/factory.yml" "$tmp/cerr"
+check 'no clones: in factory.yml exits 1 with the fix' $?
+has "$(aj nodir)" '"state":"failed"' && has "$(aj nodir)" '"detail":"no clones directory: add clones: <absolute dir> to '
+check 'the refusal is a failed json with the reason as its detail' $?
+printf 'clones: clones\n' > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'no clones directory' "$tmp/cerr"; check 'a relative clones: exits 1' $?
+printf 'clones: %s/missing\n' "$tmp" > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'no clones directory' "$tmp/cerr"; check 'a clones: that is no directory exits 1' $?
+printf 'clones: %s\n' "$cf" > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'no clones directory' "$tmp/cerr"; check 'clones: equal to the root exits 1' $?
+mkdir -p "$cf/sub"
+printf 'clones: %s/sub\n' "$cf" > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'no clones directory' "$tmp/cerr"; check 'clones: under the root exits 1' $?
+ln -s "$cf/sub" "$tmp/link"
+printf 'clones: %s/link\n' "$tmp" > "$cstate/factory.yml"
+out=$(cadd --clone "$curl_nodir"); rc=$?
+[ "$rc" = 1 ] && grep -qF 'no clones directory' "$tmp/cerr"; check 'clones: a symlink into the root exits 1' $?
+[ -z "$(ls -A "$cf/sub")" ] && [ -z "$(ls -A "$clones")" ]; check 'a refused clones directory is left empty' $?
+printf 'clones: %s\n' "$clones" > "$cstate/factory.yml"
+
 exit "$fail"
