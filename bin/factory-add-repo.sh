@@ -111,8 +111,18 @@ unreachable() { # <git's output>: exit 4 with its lines up to fatal:, at most th
   exit 4
 }
 fresh=0
-if [ -n "$clone" ]; then
-  trap 'on_exit $?' EXIT
+[ -z "$clone" ] || trap 'on_exit $?' EXIT
+if [ -n "$clone" ] && grep -q "^$key:" "$state/repos.yml"; then
+  # F6: a registered key is not fetched or cloned again; with the same URL the registration below runs in its
+  # path: (nothing to do, or the missing alias or toolset), and its onboarding runs there
+  reg=$(yml_field "$key" url)
+  [ "$(norm_url "$reg")" = "$(norm_url "$url")" ] || die "key $key is registered for $reg"
+  top=$(yml_field "$key" path)
+  jpath=$top
+  [ -n "$top" ] || die "$key has no path: in repos.yml: run factory-add-repo.sh --root $root in its clone"
+  git -C "$top" rev-parse --git-dir >/dev/null 2>&1 \
+    || die "the path of $key, $top, is no git clone: clone it there or change its path: in $state/repos.yml"
+elif [ -n "$clone" ]; then
   nodir="no clones directory: add clones: <absolute dir> to $state/factory.yml"
   cv=$(sed -n 's/^clones:[[:space:]]*//p' "$state/factory.yml" 2>/dev/null | head -n1 \
     | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//' | tr -d "\"'")
