@@ -2,8 +2,8 @@
 # rearm-check.sh, the Stop hook that re-arms a herd's watcher (agent-org plan 3.1, 3.7, R4): scoped by the cwd (a
 # parent worktree with herdr units is that herd; the state clone is every parent with a `request:` that is
 # in_progress or review, has a block in flight, or has an open step record; anywhere else nothing); exit 2 with one herd-list line
-# `<request> <priority> <T-id> <repo> <status>` per herd that no `monitor` entry of `background_tasks` watches
-# with herd-watch.sh; never with stop_hook_active; at most twice per session through `.harness-rearm-<sid>`;
+# `<request> <priority> <T-id> <repo> <status>` per herd that no unfinished entry of `background_tasks`, of any
+# type, watches with herd-watch.sh; never with stop_hook_active; at most twice per session through `.harness-rearm-<sid>`;
 # nothing written in the state clone.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
@@ -102,8 +102,11 @@ is 'and prints nothing' '' "$(err "$r")"
 r=$(stop "$state" s5 '[{"id":"b1","type":"monitor","status":"running","description":"herd-watch.sh T-CF-3"},{"id":"b2","type":"monitor","status":"running","description":"herd-watch.sh T-CF-4"},{"id":"b3","type":"monitor","status":"running","description":"sh herd-watch.sh T-CF-8 --interval 60"}]')
 is 'a monitor naming herd-watch.sh in its description counts' 0 "$(rc "$r")"
 
-r=$(stop "$state" s6 '[{"id":"b1","type":"shell","status":"running","description":"w","command":"sh herd-watch.sh T-CF-3"}]')
-has 'a shell task is no monitor entry' "$req P1 T-CF-3 cf in_progress" "$(err "$r")"
+# the harness reports a task the Monitor tool started as `local_bash`: any type counts, a finished task does not
+r=$(stop "$state" s6 '[{"id":"b1","type":"local_bash","status":"running","description":"herd-watch.sh T-CF-3","command":"sh /p/bin/herd-watch.sh T-CF-3 --interval 60"}]')
+lacks 'a running local_bash task naming herd-watch.sh watches its herd' 'T-CF-3 ' "$(err "$r")"
+r=$(stop "$state" s12 '[{"id":"b1","type":"local_bash","status":"completed","command":"sh herd-watch.sh T-CF-3"},{"id":"b2","type":"monitor","status":"killed","command":"sh herd-watch.sh T-CF-3"}]')
+has 'a finished task watches nothing' "$req P1 T-CF-3 cf in_progress" "$(err "$r")"
 
 r=$(stop "$state" s7 "[$(mon T-CF-30)]")
 has 'a watcher of T-CF-30 does not watch T-CF-3' "$req P1 T-CF-3 cf in_progress" "$(err "$r")"
