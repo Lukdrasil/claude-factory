@@ -347,6 +347,10 @@ try 0 'repo-lead: task-done.sh' "$PAR" coord "sh $P/task-done.sh T-900 --state $
 try 2 'repo-lead: task-done.sh --close' "$PAR" coord "sh $P/task-done.sh T-900 --close ${q}no MR${q} --state $S"
 try 2 'repo-lead: task-approve.sh' "$PAR" coord "sh $P/task-approve.sh T-900 --state $S"
 try 2 'repo-lead: curate-apply.sh approve' "$PAR" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
+# the weekly pass runs in a session of its own the CEO dispatched, and applies the human's yes of its round itself
+role=weekly
+try 0 'weekly: curate-apply.sh approve' "$S" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
+try 2 'weekly: task-approve.sh' "$S" coord "sh $P/task-approve.sh T-900 --state $S"
 role=''
 try 0 'no role: task-approve.sh' "$S" coord "sh $P/task-approve.sh T-900 --state $S"
 try 0 'no role: task-done.sh --close' "$S" coord "sh $P/task-done.sh T-900 --close ${q}no MR${q} --state $S"

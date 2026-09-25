@@ -827,6 +827,100 @@ for bad in '--step onboard --scope nosuch' '--step onboard --scope gone' '--step
   if [ "$rc" -eq 1 ]; then printf 'PASS %s exits 1\n' "$bad"; else printf 'FAIL %s exited %s\n' "$bad" "$rc"; fail=1; fi
 done
 
+# the org steps (references/ceo.md): the CEO hands every action to a session of its own in the state clone, with one
+# sessions lease, no tab record and no claim, registered in the UI with no task
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step weekly --scope repo-agent:ecs-core/implementer 2>/dev/null)
+check 'the weekly pass goes out in the state clone'  "^weekly-repo-agent-ecs-core-implementer spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the weekly pass is weekly_<scope> cut at 31'  '^agent start weekly_repo-agent-ecs-core-impl --kind claude --pane pane-1 --timeout 120000 -- --model opus '
+check 'the weekly pass prompts the weekly skill'     '^agent prompt weekly_repo-agent-ecs-core-impl "/claude-factory:memory-weekly repo-agent:ecs-core/implementer" --wait '
+out=$(envof)
+check 'the weekly role is weekly'                    '^FACTORY_ROLE=weekly$'
+check 'the weekly pass has no task'                  '^FACTORY_TASK=none$'
+check 'the weekly flow is weekly'                    '^FACTORY_FLOW=weekly$'
+check 'the weekly step names its scope'              '^FACTORY_STEP=Weekly pass repo-agent:ecs-core/implementer$'
+exists 'the weekly pass leases a sessions slot'      "$lease/sessions/weekly-repo-agent-ecs-core-implementer"
+out=$(grep -rs weekly "$oroot"/*/.harness)
+nocheck 'the weekly pass writes no tab record'       'weekly'
+out=$(sm --step weekly --scope global --dry-run 2>/dev/null)
+check 'a global weekly pass is weekly-global'        '^weekly-global printed '
+
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step intake --scope R-20260925-1 --priority P1 2>/dev/null)
+check 'the intake goes out in the state clone'       "^intake-R-20260925-1 spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the intake agent is intake_<R-id> on opus'    '^agent start intake_r-20260925-1 --kind claude --pane pane-1 --timeout 120000 -- --model opus '
+check 'the intake prompts factory intake with the priority' '^agent prompt intake_r-20260925-1 "/claude-factory:factory intake R-20260925-1 P1" --wait '
+out=$(envof)
+check 'the intake role is intake'                    '^FACTORY_ROLE=intake$'
+check 'the intake step names its request'            '^FACTORY_STEP=Intake R-20260925-1$'
+out=$(sm --step intake --scope R-20260925-1 --dry-run 2>/dev/null)
+check 'an intake with no priority takes P2'          '"/claude-factory:factory intake R-20260925-1 P2"$'
+
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step add-repo --url 'https://forge.test/team/New-Repo.git' --alias NEW 2>/dev/null)
+check 'the add-repo session goes out in the state clone' "^add-repo-New-Repo spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the add-repo agent is add-repo_<key> on sonnet' '^agent start add-repo_new-repo --kind claude --pane pane-1 --timeout 120000 -- --model sonnet '
+check 'the add-repo session prompts factory add-repo --clone with the alias' \
+  "^agent prompt add-repo_new-repo \"/claude-factory:factory add-repo --clone 'https://forge.test/team/New-Repo.git' --alias NEW\" --wait "
+out=$(envof)
+check 'the add-repo role is add-repo'                '^FACTORY_ROLE=add-repo$'
+check 'the add-repo step names its key'              '^FACTORY_STEP=Add repository New-Repo$'
+out=$(sm --step add-repo --url 'git@forge.test:team/other.git' --dry-run 2>/dev/null)
+check 'an add-repo with no alias passes none'        "\"/claude-factory:factory add-repo --clone 'git@forge.test:team/other.git'\"\$"
+
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step route --message 'what does "blocked" mean for T-ECS-12?' 2>/dev/null)
+check 'the route session goes out in the state clone' "^route-[0-9][0-9]* spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the route agent is route_<n> on opus'         '^agent start route_[0-9][0-9]* --kind claude --pane pane-1 --timeout 120000 -- --model opus '
+check 'the route session prompts factory route with the message' \
+  '^agent prompt route_[0-9]* "/claude-factory:factory route what does "blocked" mean for T-ECS-12?" --wait '
+out=$(envof)
+check 'the route role is route'                      '^FACTORY_ROLE=route$'
+check 'the route step reads Route a message'         '^FACTORY_STEP=Route a message$'
+out=$(sm --step route --message 'say "hi" for $HOME `now`' --dry-run 2>/dev/null)
+check 'a printed route line escapes the quotes, $ and backticks' \
+  '"/claude-factory:factory route say \\"hi\\" for \\$HOME \\`now\\`"$'
+
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+out=$(sm --task T-ECS-12 --step cross-repo 2>/dev/null)
+check 'the cross-repo step goes out in the state clone' "^T-ECS-12-cross-repo spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the cross-repo agent is cross-repo_<id> on opus' '^agent start cross-repo_ecs-12 --kind claude --pane pane-1 --timeout 120000 -- --model opus '
+check 'the cross-repo step prompts factory cross-repo' '^agent prompt cross-repo_ecs-12 "/claude-factory:factory cross-repo T-ECS-12" --wait '
+out=$(envof)
+check 'the cross-repo role is cross-repo'            '^FACTORY_ROLE=cross-repo$'
+check 'the cross-repo step carries its task'         '^FACTORY_TASK=T-ECS-12$'
+check 'the cross-repo step names its need'           '^FACTORY_STEP=Cross-repo need of T-ECS-12$'
+rm -rf "$lease"
+
+# a live org step agent at work keeps its unit from starting twice, like an onboarding
+herdr_tab tab-41 working false intake_r-20260925-1
+: > "$HERDR_STUB_LOG"
+out=$(sm --step intake --scope R-20260925-1 2>&1)
+check 'an intake whose agent is working is skipped'  "^intake-R-20260925-1 skipped $ostate\$"
+check 'the intake skip says it runs already'         'intake-R-20260925-1 runs already'
+herdr tab close tab-41 >/dev/null
+rm -rf "$lease"
+
+for bad in '--step weekly' '--step weekly --scope repo-agent:ecs/../x' '--task T-ECS-12 --step weekly --scope global' \
+  '--step intake' '--step intake --scope T-ECS-12' '--step intake --scope R-20260925-1 --priority P7' \
+  '--step add-repo' '--step add-repo --url -x' '--step add-repo --url https://forge.test/a.git --alias toolong' \
+  '--step add-repo --url https://forge.test/a;b.git' '--step route' '--step cross-repo' '--step pass --scope ecs-core/implementer --priority P1' \
+  '--task T-ECS-12 --step triage --url https://forge.test/a.git'; do
+  # shellcheck disable=SC2086
+  sm $bad --dry-run >/dev/null 2>&1; rc=$?
+  if [ "$rc" -eq 1 ]; then printf 'PASS %s exits 1\n' "$bad"; else printf 'FAIL %s exited %s\n' "$bad" "$rc"; fail=1; fi
+done
+
 # a lead with no parent worktree has worktree-add.sh make it first; one it cannot make is skipped
 out=$(sm --task T-ECS-50 --step lead --dry-run 2>/dev/null)
 check 'a lead with no worktree makes it first'      "worktree-add.sh T-ECS-50 "

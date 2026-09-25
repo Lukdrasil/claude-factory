@@ -1,6 +1,6 @@
 ---
 name: memory-weekly
-description: The weekly memory pass over one repo x agent scope, run inside the CEO session after the human's go. The memory-curator judges the drafts, the human decides their promotion into the playbook in rounds, the yes is applied, what was promoted is deleted, a plugin change becomes a K1 draft for a human PR, then the pass is stamped.
+description: The weekly memory pass over one repo x agent scope, run as a step session the CEO dispatches after the human's go. The memory-curator judges the drafts, the human decides their promotion into the playbook in rounds, the yes is applied, what was promoted is deleted, a plugin change becomes a K1 draft for a human PR, then the pass is stamped.
 ---
 
 # memory-weekly
@@ -10,8 +10,9 @@ drafts the daily pass (`memory-daily`) wrote, asks the human in rounds, and appl
 
 ## Preconditions
 
-- Inside the CEO session, after the human's go (typed, or the Memory tab's start button, which posts `start
-  the weekly pass for <scope>`). Never `claude -p` or any other headless run.
+- In a weekly step session the CEO dispatched after the human's go (typed, or the Memory tab's start button,
+  which posts `start the weekly pass for <scope>`): `session-monitor.sh --step weekly --scope <scope>`,
+  `FACTORY_ROLE=weekly`. Never `claude -p` or any other headless run.
 - The argument is `repo-agent:<key>/<agent>` (`<key>/<agent>` means the same). A legacy tier (`global`,
   `repo:<key>`, `agent:<agent>`) has no drafts, only the proposals the daily pass kept in its queue: one
   round through `_shared/ask.md`, one question per proposal (approve, which deletes what `Replaces:` names, or
@@ -43,8 +44,8 @@ drafts the daily pass (`memory-daily`) wrote, asks the human in rounds, and appl
    - k1: write `k1/<slug>.md` in the format below and delete the draft.
    - wait: nothing. drop: delete the draft.
    - a proposal, yes: `<plugin-root>/bin/curate-apply.sh approve <proposal> --state $WORK_DIR/state`, which
-     deletes every path `Replaces:` names and commits itself (policy-guard allows it to the `ceo` role only,
-     which is why this pass runs here). No: `curate-apply.sh reject <proposal> --reason "<the human's
+     deletes every path `Replaces:` names and commits itself (policy-guard allows it to the `ceo` and `weekly`
+     roles only). No: `curate-apply.sh reject <proposal> --reason "<the human's
      answer>" --state $WORK_DIR/state`.
    One commit per round for the drafts: `<plugin-root>/bin/state-commit.sh -m "chore(memory): weekly <scope>,
    round <n>" --state $WORK_DIR/state -- <every path written or deleted>`. Completion: exit 0; the next round, until no
@@ -52,7 +53,10 @@ drafts the daily pass (`memory-daily`) wrote, asks the human in rounds, and appl
 5. **K1 to the human.** Name each new `k1/` file: the human turns it into a PR on the plugin (Q2), never this
    session. Completion: the list is in the report.
 6. **Stamp**: `<plugin-root>/bin/pass-stamp.sh weekly <scope> --state $WORK_DIR/state`. Completion: exit 0.
-7. **Report**: promoted, K1, waiting, dropped, the playbook word count, the open K1 drafts.
+7. **Report**: promoted, K1, waiting, dropped, the playbook word count, the open K1 drafts, as one notice ask
+   (`_shared/ask.md`, flow `weekly`), then `herdr agent prompt ceo "weekly <scope> done"`. A refusal means the
+   CEO sits at a dialog: send it again, up to 3 times, 10 seconds apart, then go on.
+8. **Close your own tab**: `herdr tab close "$HERDR_TAB_ID"`. This ends the session.
 
 ## K1 draft format
 

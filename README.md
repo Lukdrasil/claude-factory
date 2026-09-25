@@ -38,12 +38,14 @@ The factory runs as an org of interactive Claude Code sessions in herdr, never a
 the Agent SDK, a routine or a cron that starts `claude`), and never under `bypassPermissions`.
 
 - **CEO** (`skills/factory/references/ceo.md`): one session in `$WORK_DIR/state`, started there inside herdr
-  with `claude '/claude-factory:factory ceo'`. It starts the UI, takes a request with a priority, opens a request map
-  (`requests/<R-id>/`), makes one parent per repository under that request id, and runs the automatic chain as
-  step sessions (triage, the map chart with `claude-factory:wayfinder`, grill, plan-check, decompose). The
-  human answers the grilling rounds and approves the plan once per request; approved parents queue by priority
-  and start as capacity frees up. It watches every herd, re-arms its watchers after a restart and offers the
-  daily and weekly memory passes.
+  with `claude '/claude-factory:factory ceo'`. It does no work itself: every action goes on to a session of its
+  own. It starts the UI, takes a request with a priority, opens a request map (`requests/<R-id>/`) and hands it to
+  an intake session that writes one parent per repository, then runs the automatic chain as step sessions
+  (triage, the map chart with `claude-factory:wayfinder`, grill, plan-check, decompose). An added repository, a
+  weekly memory pass and a lead's cross-repo need get a session each too, and a free message goes to a route
+  session that judges it. The human answers the grilling rounds and approves the plan once per request; approved
+  parents queue by priority and start as capacity frees up. It watches every herd, re-arms its watchers after a
+  restart and offers the daily and weekly memory passes.
 - **Lead** (`lead_<unit>`, `skills/factory/references/lead.md`): one session per approved parent, in the
   parent's worktree and its own herdr workspace. It runs the herd flow for that parent, one MR per block into
   the task's work branch that it merges itself (a high-risk block waits for the human), and one MR per parent

@@ -882,8 +882,8 @@ lost_inplace() { deny "a relative in-place write target after a 'cd' the guard c
 
 # R3: the human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
 # dialog in front of them. A session a monitor dispatched carries FACTORY_ROLE (session-monitor.sh); of those only
-# the CEO and the lead run a gate, each its own and after the human's yes (references/ceo.md, lead.md, done.md,
-# curate.md). No FACTORY_ROLE is a human's own session. The segments are read with the quote characters removed
+# the CEO, the lead and the weekly pass run a gate, each its own and after the human's yes (references/ceo.md,
+# lead.md, done.md, curate.md, memory-weekly). No FACTORY_ROLE is a human's own session. The segments are read with the quote characters removed
 # and split once more at `;`, `&`, `|`, a bracket and a backtick, so `bash -c '... && sh task-approve.sh'` and
 # `$(...)` count too; the script is the first word after assignments, options and wrappers (sh, bash, env, ...).
 gate_role_check() { # <the command segments>
@@ -923,7 +923,7 @@ gate_role_check() { # <the command segments>
         esac ;;
       curate-apply.sh)
         if [ "${1:-}" = approve ]; then
-          gr_owner=ceo gr_msg="curate-apply.sh approve is the CEO's, after the human's yes in the curate round (references/curate.md)"
+          gr_owner='ceo weekly' gr_msg="curate-apply.sh approve is the CEO's or the weekly pass's, after the human's yes in its round (references/curate.md, memory-weekly)"
         fi ;;
     esac
     [ -n "$gr_owner" ] || continue

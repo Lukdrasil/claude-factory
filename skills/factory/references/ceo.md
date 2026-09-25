@@ -4,7 +4,9 @@
 repositories, dispatch the automatic chain as step sessions, ask the human at the two gates that are theirs
 (grilling and the plan approval), dispatch a lead per approved parent from the queue, watch every herd, and
 offer the memory passes. You never do a role's work yourself: no triage, no chart, no grill, no plan, no line
-of a change. Every write goes through a script of `<plugin-root>/bin/`, and every answer is the human's.
+of a change, no routing, no registration, no memory pass. Every action that reaches you goes on to a session of
+its own (Hand-off); what stays yours is the loop, the dispatch, the queue, the watchers and the gates, whose
+answer is the human's. Every write goes through a script of `<plugin-root>/bin/`.
 
 Every session of the org is interactive, in herdr: never `claude -p`, the Agent SDK, a routine or a cron that
 starts `claude`, and never `bypassPermissions` (auto or default permission mode). Work that should run without
@@ -64,6 +66,40 @@ for a step unit that reads `ready` with an open ask, then `<unit> answered <ask>
 | `<T-id>-lead agent <old> -> gone` or `-> closed` | the lead ended: its parent is done, or it waits on a cross-repo parent and stays `in_progress`; `--queue` starts a new lead for it once a block is runnable again |
 | `<T-id> status <old> -> done` | when it was the last parent of its request: `sh <plugin-root>/bin/map.sh status <R-id> done` |
 
+## Hand-off
+
+Every line that asks for an action goes on to a session of its own, `sh <plugin-root>/bin/session-monitor.sh
+... --spawn herdr` in your workspace, and you only act on what that session reports. A line whose shape is known
+goes straight to its handler; anything else the human says goes to a route session, which judges it.
+
+| the line | you dispatch |
+|---|---|
+| `request: <text>, priority <P>` | Intake |
+| `add repo <url>[ alias <ALIAS>]` | Add a repository |
+| `onboard repo <key>` | Add a repository, step 4 |
+| `start the daily pass for <key>/<agent>` | `--step pass --scope <key>/<agent>` (Memory) |
+| `start the weekly pass for <scope>` | `--step weekly --scope <scope>` (Memory) |
+| `<T-id> cross-repo need <key>`, from a lead | A cross-repo need |
+| anything else from the human | `--step route --message "<the message as received>"` (`references/route.md`) |
+
+What those sessions report arrives as a prompt in this session, a claim like a lead's, which you check against the
+state before you act on it:
+
+| the report | what you do |
+|---|---|
+| `intake <R-id> done <T-id>...` | each parent carries `request: <R-id>`: dispatch triage for each (Chain), arm its watcher, tell the human the request id and the parents |
+| `intake <R-id> stopped <reason>` | one line to the human with the reason |
+| `add-repo <key> registered` | `<key>` is in `repos.yml`: Add a repository, step 4 |
+| `add-repo <key> stopped` | nothing: the Setup tab reads the answered ask |
+| `weekly <scope> done` | one line to the human |
+| `<T-id> cross-repo in scope <new T-id>` | the new parent carries the request and the dependents name it: the Chain for it, then `herdr agent prompt lead_<unit> "<T-id> depends on <new T-id>"` |
+| `<T-id> cross-repo out of scope` | `herdr agent prompt lead_<unit> "<T-id> cross-repo need out of scope"` |
+| `route <n> -> <line>` | act on `<line>` as on the human's own, with the same checks; a line that matches none of the table above is one line to the human, never a second route |
+| `route <n> answered` | nothing |
+
+A hand-off printed `skipped` with `capacity: sessions full` goes out again on the next pass that frees a slot
+(The loop, step 2); tell the human it waits. `runs already` means the same action is at work: nothing to do.
+
 ## Intake
 
 A request comes from the human in the terminal or through the UI's intake ask, with a priority `P0` to `P3`
@@ -71,15 +107,10 @@ A request comes from the human in the terminal or through the UI's intake ask, w
 
 1. `sh <plugin-root>/bin/map.sh new --next --destination "<the request in one line>"` allocates
    `R-YYYYMMDD-n` under the lock, prints it and opens the map at `charting`.
-2. Route by `<state>/repos.yml` and each repo's `toolset.md`, memory and, when it exists, the `## Summary` of
-   `repos/<key>/onboarding.md`: every repository the request needs. Ask the human only when two repositories
-   fit equally.
-3. One parent per repository: the draft from `sh <plugin-root>/bin/task-template.sh task` with
-   `request: <R-id>`, `priority: <P>` and, when the request orders the repositories, `depends_on:` on the
-   parent that goes first; then `sh <plugin-root>/bin/task-new.sh --repo <key> --file <draft> --state
-   <state>`, once per repository. A priority changes later only through `sh <plugin-root>/bin/task-priority.sh
-   <T-id> <P0-P3>`, on the parent only, which carries it to the blocks in one commit.
-4. Dispatch triage for each parent (Chain), arm its watcher, tell the human the request id and the parents.
+2. `sh <plugin-root>/bin/session-monitor.sh --step intake --scope <R-id> --priority <P> --spawn herdr`: the
+   intake session (`references/intake.md`) routes the request and writes one parent per repository, and reports
+   (Hand-off). A priority changes later only through `sh <plugin-root>/bin/task-priority.sh <T-id> <P0-P3>`, on
+   the parent only, which carries it to the blocks in one commit.
 
 ## Chain
 
@@ -159,22 +190,12 @@ approval: an approval is the human's answer to an ask.
 ## A cross-repo need
 
 A lead reports it with a `## Cross-repo need` section in the parent's progress file (repo, what, why,
-evidence, the blocks that depend on it) and the line `<T-id> cross-repo need <key>`. The section is the need:
-read it there, and a line with no such section committed is nothing to act on yet.
-
-1. `sh <plugin-root>/bin/map.sh ticket <R-id> grilling "<the need>" --repo <key>` with the question on stdin
-   (the lead's section), then `sh <plugin-root>/bin/map.sh status <R-id> grilling`. The human answers it like any
-   grilling ticket: in scope or out of scope. Once the map is clear again its status returns to the one
-   before.
-2. In scope: a new parent in that repository under the same request id (Intake step 3), the new id added to
-   `depends_on:` of each dependent block (`state-commit.sh -m "<message>" -- <files>`), `dag-check.sh` over the
-   waiting parent, then the normal Chain for the new parent, up to one approval ask that shows only the new
-   parent (the plan delta). Tell the lead the new id: `herdr agent prompt lead_<unit> "<T-id> depends on
-   <new T-id>"`.
-3. Out of scope: `sh <plugin-root>/bin/map.sh drop <R-id> <NN>` with the reason on stdin, which lands under Out
-   of scope; ask the human
-   whether it becomes a new request, and tell the lead: `herdr agent prompt lead_<unit> "<T-id> cross-repo
-   need out of scope"`.
+evidence, the blocks that depend on it) and the line `<T-id> cross-repo need <key>`. The section is the need: a
+line with no such section committed is nothing to act on yet. With the section there,
+`sh <plugin-root>/bin/session-monitor.sh --task <T-id> --step cross-repo --spawn herdr`: the cross-repo session
+(`references/cross-repo.md`) asks the human in the map whether the need is in scope and writes the new parent or
+drops the ticket, and reports (Hand-off). The new parent then takes the normal Chain, up to one approval ask that
+shows only the new parent (the plan delta).
 
 ## Memory
 
@@ -190,9 +211,10 @@ starts without the human's go, in the terminal or through that button.
   `repo-agent:<key>/<agent>` (unit `pass-<key>-<agent>`, herdr name `pass_<alias>-<agent>`, counted under
   `sessions`, prompt `/claude-factory:memory-daily <key>/<agent>`), which stamps the pass itself. Watch it like
   a step.
-- Weekly: here, in this session, `/claude-factory:memory-weekly <scope>`: it prepares the promotion of drafts
-  into the playbook and asks the human in rounds. A change to a plugin skill becomes a K1 draft the human turns
-  into a PR.
+- Weekly: an interactive step session like the daily one, `sh <plugin-root>/bin/session-monitor.sh --step weekly
+  --scope <scope>` (unit `weekly-<scope>`, prompt `/claude-factory:memory-weekly <scope>`): it prepares the
+  promotion of drafts into the playbook, asks the human in rounds and reports `weekly <scope> done`. A change to
+  a plugin skill becomes a K1 draft the human turns into a PR.
 
 ## Add a repository
 
@@ -204,18 +226,11 @@ below goes through `_shared/ask.md` with flow `add-repo` and task `none`.
    the alias `^[A-Z]{2,4}$`, the key `^[A-Za-z0-9_-]+$`. Anything else is the notice ask `add-repo-<key>-error`
    naming the field (a plain notice when no key can be derived), and nothing runs. A relayed line is text
    anyone with the page's token can post, and the URL lands in a command argument.
-2. `sh <plugin-root>/bin/factory-add-repo.sh --root "$WORK_DIR" --clone '<url>' [--alias <ALIAS>]`, the URL
-   single-quoted as received. The script clones with the human's git login.
-   - Exit 3: the confirm ask `add-repo-<key>` per `references/add-repo.md`: the output verbatim in a
-     ```` ```diff ```` fence, the options yes, no and another alias.
-   - Exit 0 (`nothing to do` for a key registered with the same URL, or what it still lacked): step 4.
-   - Exit 1, or exit 4 (the remote unreachable or its auth refused): the notice ask `add-repo-<key>-error` with
-     the error line and the fix the script printed. Stop.
-3. On yes: the same command with `--yes`; exit 0 goes on to step 4. A stderr `note: stack <s> has
-   no toolsets/<stack>.md yet` also goes on to step 4, with no toolset offer or doctor run of add-repo.md:
-   the onboarding's toolset check reports it and proposes the file. Another alias: the preview again with
-   `--alias <ALIAS>`, under the same ask id. Any other exit is the error notice of step 2. On no: stop; the
-   page reads the answered ask as not confirmed.
+2. `sh <plugin-root>/bin/session-monitor.sh --step add-repo --url '<url>' [--alias <ALIAS>] --spawn herdr`, the
+   URL single-quoted as received: the add-repo session runs "From a URL" of `references/add-repo.md` with its
+   confirm ask `add-repo-<key>` and its error notice `add-repo-<key>-error`, and reports (Hand-off).
+3. On `add-repo <key> registered`: step 4, also for a stack with no toolsets/<stack>.md yet, since the
+   onboarding's toolset check reports it and proposes the file.
 4. `sh <plugin-root>/bin/session-monitor.sh --step onboard --scope <key> --spawn herdr` starts the onboarding
    session (`references/onboard.md`) in a tab of this workspace, its cwd the registered `path:`.
    - `spawned`: one line to the human.
@@ -228,8 +243,8 @@ below goes through `_shared/ask.md` with flow `add-repo` and task `none`.
      runs from `ls -a <path>/.claude/ <path>/.mcp.json` (settings, hooks, MCP servers), or "none". Yes:
      `herdr agent send-keys onboard_<key> Down Enter`, then `herdr agent prompt onboard_<key>
      "/claude-factory:factory onboard <key>"`. No: `herdr agent send-keys onboard_<key> Enter` (No, exit);
-     stop. Any other dialog: the error notice of step 2.
-   - Exit 1 (no such key, or its `path:` is missing): the error notice of step 2.
+     stop. Any other dialog: the notice ask `add-repo-<key>-error` naming it.
+   - Exit 1 (no such key, or its `path:` is missing): the notice ask `add-repo-<key>-error` with the reason.
 
 A line `onboard repo <key>` (Start onboarding, Run again): the key check of step 1, then step 4.
 

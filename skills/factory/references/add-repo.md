@@ -80,3 +80,15 @@ The same steps, with `--clone '<url>'` in place of `--repo <clone-dir>`:
   `<ui home>/setup/add-repo/<key>.json` current, `{"at","key","url","path","state","detail"}`: `pending` after a
   preview, `cloning` while it clones, `registered` at exit 0, `failed` at exit 1 or 4 with the reason as
   `detail`. It stores no user or token. Nothing to do for you.
+
+## As an add-repo session
+
+The CEO hands a relayed `add repo <url>[ alias <ALIAS>]` on to a session of its own
+(`session-monitor.sh --step add-repo`, `references/ceo.md`), in the state clone as `FACTORY_ROLE=add-repo`, unit
+`add-repo-<key>`, prompted `factory add-repo --clone '<url>' [--alias <ALIAS>]`. Run "From a URL" as above, then:
+
+1. **Report** to the CEO: `herdr agent prompt ceo "add-repo <key> registered"` after exit 0, or
+   `herdr agent prompt ceo "add-repo <key> stopped"` after a no or an error notice. A refusal means the CEO sits
+   at a dialog: send it again, up to 3 times, 10 seconds apart, then go on. The CEO starts the onboarding, never
+   you.
+2. **Close your own tab**: `herdr tab close "$HERDR_TAB_ID"`. This ends the session.

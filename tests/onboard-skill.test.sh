@@ -112,9 +112,10 @@ add=$(awk '/^## / { on = ($0 == "## Add a repository"); next } on { print }' "$c
 sec() { printf '%s\n' "$add" | grep -Eq -- "$1"; }
 sec '`add repo <url>'; check 'the section takes the line add repo <url>' $?
 sec '`onboard repo <key>`'; check 'the section takes the line onboard repo <key>' $?
-sec 'factory-add-repo\.sh --root [^ ]+ --clone'; check 'the section runs factory-add-repo.sh --clone' $?
+sec "session-monitor\\.sh --step add-repo --url '<url>'"; check 'the section hands the URL to an add-repo session' $?
+has "$repo/skills/factory/references/add-repo.md" 'factory-add-repo\.sh --root [^ ]+ --clone'; check 'the add-repo session runs factory-add-repo.sh --clone' $?
 sec 'session-monitor\.sh --step onboard --scope <key>'; check 'the section runs session-monitor.sh --step onboard --scope' $?
-sec '[Ee]xit 4'; check 'the section handles exit 4' $?
+has "$repo/skills/factory/references/add-repo.md" '[Ee]xit 1 or 4'; check 'the add-repo session handles exit 4' $?
 sec '`add-repo-<key>`'; check 'the confirm ask id is add-repo-<key>' $?
 sec '`add-repo-<key>-error`'; check 'the error notice id is add-repo-<key>-error' $?
 sec 'before any command'; check 'the URL is checked before any command' $?
@@ -124,9 +125,9 @@ sec 'waits for a free session'; check 'full capacity is one notice ask' $?
 ! sec '[Rr]etry|again after the next freed lease'; check 'full capacity has no retry loop' $?
 sec 'onboarding\.md' && sec '`status:`'; check 'the done line is checked against the report file status' $?
 ! sec 'capacity\.sh release'; check 'the CEO releases nothing for an onboarding session' $?
-intake=$(awk '/^## / { on = ($0 == "## Intake"); next } on && /^2\. / { p = 1 } on && /^3\. / { p = 0 } p { print }' "$ceo")
+intake=$(awk '/^## / { on = ($0 == "## Steps"); next } on && /^2\. / { p = 1 } on && /^3\. / { p = 0 } p { print }' "$repo/skills/factory/references/intake.md")
 printf '%s\n' "$intake" | grep -q 'onboarding\.md' && printf '%s\n' "$intake" | grep -q '## Summary'
-check 'Intake routing reads the ## Summary of onboarding.md' $?
+check 'the intake session routes by the ## Summary of onboarding.md' $?
 
 # --- SKILL.md --------------------------------------------------------------------------------------------------
 grep -Eq '^\| `onboard` \|.*`references/onboard\.md` \|$' "$skill"; check 'SKILL.md routes onboard to references/onboard.md' $?

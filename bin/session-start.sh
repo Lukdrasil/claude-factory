@@ -45,7 +45,7 @@ if [ -n "$st_top" ] && [ "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
   { if [ -n "$sid" ]; then identity_line; register_ui "$WORK_DIR/state"; fi
     due=$(for k in daily weekly; do sh "$(dirname -- "$0")/pass-stamp.sh" --due "$k" --state "$WORK_DIR/state" 2>/dev/null; done)
     if [ -n "$due" ]; then
-      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one as its own step session (claude-factory:memory-daily <scope>), a weekly one in the CEO session (claude-factory:memory-weekly <scope>):\n%s\n' "$due"
+      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one as its own step session (claude-factory:memory-daily <scope>), a weekly one too (claude-factory:memory-weekly <scope>):\n%s\n' "$due"
     fi; } | emit
   exit 0
 fi

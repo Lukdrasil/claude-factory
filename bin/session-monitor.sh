@@ -4,8 +4,9 @@
 # same lines are printed for the human to run.
 #
 #   session-monitor.sh [--task <T-id> [--wave N] [--step <name>]] [--all] [--queue] [--step pass --scope
-#                      <key>/<agent>] [--step onboard --scope <key>] [--max N] [--workspace <id>] [--state <dir>]
-#                      [--dry-run]
+#                      <key>/<agent>] [--step onboard --scope <key>] [--step weekly --scope <scope>]
+#                      [--step intake --scope <R-id> [--priority P0-P3]] [--step add-repo --url <url> [--alias A]]
+#                      [--step route --message <text>] [--max N] [--workspace <id>] [--state <dir>] [--dry-run]
 #
 # Seven modes:
 #   --task T-id      one named task as a unit, and nothing else: the current wave of its blocks when it has any
@@ -33,6 +34,20 @@
 #                    FACTORY_TASK=none, FACTORY_FLOW=onboard and FACTORY_STEP=`Onboarding <key>`. A live agent
 #                    with its herdr name that is idle or done has its tab closed and is replaced; one at work or
 #                    blocked is printed `skipped` with `onboard-<key> runs already` on stderr.
+#   --step weekly|intake|add-repo|route
+#                    an org step: an action the CEO hands on to a session of its own instead of doing it
+#                    (references/ceo.md), in the state clone, role and FACTORY_FLOW the step, FACTORY_TASK=none,
+#                    unit `<step>-<tail>`, herdr name `<step>_<tail lowercased>` cut at 31, no tab record and no
+#                    claim, and the runs-already check of an onboarding. weekly --scope <scope> (global,
+#                    repo:<key>, agent:<a>, repo-agent:<key>/<a> or <key>/<a>, tail the scope with `:` and `/`
+#                    as `-`) prompts `/claude-factory:memory-weekly <scope>`; intake --scope <R-id> [--priority
+#                    <P0-P3>, default P2] prompts `/claude-factory:factory intake <R-id> <P>`; add-repo --url
+#                    <url> [--alias <A>] (tail the key, the URL's basename without .git) prompts
+#                    `/claude-factory:factory add-repo --clone '<url>' [--alias <A>]` on sonnet; route --message
+#                    <text> (tail the epoch second) prompts `/claude-factory:factory route <text>`.
+#   --task T-id --step cross-repo
+#                    the cross-repo need a lead reported for T-id (references/cross-repo.md), in the state clone,
+#                    prompting `/claude-factory:factory cross-repo <T-id>`, FACTORY_STEP `Cross-repo need of <T-id>`.
 #   --queue          the lines of queue-next.sh (`<T-id> <key> <priority> <request>`, in dispatch order) from the
 #                    top, each as --step lead, while `capacity.sh count sessions` leaves two slots free and
 #                    `count repo-lead` one; the first line that does not fit ends the take.
@@ -118,6 +133,7 @@ die() { printf 'session-monitor: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 parent='' wave='' state='' dry='' max=5 step='' spawn='' all='' queue='' scope='' workspace=${HERDR_WORKSPACE_ID:-}
+priority='' url='' alias='' message='' has_message=''
 while [ $# -gt 0 ]; do
   case "$1" in
     # --parent is the old spelling of --task, kept so `factory herd` and every recipe that names it keep working
@@ -127,6 +143,10 @@ while [ $# -gt 0 ]; do
     --wave) [ $# -ge 2 ] || die "--wave needs a value"; wave=$2; shift 2 ;;
     --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --scope) [ $# -ge 2 ] || die "--scope needs a value"; scope=$2; shift 2 ;;
+    --priority) [ $# -ge 2 ] || die "--priority needs a value"; priority=$2; shift 2 ;;
+    --url) [ $# -ge 2 ] || die "--url needs a value"; url=$2; shift 2 ;;
+    --alias) [ $# -ge 2 ] || die "--alias needs a value"; alias=$2; shift 2 ;;
+    --message) [ $# -ge 2 ] || die "--message needs a value"; message=$(printf '%s' "$2" | tr '\n\r' '  '); has_message=1; shift 2 ;;
     --max) [ $# -ge 2 ] || die "--max needs a value"; max=$2; shift 2 ;;
     --workspace) [ $# -ge 2 ] || die "--workspace needs a value"; workspace=$2; shift 2 ;;
     --spawn) [ $# -ge 2 ] || die "--spawn needs a value"; spawn=$2; shift 2 ;;
@@ -137,10 +157,33 @@ while [ $# -gt 0 ]; do
 done
 case "$max" in ''|*[!0-9]*) die "--max takes a number, not '$max'" ;; esac
 case "$step" in
-  ''|triage|chart|grill|plan-check|decompose|lead|pass|onboard) ;;
-  *) die "--step takes triage, chart, grill, plan-check, decompose, lead, pass or onboard, not '$step'" ;;
+  ''|triage|chart|grill|plan-check|decompose|lead|cross-repo|pass|onboard|weekly|intake|add-repo|route) ;;
+  *) die "--step takes triage, chart, grill, plan-check, decompose, lead, cross-repo, pass, onboard, weekly, intake, add-repo or route, not '$step'" ;;
 esac
-if [ "$step" = onboard ]; then
+[ -z "$priority" ] || [ "$step" = intake ] || die "--priority belongs to --step intake"
+[ -z "$url$alias" ] || [ "$step" = add-repo ] || die "--url and --alias belong to --step add-repo"
+[ -z "$has_message" ] || [ "$step" = route ] || die "--message belongs to --step route"
+case "$step" in
+  weekly|intake|add-repo|route) [ -z "$parent" ] || die "--step $step is an action of the CEO's, not a step of a task; drop --task" ;;
+esac
+if [ "$step" = weekly ]; then
+  printf '%s\n' "$scope" | grep -Eq '^(global|repo:[A-Za-z0-9_-]+|agent:[a-z0-9-]+|(repo-agent:)?[A-Za-z0-9_-]+/[a-z0-9-]+)$' \
+    || die "--step weekly needs --scope global, repo:<key>, agent:<a> or repo-agent:<key>/<a>, not '$scope'"
+elif [ "$step" = intake ]; then
+  printf '%s\n' "$scope" | grep -Eq '^R-[0-9]{8}-[0-9]+$' || die "--step intake needs --scope <R-id>, not '$scope'"
+  priority=${priority:-P2}
+  case "$priority" in P[0-3]) ;; *) die "--priority takes P0 to P3, not '$priority'" ;; esac
+elif [ "$step" = add-repo ]; then
+  [ -z "$scope" ] || die "--step add-repo takes its key from --url; drop --scope"
+  case "$url" in ''|-*) die "--step add-repo needs --url <url>" ;; esac
+  printf '%s\n' "$url" | grep -Eq '^[A-Za-z0-9._~:/@+-]+$' || die "--url takes the characters of a clone URL, not '$url'"
+  ar_key=${url%/}; ar_key=${ar_key##*/}; ar_key=${ar_key##*:}; ar_key=${ar_key%.git}
+  printf '%s\n' "$ar_key" | grep -Eq '^[A-Za-z0-9_-]+$' || die "no repository key in '$url'"
+  [ -z "$alias" ] || printf '%s\n' "$alias" | grep -Eq '^[A-Z]{2,4}$' || die "--alias takes 2 to 4 capital letters, not '$alias'"
+elif [ "$step" = route ]; then
+  [ -z "$scope" ] || die "--step route takes no --scope"
+  [ -n "$(printf '%s' "$message" | tr -d ' ')" ] || die "--step route needs --message <text>"
+elif [ "$step" = onboard ]; then
   [ -z "$parent" ] || die "--step onboard is a repo's onboarding, not a step of a task; drop --task"
   case "$scope" in
     '') die "--step onboard needs --scope <key>" ;;
@@ -154,7 +197,7 @@ elif [ "$step" = pass ]; then
     *) die "--step pass needs --scope <key>/<agent>" ;;
   esac
 else
-  [ -z "$scope" ] || die "--scope belongs to --step pass or --step onboard"
+  [ -z "$scope" ] || die "--scope belongs to --step pass, onboard, weekly or intake"
   [ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --task it is a step of"
 fi
 [ -z "$parent" ] || [ -z "$all" ] || die "--task names one task and --all takes every ready one; pass one of them"
@@ -301,6 +344,7 @@ step_unit() { # <T-id> <step>
     grill) su_prompt="/claude-factory:grill $su_task" ;;
     plan-check) su_prompt="/claude-factory:architect-review plan-check $su_task" ;;
     decompose) su_prompt="/claude-factory:decompose $su_task" ;;
+    cross-repo) su_cwd=$state su_prompt="/claude-factory:factory cross-repo $1" ;;
     lead)
       su_role=repo-lead
       su_prompt="/claude-factory:factory herd $1"
@@ -341,6 +385,23 @@ onboard_unit() { # <key>
   unit "onboard-$1" "$ou_cwd" sonnet - onboard "$(printf 'onboard_%s' "$(lower "$1")" | cut -c1-31)" \
     "/claude-factory:factory onboard $1"
 }
+
+# an org step (references/ceo.md): an action the CEO hands on, run in the state clone, which it reads and writes
+org_unit() { # <step> <tail> <model> <prompt>
+  unit "$1-$2" "$state" "$3" - "$1" "$(printf '%s_%s' "$1" "$(lower "$2")" | cut -c1-31)" "$4"
+}
+# the UI's step line of an org step, which session-start.sh registers with FACTORY_TASK=none
+org_line() { # <step>
+  case "$1" in
+    weekly) printf 'Weekly pass %s' "$scope" ;;
+    intake) printf 'Intake %s' "$scope" ;;
+    add-repo) printf 'Add repository %s' "$ar_key" ;;
+    route) printf 'Route a message' ;;
+  esac
+}
+is_org() { case "$1" in onboard|weekly|intake|add-repo|route) return 0 ;; esac; return 1; }
+# a printed line carries the prompt inside double quotes, so a message keeps its quotes, dollars and backticks
+dq() { printf '%s' "$1" | sed 's/[\\"$`]/\\&/g'; }
 
 # the ready, unowned tasks of the whole state repo, one `<id> <repo> <status> <archetype> <goal>` per line
 list_ready() {
@@ -396,6 +457,14 @@ trap 'rm -f "$units"' EXIT
 
 if [ "$step" = onboard ]; then
   onboard_unit "$scope" > "$units"
+elif [ "$step" = weekly ]; then
+  org_unit weekly "$(printf '%s' "$scope" | tr ':/' '--')" opus "/claude-factory:memory-weekly $scope" > "$units"
+elif [ "$step" = intake ]; then
+  org_unit intake "$scope" opus "/claude-factory:factory intake $scope $priority" > "$units"
+elif [ "$step" = add-repo ]; then
+  org_unit add-repo "$ar_key" sonnet "/claude-factory:factory add-repo --clone '$url'${alias:+ --alias $alias}" > "$units"
+elif [ "$step" = route ]; then
+  org_unit route "$(date +%s)" opus "/claude-factory:factory route $message" > "$units"
 elif [ "$step" = pass ]; then
   pass_unit "$scope" > "$units"
 elif [ -n "$queue" ]; then
@@ -533,7 +602,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # room check and the claim: a unit whose tab is still at work is neither claimed nor started twice, and every
   # tab that closes gives its leases back, so a finished step does not hold the slot its successor needs; a pass
   # and an onboarding have no record
-  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ] && [ "$role" != onboard ]; then
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ] && ! is_org "$role"; then
     t=${id%%-[a-z]*}
     if is_block_id "$t"; then t=${t%-*}; fi
     closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
@@ -549,9 +618,9 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       continue
     fi
   fi
-  # an onboarding has no record either: the live agent of its name is the one to look at. Idle or done, its run
-  # ended and its tab closes, which gives the slot back; at work or blocked, it runs already
-  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" = onboard ] && got=$(herdr agent get "$name" 2>/dev/null); then
+  # an onboarding and the other org steps have no record either: the live agent of its name is the one to look at.
+  # Idle or done, its run ended and its tab closes, which gives the slot back; at work or blocked, it runs already
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && is_org "$role" && got=$(herdr agent get "$name" 2>/dev/null); then
     case "$(printf '%s' "$got" | json result.agent.agent_status)" in
       idle|done)
         herdr tab close "$(printf '%s' "$got" | json result.agent.tab_id)" >/dev/null 2>&1 || :
@@ -595,7 +664,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
   s_used=$((s_used + 1)) l_used=$((l_used + leads))
-  if [ "$role" = pass ] || [ "$role" = onboard ]; then
+  if [ "$role" = pass ] || is_org "$role"; then
     label=$id
   else
     label=$(sh "$bin/herdr-tabs.sh" name "$id" --state "$state")
@@ -604,7 +673,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     printf '%s printed %s\n' "$id" "$cwd"
     [ -z "$wt" ] || printf '%s\n' "$wt"
     printf '  cd %s && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
-      "$cwd" "$role" "$id" "$model" "$label" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$prompt"
+      "$cwd" "$role" "$id" "$model" "$label" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
     continue
   fi
   lease "$id" "$role"
@@ -622,6 +691,10 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       set -- "$@" --env "FACTORY_TASK=${id%-"$role"}" --env "FACTORY_STEP=$(step_line "$role" "${id%-"$role"}")" ;;
     onboard)
       set -- "$@" --env FACTORY_TASK=none --env FACTORY_FLOW=onboard --env "FACTORY_STEP=Onboarding ${id#onboard-}" ;;
+    weekly|intake|add-repo|route)
+      set -- "$@" --env FACTORY_TASK=none --env "FACTORY_FLOW=$role" --env "FACTORY_STEP=$(org_line "$role")" ;;
+    cross-repo)
+      set -- "$@" --env "FACTORY_TASK=${id%-cross-repo}" --env "FACTORY_STEP=Cross-repo need of ${id%-cross-repo}" ;;
   esac
   created=$(herdr "$@" || :)
   pane=$(printf '%s' "$created" | json result.root_pane.pane_id)
@@ -631,7 +704,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     rc=2; continue
   fi
   tab=$(printf '%s' "$created" | json result.tab.tab_id)
-  if [ "$role" != pass ] && [ "$role" != onboard ] && { [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; }; then
+  if [ "$role" != pass ] && ! is_org "$role" && { [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; }; then
     echo "session-monitor: no tab record for $id, so its tab is not closed by the scripts" >&2
   fi
   if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" --name "$label" ${FACTORY_CLAUDE_ARGS:-} 2>&1 >/dev/null); then
@@ -655,7 +728,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   fi
   # plan 3.7: reattach after a herdr restart finds the agent by its session id when the pane id changed
   sid=$(herdr agent get "$name" 2>/dev/null | json result.agent.agent_session.value || :)
-  [ "$role" = pass ] || [ "$role" = onboard ] || [ -z "$sid" ] || sh "$bin/herdr-tabs.sh" session "$id" "$sid" --state "$state" || :
+  [ "$role" = pass ] || is_org "$role" || [ -z "$sid" ] || sh "$bin/herdr-tabs.sh" session "$id" "$sid" --state "$state" || :
   printf '%s spawned %s\n' "$id" "$cwd"
 done < "$units"
 end_pass $rc
