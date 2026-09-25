@@ -1,4 +1,4 @@
-import { esc, renderAsk } from './ask-card.js';
+import { esc, renderAsk, stateOf } from './ask-card.js';
 import { renderTaskPanels } from './task-panels.js';
 import { renderBlockedQuestion } from './blocked.js';
 import { renderVisual } from './visual.js';
@@ -20,9 +20,18 @@ function context(group) {
   return h;
 }
 
+/** The footer of one card sticks, so one Send shows: the first card with a Send not scrolled above the header. */
+function pin(el) {
+  const top = el.querySelector('.drawer-h').getBoundingClientRect().bottom;
+  const live = [...el.querySelectorAll('.ask')].filter((a) => a.querySelector('.ask-f'));
+  const at = live.find((a) => a.getBoundingClientRect().bottom > top);
+  for (const a of live) a.classList.toggle('pinned', a === at);
+}
+
 /**
  * The drawer of one task or of setup. With an open ask it is in decision mode: the asks first, then the blocked
  * question, wave, panels, visuals and context in one collapsed "Task details". Without one, all of it in a column.
+ * The open asks come first, the ask the page was sent to (`group.cursor`) is marked current.
  */
 export function renderDrawer(group) {
   const setup = group.id === 'setup';
@@ -45,7 +54,14 @@ export function renderDrawer(group) {
     token: group.token,
     ask: s.asks.filter((a) => a.status === 'open').sort((a, b) => Date.parse(b.modified) - Date.parse(a.modified))[0]?.ask,
   })));
-  asks.append(...group.asks.map((a) => renderAsk(a, group.staged[`${a.sid}/${a.ask}`] || EMPTY)));
+  const open = (a) => (stateOf(a) === 'open' ? 0 : 1);
+  asks.append(...[...group.asks].sort((a, b) => open(a) - open(b)).map((a) => {
+    const card = renderAsk(a, group.staged[`${a.sid}/${a.ask}`] || EMPTY);
+    if (card.dataset.ask === group.cursor) card.setAttribute('aria-current', 'true');
+    return card;
+  }));
+  asks.querySelector('.ask-f')?.closest('.ask').classList.add('pinned');
+  el.addEventListener('scroll', () => pin(el), { passive: true });
   if (!group.asks.length) asks.innerHTML = '<p class="muted">No open questions for this task.</p>';
   return el;
 }
