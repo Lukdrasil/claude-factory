@@ -135,7 +135,8 @@ and `bin/state-report.sh --base-branch`.
 
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
-the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is
+the session's `agent` is `gone` with no answer sent. An ask of an ended session whose answer the relay typed reads
+answered, since the session took the answer and only never closed the ask. Only an open ask of a session in herdr takes an answer: every other card is
 read-only, its options disabled, with no answer box and no Send. A sent or answered card shows under Sent: the
 `answer` it was sent, in words like Will be sent:, its picked options pressed. The relay's other held reasons show as a note
 under the header of an open or sent card. The card of a session outside herdr shows no answer box.

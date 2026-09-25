@@ -418,13 +418,14 @@ async function confirmYes(page, name, key) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openTask(page, 'T-029');
 
-  await check('the drawer of T-029 lists the live c1 and r1 first, then x1, x2 and gn1, each group oldest first', async () => {
+  await check('the drawer of T-029 lists the live c1 and r1 first, then x1, x2, gn1 and dl1, each group oldest first', async () => {
     await until('r1 in the drawer', () => card('s29/r1').isVisible());
     const order = await drawer(page).locator('[data-ask]').evaluateAll((els) => els.map((e) => e.dataset.ask).join(' '));
-    ok(order === 's29/c1 s29/r1 s29/x1 s29/x2 s29g/gn1', `order: ${order}`);
+    ok(order === 's29/c1 s29/r1 s29/x1 s29/x2 s29g/gn1 s29g/dl1', `order: ${order}`);
   });
 
-  for (const [key, state] of [['s29/c1', 'open'], ['s29/x2', 'sent'], ['s29/x1', 'gone'], ['s29g/gn1', 'gone']]) {
+  for (const [key, state] of [['s29/c1', 'open'], ['s29/x2', 'sent'], ['s29/x1', 'gone'], ['s29g/gn1', 'gone'],
+    ['s29g/dl1', 'answered']]) {
     await check(`the header of ${key} reads the one state ${state}`, async () => {
       const head = await card(key).locator('.ask-h').innerText();
       const hits = STATES.filter(([, re]) => re.test(head)).map(([s]) => s);
@@ -432,7 +433,7 @@ async function confirmYes(page, name, key) {
     });
   }
 
-  for (const key of ['s29/x1', 's29/x2', 's29g/gn1']) {
+  for (const key of ['s29/x1', 's29/x2', 's29g/gn1', 's29g/dl1']) {
     await check(`${key}, not open to an answer, is read-only: its options disabled, no Send, no answer box`, async () => {
       const c = card(key);
       const live = await c.locator('[data-act="pick"]').evaluateAll((bs) => bs.filter((b) => !b.disabled).length);

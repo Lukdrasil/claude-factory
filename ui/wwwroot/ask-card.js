@@ -35,12 +35,14 @@ function plain(html) {
 }
 
 /**
- * The one state of an ask: answered once its session closed it, gone once its session ended before it took the
- * answer, sent while an answer waits for the session, else open. Only an open ask takes an answer.
+ * The one state of an ask: answered once its session closed it, or once it ended after the relay typed the answer
+ * without closing the ask; gone once its session ended before it took the answer, sent while an answer waits for the
+ * session, else open. Only an open ask takes an answer.
  */
 export function stateOf(ask) {
   if (ask.status !== 'open') return 'answered';
-  if (ask.held === 'gone' || ask.agent === 'gone') return 'gone';
+  if (ask.held === 'gone') return 'gone';
+  if (ask.agent === 'gone') return ask.sent && !ask.held ? 'answered' : 'gone';
   return ask.sent ? 'sent' : 'open';
 }
 
