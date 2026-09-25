@@ -144,4 +144,10 @@ dash=$(printf '\342\200\224|\342\200\223')
 # sim F38: after the clone the CEO followed add-repo.md's toolset offer and doctor, asked in the terminal and never
 # started the onboarding; a missing toolset is the onboarding's toolset check, so step 3 goes on to step 4 anyway
 has "$ceo" 'no toolsets/<stack>\.md.*step 4|step 4.*no toolsets/<stack>\.md'; check 'a missing toolset still goes on to the onboarding' $?
+# sim F39: the onboarding session of a fresh clone stops at Claude Code's folder trust dialog, and trusting runs the
+# clone's own .claude/ settings and hooks, so the human decides: one confirm ask, the answer typed by send-keys
+has "$ceo" 'still at a dialog'; check 'step 4 handles a session still at a dialog' $?
+has "$ceo" 'add-repo-<key>-trust'; check 'the trust dialog is the confirm ask add-repo-<key>-trust' $?
+has "$ceo" '\.claude/.*\.mcp\.json|\.mcp\.json.*\.claude/'; check 'the trust ask names the clone .claude/ and .mcp.json' $?
+has "$ceo" 'herdr agent send-keys onboard_<key>'; check 'the answer goes to the dialog by send-keys' $?
 exit "$fail"
