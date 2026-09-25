@@ -45,17 +45,20 @@ plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-ok() { echo "ok: $1"; }
-missing() { echo "missing: $1, $2"; }
+# every line the report prints and every row doctor.json holds goes through here: the user:pass@ of a url is
+# dropped, since doctor.json is served to the page by /api/setup
+redact() { printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'; }
+ok() { redact "ok: $1"; }
+missing() { redact "missing: $1, $2"; }
 # one check: printed as a line of the report, or with --json a row of the steps file
 step() { # <id> <done|missing|failing> <detail> [<fix>]
   if [ "$json" = 1 ]; then
-    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$(flat "$3")" "$(flat "${4:-}")" >> "$tmp/steps"
+    redact "$(printf '%s\t%s\t%s\t%s' "$1" "$2" "$(flat "$3")" "$(flat "${4:-}")")" >> "$tmp/steps"
   else
     case "$2" in
       done) ok "$3" ;;
       missing) missing "$3" "${4:-}" ;;
-      *) echo "failing: $3, ${4:-}" ;;
+      *) redact "failing: $3, ${4:-}" ;;
     esac
   fi
 }
@@ -93,6 +96,22 @@ fi
 herdr_min=0.8.2
 settings="${HOME:-/nonexistent}/.claude/settings.json"
 init_fix="run factory-init.sh --root $root"
+# a factory run with `claude --settings <file>` in FACTORY_CLAUDE_ARGS reads that file over the user settings
+fsettings=$(printf '%s\n' "${FACTORY_CLAUDE_ARGS:-}" | awk '{ for (i = 1; i <= NF; i++) {
+  if ($i == "--settings" && i < NF) { print $(i + 1); exit }
+  if (index($i, "--settings=") == 1) { print substr($i, 12); exit } } }')
+settings_label=$settings
+[ -z "$fsettings" ] || settings_label="$fsettings over $settings"
+# the effective value of WORK_DIR or promptSuggestionEnabled, the first file that sets it; allow is the union
+settings_value() { # WORK_DIR|promptSuggestionEnabled|allow
+  node -e '
+    const fs = require("fs"), [what, ...files] = process.argv.slice(1);
+    const os = files.map(f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { return {}; } });
+    const first = get => { for (const o of os) { const v = get(o); if (v !== undefined) return v; } return ""; };
+    if (what === "allow") process.stdout.write(os.flatMap(o => (o.permissions && o.permissions.allow) || []).join("\n"));
+    else if (what === "WORK_DIR") process.stdout.write(String(first(o => o.env && o.env.WORK_DIR)));
+    else process.stdout.write(String(first(o => o[what])));' "$1" $fsettings "$settings" 2>/dev/null || :
+}
 
 version_ge() { # <a> <b>: a >= b, both x.y.z
   printf '%s %s\n' "$1" "$2" | awk '{
@@ -166,9 +185,11 @@ check_claude() {
   else step claude failing "claude --version prints nothing" 'reinstall Claude Code'; fi
 }
 
-# the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside)
+# the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside);
+# an http(s) host keeps its port, the forge's own (a self-hosted GitLab on :8929), an ssh one drops the sshd's
 host_of() {
   case "$1" in
+    http://*|https://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*} ;;
     *://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*}; ho=${ho%%:*} ;;
     *@*:*) ho=${1#*@}; ho=${ho%%:*} ;;
     *) ho='' ;;
@@ -184,9 +205,12 @@ project_of() {
 }
 cli_of() { if [ "$1" = github.com ]; then echo gh; else echo glab; fi; }
 logins=' '
+# glab --hostname refuses a host:port ("invalid hostname"): its status is read off the status of every host, and
+# its api goes through GITLAB_HOST, as in forge.sh
 logged_in() { # <cli> <host>, one auth status per pair
   case "$logins" in *" $1@$2=1 "*) return 0 ;; *" $1@$2=0 "*) return 1 ;; esac
-  if "$1" auth status --hostname "$2" 2>&1 | grep -q "Logged in to $2"; then logins="$logins$1@$2=1 "; return 0; fi
+  case "$2" in *:*) set -- "$1" "$2" ;; *) set -- "$1" "$2" --hostname "$2" ;; esac
+  if "$1" auth status ${3:+"$3" "$4"} 2>&1 | grep -q "Logged in to $2 "; then logins="$logins$1@$2=1 "; return 0; fi
   logins="$logins$1@$2=0 "; return 1
 }
 
@@ -260,31 +284,31 @@ check_state_push() {
 }
 
 check_work_dir() {
-  wd=$(sed -n 's/.*"WORK_DIR"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$settings" 2>/dev/null | head -n1 || :)
+  wd=${WORK_DIR:-} wd_in='the environment'
+  [ -n "$wd" ] || wd=$(settings_value WORK_DIR) wd_in=$settings_label
   wd=${wd%/}
-  if [ "$wd" = "$root" ]; then step work-dir done "WORK_DIR=$root in $settings"
-  elif [ -z "$wd" ]; then step work-dir missing "no WORK_DIR in $settings" "$init_fix"
-  else step work-dir failing "WORK_DIR is $wd in $settings, not $root" "$init_fix"; fi
+  if [ "$wd" = "$root" ]; then step work-dir done "WORK_DIR=$root in $wd_in"
+  elif [ -z "$wd" ]; then step work-dir missing "no WORK_DIR in $wd_in" "$init_fix"
+  else step work-dir failing "WORK_DIR is $wd in $wd_in, not $root" "$init_fix"; fi
 }
 
 check_prompt_suggestion() {
-  if grep -Eq '"promptSuggestionEnabled"[[:space:]]*:[[:space:]]*false' "$settings" 2>/dev/null; then
-    step prompt-suggestion done "promptSuggestionEnabled: false in $settings"
+  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
+    step prompt-suggestion done "promptSuggestionEnabled: false in $settings_label"
   else
-    step prompt-suggestion missing "promptSuggestionEnabled is not false in $settings, a suggestion would be typed into a UI answer" \
+    step prompt-suggestion missing "promptSuggestionEnabled is not false in $settings_label, a suggestion would be typed into a UI answer" \
       "$init_fix --ui docker"
   fi
 }
 
 check_permissions() {
-  pm=$(factory_allow_rules "$root" "$plugin" | node -e '
-    let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
-      let o = {}; try { o = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) {}
-      const allow = (o.permissions && o.permissions.allow) || [];
-      process.stdout.write(s.split("\n").filter(r => r && !allow.includes(r)).join(" "));
-    });' "$settings" 2>/dev/null || :)
-  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings"
-  else step permissions missing "no allow rule $pm in $settings, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
+  allow=$(settings_value allow)
+  pm=$(factory_allow_rules "$root" "$plugin" | while IFS= read -r r; do
+    printf '%s\n' "$allow" | grep -qxF -- "$r" || printf ' %s' "$r"
+  done)
+  pm=${pm# }
+  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings_label"
+  else step permissions missing "no allow rule $pm in $settings_label, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
 }
 
 check_repos() {
@@ -346,7 +370,10 @@ check_repo_mr_class() { # <key>
   if ! on_path "$mc"; then step "$id" missing "MR class of $1 not read: $mc is not installed" "install $mc, then rerun doctor"; return 0; fi
   if ! logged_in "$mc" "$mh"; then step "$id" missing "MR class of $1 not read: $mc is not logged in to $mh" "$mc auth login --hostname $mh"; return 0; fi
   if [ "$mc" = glab ]; then
-    mj=$(glab api --hostname "$mh" "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj=''
+    case "$mh" in
+      *:*) mj=$(GITLAB_HOST=$mh glab api "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+      *) mj=$(glab api --hostname "$mh" "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+    esac
     if [ -z "$mj" ]; then step "$id" failing "MR class of $1 not read: glab api projects/$mp failed on $mh" "check that $mu exists and glab reaches $mh"; return 0; fi
     mm=$(json_val "$mj" merge_method); sq=$(json_val "$mj" squash_option)
     req=$(json_val "$mj" only_allow_merge_if_pipeline_succeeds); skp=$(json_val "$mj" allow_merge_on_skipped_pipeline)
@@ -581,10 +608,10 @@ if [ "$ui" = docker ]; then
   else missing "ui: docker, but the Docker daemon does not answer" 'install and start Docker, or set ui: off in factory.yml'; fi
   if command -v herdr >/dev/null 2>&1; then ok "ui: docker, herdr on PATH"
   else missing "ui: docker, but herdr is not on PATH" 'install herdr from https://herdr.dev, or set ui: off in factory.yml'; fi
-  if grep -Eq '"promptSuggestionEnabled"[[:space:]]*:[[:space:]]*false' "${HOME:-/nonexistent}/.claude/settings.json" 2>/dev/null; then
-    ok "ui: docker, promptSuggestionEnabled: false in ~/.claude/settings.json"
+  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
+    ok "ui: docker, promptSuggestionEnabled: false in $settings_label"
   else
-    missing "ui: docker, but promptSuggestionEnabled is not false in ~/.claude/settings.json" \
+    missing "ui: docker, but promptSuggestionEnabled is not false in $settings_label" \
       "run factory-init.sh --root $root --ui docker"
   fi
 fi

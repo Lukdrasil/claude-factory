@@ -89,7 +89,7 @@ state shows its output:
 
 | step | done when the state shows |
 |---|---|
-| `triage` | the parent's `tier:` set and `## Related issues` written |
+| `triage` | the parent's `tier:` set and, for a feature, bugfix or refactor, `## Related issues` written as its own section |
 | `chart` | `sh <plugin-root>/bin/map.sh clear <R-id>` exits 0 and the map's `Status:` is `planned` or later |
 | `grill` | `repos/<key>/plans/<slug>-plan-ready.md` with `task:` and `request:` |
 | `plan-check` | the verdict of that plan under `repos/<key>/verdicts/` |

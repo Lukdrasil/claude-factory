@@ -44,11 +44,19 @@ cat > "$stub/glab" <<'EOF'
 #!/bin/sh
 case "$1 ${2:-}" in
   "auth status")
+    if [ $# -lt 4 ]; then
+      for h in ${GSTUB_HOSTS:-}; do echo "  Logged in to $h as tester (keyring)" >&2; done
+      exit 0
+    fi
+    case "$4" in *:*) echo "invalid hostname $4" >&2; exit 1 ;; esac
     case " ${GSTUB_HOSTS:-} " in
       *" $4 "*) echo "  Logged in to $4 as tester (keyring)" >&2 ;;
       *) echo "  $4: no token found" >&2; exit 1 ;;
     esac ;;
-  "api --hostname") cat "$GSTUB_JSON" ;;
+  "api --hostname")
+    case "$3" in *:*) echo "invalid hostname $3" >&2; exit 1 ;; esac
+    cat "$GSTUB_JSON" ;;
+  "api projects/"*) [ -n "${GITLAB_HOST:-}" ] || exit 1; echo "$GITLAB_HOST" > "$GSTUB_JSON.host"; cat "$GSTUB_JSON" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -304,6 +312,30 @@ djson
 has "the six allow rules are done" '^done ' "$(step permissions)"
 cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
+# a factory run with `claude --settings <file>`: WORK_DIR comes from the environment and the rest from the file
+# FACTORY_CLAUDE_ARGS names, so the user settings of this machine say nothing about it
+node -e 'const f=process.argv[1],fs=require("fs"),o=JSON.parse(fs.readFileSync(f,"utf8"));delete o.env.WORK_DIR;delete o.promptSuggestionEnabled;o.permissions={allow:["Bash(ls)"]};fs.writeFileSync(f,JSON.stringify(o))' "$dhome/.claude/settings.json"
+printf '{"env": {"WORK_DIR": "%s"}, "promptSuggestionEnabled": false, "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)"]}}\n' \
+  "$w" "$w" "$dplug" "$w" "$w" "$dplug" > "$tmp/fsettings.json"
+WORK_DIR=$w FACTORY_CLAUDE_ARGS="--plugin-dir $dplug --settings $tmp/fsettings.json" djson
+has "WORK_DIR from the environment is done" '^done ' "$(step work-dir)"
+has "promptSuggestionEnabled from the --settings file is done" '^done ' "$(step prompt-suggestion)"
+has "the allow rules of the --settings file are done" '^done ' "$(step permissions)"
+djson
+has "without them the user settings decide: no WORK_DIR" '^missing ' "$(step work-dir)"
+cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
+
+# a state remote with credentials in its url: doctor names the remote, never the secret, in doctor.json or its report
+git -C "$st" remote set-url origin https://oauth2:SECRET@gitlab.example.com/g/state.git
+djson
+has "the state remote with credentials is still read" '^done .*https://gitlab\.example\.com/g/state\.git' "$(step state-remote)"
+if grep -q SECRET "$dj"; then printf 'FAIL doctor.json carries the credentials of the state remote\n'; fail=1
+else printf 'PASS doctor.json carries no credentials of the state remote\n'; fi
+out=$(cd "$tmp/clone" && HOME="$dhome" sh "$bin/factory-doctor.sh" --root "$w" 2>&1)
+if printf '%s\n' "$out" | grep -q SECRET; then printf 'FAIL the report prints the credentials of the state remote\n'; fail=1
+else printf 'PASS the report prints no credentials of the state remote\n'; fi
+git -C "$st" remote set-url origin "$tmp/state-origin.git"
+
 # --- each check missing or failing ----------------------------------------------------------------------------------
 sys="$tmp/sys"
 mkdir -p "$sys"
@@ -344,6 +376,15 @@ GSTUB_JSON="$tmp/class-c.json" djson
 has "pipeline required and skipped not counted is class C, failing" '^failing .*class C' "$(step repo:alpha:mr-class)"
 has "the class C fix names the setting" '\| .*allow_merge_on_skipped_pipeline' "$(step repo:alpha:mr-class)"
 has "doctor is failing while a step fails" '^failing ' "$(step doctor)"
+
+# F10: an http(s) origin with a port, a self-hosted GitLab on :8929: the host keeps its port, and glab reads it
+# without --hostname, which refuses a host:port
+sed -i 's#https://gl.test/grp/alpha.git#http://localhost:8929/g/r.git#' "$st/repos.yml"
+GSTUB_JSON="$tmp/class-a.json" GSTUB_HOSTS='localhost:8929 gl.test' djson
+has "a login on localhost:8929 is done" '^done .*localhost:8929' "$(step forge-login)"
+has "the MR class of a host:port origin is read" '^done .*class A' "$(step repo:alpha:mr-class)"
+has "glab api gets the host:port through GITLAB_HOST" '^localhost:8929$' "$(cat "$tmp/class-a.json.host" 2>/dev/null)"
+git -C "$st" checkout -q -- repos.yml
 
 mv "$dhome/.config/herdr/config.toml" "$tmp/config.toml.off"
 djson

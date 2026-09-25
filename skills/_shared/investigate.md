@@ -7,7 +7,8 @@ Runs before the tier decision of every `feature`, `bugfix` and `refactor` task, 
 2. Hand that block to a `triage-analyst` as its brief. Never a live database and never a live call:
    that is a `decision` gap for the grill.
 3. File its report, the five sections `<plugin-root>/bin/task-template.sh investigation` prints, under 400
-   words, at `repos/<key>/research/<id>-investigation.md`, and paste its `## Investigation` into the draft's
+   words, at `$WORK_DIR/state/repos/<key>/research/<id>-investigation.md`, the absolute path in the state clone
+   and never under the product clone the session runs in, and paste its `## Investigation` into the draft's
    `## Context`. A code-changing draft without that section is incomplete, whatever its tier says.
 4. Search the repo's open issues before anyone plans: spawn `issue-finder` with the problem text (the draft's
    `# Goal` and `## Context`, and the request as the human gave it when the draft has a `request:`) instead of a

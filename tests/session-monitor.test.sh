@@ -571,6 +571,8 @@ check 'the chart step goes out'                     "^T-ECS-12-chart spawned $or
 out=$(envof)
 check 'a spawn passes FACTORY_ROLE'                 '^FACTORY_ROLE=chart$'
 check 'a spawn passes FACTORY_UNIT'                 '^FACTORY_UNIT=T-ECS-12-chart$'
+check 'a step passes its task'                      '^FACTORY_TASK=T-ECS-12$'
+check 'a step passes its solve step line'           '^FACTORY_STEP=Step 3b of 16: chart R-20260925-1$'
 check 'a spawn turns the auto memory off'           '^CLAUDE_CODE_DISABLE_AUTO_MEMORY=1$'
 out=$(cat "$HERDR_STUB_LOG")
 check 'a step agent is <step>_<id less t->'         '^agent start chart_ecs-12 --kind claude '
@@ -597,6 +599,7 @@ check 'the lead prompt herds its task'              '^agent prompt lead_ecs-12 "
 out=$(envof)
 check 'the lead role is repo-lead'                  '^FACTORY_ROLE=repo-lead$'
 check 'the lead unit is <T-id>-lead'                '^FACTORY_UNIT=T-ECS-12-lead$'
+nocheck 'a lead is no solve step'                   '^FACTORY_STEP='
 exists 'a lead leases a sessions slot'              "$lease/sessions/T-ECS-12-lead"
 exists 'a lead leases a repo-lead slot'             "$lease/repo-lead/T-ECS-12"
 out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-12.md")
@@ -617,6 +620,9 @@ check 'with a playbook the lead reads it first' \
   "\"Read $ostate/repos/ecs-core/agents/repo-lead/playbook.md first. /claude-factory:factory herd T-ECS-12\"\$"
 sm --task T-ECS-14 --step chart --dry-run >/dev/null 2>&1
 absent 'a dry run leases nothing'                   "$lease/sessions/T-ECS-14-chart"
+out=$(sm --task T-ECS-14 --step triage --dry-run 2>/dev/null)
+check 'the triage prompt asks for ## Related issues as its own section' 'write ## Related issues as its own section after ## Context'
+check 'the triage prompt names the report path in the state clone' "file the investigation report at $ostate/repos/ecs-core/research/T-ECS-14-investigation.md, "
 
 # agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
 herdr_agent chart_ecs-13 idle pane-13
@@ -677,6 +683,14 @@ sh "$bin/capacity.sh" acquire sessions T-X-2 --state "$ostate"
 out=$(sm --task T-ECS-12 --step lead 2>&1)
 check 'a lead with one free slot is skipped'        '^T-ECS-12-lead skipped '
 check 'the lead skip names the sessions cap'        'capacity: sessions full'
+# a finished step whose idle tab still holds a sessions lease: the close frees the slot before the room check
+sh "$bin/capacity.sh" release T-X-2 --state "$ostate"
+sh "$bin/capacity.sh" acquire sessions T-ECS-12-grill --state "$ostate"
+printf 'T-ECS-12-grill tab-77 pane-77\n' >> "$oroot/ecs-core/.harness/T-ECS-12/herdr-tabs"
+herdr_tab tab-77 idle false grill_ecs-12
+out=$(sm --task T-ECS-12 --step lead 2>&1)
+check 'a lead goes out once the finished step tab is closed' '^T-ECS-12-lead spawned '
+absent 'the closed step tab gives its sessions lease back' "$lease/sessions/T-ECS-12-grill"
 rm -rf "$lease"
 ocaps 10 3
 

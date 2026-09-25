@@ -61,7 +61,8 @@
 # Every unit has a role: the step for a step, `repo-lead` for a lead, `pass` for a pass, and the agent of
 # model-for.sh --agent for a block or a leaf. A herdr spawn passes `--env FACTORY_ROLE=<role> --env
 # FACTORY_UNIT=<unit> --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on its create, and a printed line carries the same
-# three as a prefix of its `claude` command. FACTORY_CLAUDE_ARGS, when set, is appended word by word to every
+# three as a prefix of its `claude` command. A herdr spawn of a step also passes FACTORY_TASK=<T-id> and
+# FACTORY_STEP=<its solve-next heading>, which session-start.sh registers in the Factory UI. FACTORY_CLAUDE_ARGS, when set, is appended word by word to every
 # `claude` command line, spawned or printed (a test factory loads the plugin under test with `--plugin-dir` and its
 # own WORK_DIR with `--settings`). The herdr agent name is plan 3.6's `<role>_<task id lowercased>`,
 # `lead` for a lead, the leading `t-` dropped for an alias id and kept for a legacy one (`lead_ecs-12`,
@@ -87,7 +88,7 @@
 # second one that changes nothing leaves the session up, exit 2.
 #
 # A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-id, before the
-# claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
+# capacity check and the claim: a recorded tab whose agent is idle closes and gives its leases back, and a unit whose own tab is kept (focused, the caller's,
 # or an agent at work) is printed `skipped` and not started. `--all` first runs `herdr-tabs.sh sweep` over
 # every T-id with a tab record, which closes the tabs of units at `done` or `closed` and prints one
 # `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line on stderr per recorded tab it tried.
@@ -276,7 +277,7 @@ step_unit() { # <T-id> <step>
     triage)
       su_model=$(sh "$bin/model-for.sh" triage "$(field "$su_task" tier)" '' 0 \
         "$(field "$su_task" complexity)" 2>/dev/null || echo sonnet)
-      su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, write ## Context into the task, set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
+      su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, file the investigation report at $state/repos/$su_key/research/$1-investigation.md, in the state clone and never in this product clone, write ## Context into the task; for a feature, bugfix or refactor also write ## Related issues as its own section after ## Context (the issue-finder lines, or none), never inside ## Investigation, since solve-next.sh reads triage as done by that heading; set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
     chart)
       su_req=$(field "$su_task" request)
       case "$su_req" in ''|null) die "$1 has no request:, so there is no request map to chart" ;; esac
@@ -291,6 +292,18 @@ step_unit() { # <T-id> <step>
       [ ! -f "$su_pb" ] || su_prompt="Read $su_pb first. $su_prompt" ;;
   esac
   unit "$1-$2" "$su_cwd" "$su_model" - "$su_role" "$(agent_name "$2" "$1")" "$su_prompt"
+}
+
+# the solve-next heading of a parent-level step, which the step session registers in the Factory UI through
+# session-start.sh, so the UI places the session and its asks on the task row
+step_line() { # <step> <T-id>
+  case "$1" in
+    triage) printf 'Step 3 of 16: triage %s' "$2" ;;
+    chart) printf 'Step 3b of 16: chart %s' "$(field "$(task_of "$2")" request)" ;;
+    grill) printf 'Step 4 of 16: grill %s' "$2" ;;
+    plan-check) printf 'Step 5 of 16: architect plan-check of %s' "$2" ;;
+    decompose) printf 'Step 6 of 16: decompose %s into blocks' "$2" ;;
+  esac
 }
 
 # the daily memory pass of one repo agent (plan 3.8): it reads and writes the state clone, so it runs there
@@ -488,6 +501,26 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     printf '%s skipped %s\n' "$id" "$cwd"
     continue
   fi
+  # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
+  # room check and the claim: a unit whose tab is still at work is neither claimed nor started twice, and every
+  # tab that closes gives its leases back, so a finished step does not hold the slot its successor needs; a pass
+  # has no record
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ]; then
+    t=${id%%-[a-z]*}
+    if is_block_id "$t"; then t=${t%-*}; fi
+    closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
+      --state "$state")
+    for u in $(printf '%s\n' "$closed" | awk '$2 == "closed" { print $1 }'); do
+      [ ! -f "$state/.capacity/sessions/$u" ] || s_used=$((s_used - 1))
+      unlease "$u"
+    done
+    kept=$(printf '%s\n' "$closed" | awk -v u="$id" '$1 == u && $2 == "kept"')
+    if [ -n "$kept" ]; then
+      printf '%s skipped %s\n' "$id" "$cwd"
+      printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
+      continue
+    fi
+  fi
   need=1 leads=0
   [ "$role" != repo-lead ] || need=2 leads=1
   if ! why=$(room "$need" "$leads"); then
@@ -516,19 +549,6 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
   fi
-  # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
-  # claim, so a unit whose tab is still at work is neither claimed nor started twice; a pass has no record
-  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ]; then
-    t=${id%%-[a-z]*}
-    if is_block_id "$t"; then t=${t%-*}; fi
-    kept=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
-      --state "$state" | awk -v u="$id" '$1 == u && $2 == "kept"')
-    if [ -n "$kept" ]; then
-      printf '%s skipped %s\n' "$id" "$cwd"
-      printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
-      continue
-    fi
-  fi
   # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
@@ -555,6 +575,10 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     [ -z "$workspace" ] || set -- "$@" --workspace "$workspace"
   fi
   set -- "$@" --env "FACTORY_ROLE=$role" --env "FACTORY_UNIT=$id" --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+  case "$role" in
+    triage|chart|grill|plan-check|decompose)
+      set -- "$@" --env "FACTORY_TASK=${id%-"$role"}" --env "FACTORY_STEP=$(step_line "$role" "${id%-"$role"}")" ;;
+  esac
   created=$(herdr "$@" || :)
   pane=$(printf '%s' "$created" | json result.root_pane.pane_id)
   if [ -z "$pane" ]; then
