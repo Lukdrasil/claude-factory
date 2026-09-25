@@ -17,7 +17,8 @@ app.Use(Api.RequireLocalHost);
 app.Use(Api.RequireToken);
 app.Use(Api.PagePolicy);
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// why: a rebuilt image keeps the same URLs; without revalidation an open browser runs the old modules until a hard reload
+app.UseStaticFiles(new StaticFileOptions { OnPrepareResponse = f => f.Context.Response.Headers.CacheControl = "no-cache" });
 app.MapGet("/api/stream", (HttpContext ctx, [FromServices] MountScanner[] scanners, CancellationToken ct) => Api.Stream(ctx, scanners, ct));
 app.MapGet("/api/board", (StateReader state) => Api.Board(state));
 app.MapGet("/api/tasks/{id}", (string id, StateReader state) => Api.TaskDetail(id, state));
