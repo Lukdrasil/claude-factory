@@ -157,6 +157,8 @@ yml=$(cat "$tmp/f/state/factory.yml")
 has "a new factory.yml has capacity:" '^capacity:$' "$yml"
 has "a new factory.yml caps sessions at 10" '^  sessions: 10$' "$yml"
 has "a new factory.yml caps repo-lead at 3" '^  roles: \{repo-lead: 3, scout: 8,' "$yml"
+# F7: without the key compact-tripwire.sh assumes 200000 and a 1M-context session trips at 101 %
+has "a new factory.yml sets context_window: 1000000" '^context_window: 1000000$' "$yml"
 
 # --- factory-init.sh --from <url>: the state repo is a clone of an existing one ------------------------------------
 git init -q --bare -b main "$tmp/remote.git"
