@@ -11,8 +11,10 @@
 #   a parent worktree <root>/<key>/<T-id>  that herd, when the monitor recorded herdr units for it
 #                                          (`<root>/<key>/.harness/<T-id>/herdr-tabs`) and it is not done or closed;
 #                                          a solve session with subagents records none and is never asked
-#   the state clone (repos.yml, repos/)    every parent with a `request:` that is in_progress or review, has a
-#                                          block in_progress, tests_ready, review, changes_requested or blocked,
+#   the state clone (repos.yml, repos/)    for the CEO only (FACTORY_ROLE=ceo; a memory pass or a human's own
+#                                          session there gets nothing): every parent with a `request:` that is
+#                                          in_progress or review, has a block in_progress, tests_ready,
+#                                          review, changes_requested or blocked,
 #                                          or has an open step record (`<T-id>-<step>` whose last line in
 #                                          `<root>/<key>/.harness/<T-id>/herdr-tabs` is not `closed`), so a
 #                                          herd in triage, chart, grill or decompose is one too
@@ -56,6 +58,7 @@ if resolve_cwd_layout "$PWD" && [ "$LO_POSTURE" = standalone ] && is_parent_id "
   files=$(task_of "$LO_TASK")
   case "$files" in */archive/*) exit 0 ;; esac
 elif [ -f "$top/repos.yml" ] && [ -d "$top/repos" ]; then
+  [ "${FACTORY_ROLE:-}" = ceo ] || exit 0
   state=$top
   # inside the clone's git dir: no commit or status sees it, and nothing lands in the factory root
   stamp=$(git -C "$top" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
