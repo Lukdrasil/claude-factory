@@ -88,7 +88,7 @@
 # second one that changes nothing leaves the session up, exit 2.
 #
 # A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-id, before the
-# claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
+# capacity check and the claim: a recorded tab whose agent is idle closes and gives its leases back, and a unit whose own tab is kept (focused, the caller's,
 # or an agent at work) is printed `skipped` and not started. `--all` first runs `herdr-tabs.sh sweep` over
 # every T-id with a tab record, which closes the tabs of units at `done` or `closed` and prints one
 # `<unit> closed <tab_id>` or `<unit> kept <tab_id> <reason>` line on stderr per recorded tab it tried.
@@ -501,6 +501,26 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     printf '%s skipped %s\n' "$id" "$cwd"
     continue
   fi
+  # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
+  # room check and the claim: a unit whose tab is still at work is neither claimed nor started twice, and every
+  # tab that closes gives its leases back, so a finished step does not hold the slot its successor needs; a pass
+  # has no record
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ]; then
+    t=${id%%-[a-z]*}
+    if is_block_id "$t"; then t=${t%-*}; fi
+    closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
+      --state "$state")
+    for u in $(printf '%s\n' "$closed" | awk '$2 == "closed" { print $1 }'); do
+      [ ! -f "$state/.capacity/sessions/$u" ] || s_used=$((s_used - 1))
+      unlease "$u"
+    done
+    kept=$(printf '%s\n' "$closed" | awk -v u="$id" '$1 == u && $2 == "kept"')
+    if [ -n "$kept" ]; then
+      printf '%s skipped %s\n' "$id" "$cwd"
+      printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
+      continue
+    fi
+  fi
   need=1 leads=0
   [ "$role" != repo-lead ] || need=2 leads=1
   if ! why=$(room "$need" "$leads"); then
@@ -528,19 +548,6 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     printf '%s skipped %s\n' "$id" "$cwd"
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
-  fi
-  # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
-  # claim, so a unit whose tab is still at work is neither claimed nor started twice; a pass has no record
-  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ]; then
-    t=${id%%-[a-z]*}
-    if is_block_id "$t"; then t=${t%-*}; fi
-    kept=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
-      --state "$state" | awk -v u="$id" '$1 == u && $2 == "kept"')
-    if [ -n "$kept" ]; then
-      printf '%s skipped %s\n' "$id" "$cwd"
-      printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
-      continue
-    fi
   fi
   # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
   # changes nothing, so it claims nothing

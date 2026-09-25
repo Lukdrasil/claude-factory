@@ -682,6 +682,14 @@ sh "$bin/capacity.sh" acquire sessions T-X-2 --state "$ostate"
 out=$(sm --task T-ECS-12 --step lead 2>&1)
 check 'a lead with one free slot is skipped'        '^T-ECS-12-lead skipped '
 check 'the lead skip names the sessions cap'        'capacity: sessions full'
+# a finished step whose idle tab still holds a sessions lease: the close frees the slot before the room check
+sh "$bin/capacity.sh" release T-X-2 --state "$ostate"
+sh "$bin/capacity.sh" acquire sessions T-ECS-12-grill --state "$ostate"
+printf 'T-ECS-12-grill tab-77 pane-77\n' >> "$oroot/ecs-core/.harness/T-ECS-12/herdr-tabs"
+herdr_tab tab-77 idle false grill_ecs-12
+out=$(sm --task T-ECS-12 --step lead 2>&1)
+check 'a lead goes out once the finished step tab is closed' '^T-ECS-12-lead spawned '
+absent 'the closed step tab gives its sessions lease back' "$lease/sessions/T-ECS-12-grill"
 rm -rf "$lease"
 ocaps 10 3
 
