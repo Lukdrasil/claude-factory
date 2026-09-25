@@ -129,6 +129,15 @@ git -C "$tmp/demo/T-700-01" remote set-url origin http://localhost:8929/g/r.git
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1)
 check 'mr-open.sh routes an http://localhost:8929 origin to glab' 'glab mr create' \
   "$(printf '%s\n' "$out" | grep -o '^glab mr create')"
+check "the task MR targets the repo's default_branch" 'main' \
+  "$(printf '%s\n' "$out" | sed -n 's/^glab mr create .*--target-branch \([^ ]*\) .*/\1/p')"
+awk 'NR == 2 { print "base_branch: develop" } { print }' "$state/repos/demo/tasks/T-700.md" > "$tmp/bb.md"
+cp "$state/repos/demo/tasks/T-700.md" "$tmp/nobb.md"
+mv -f "$tmp/bb.md" "$state/repos/demo/tasks/T-700.md"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1)
+check "the task MR targets the task's base_branch: over the repo's" 'develop' \
+  "$(printf '%s\n' "$out" | sed -n 's/^glab mr create .*--target-branch \([^ ]*\) .*/\1/p')"
+mv -f "$tmp/nobb.md" "$state/repos/demo/tasks/T-700.md"
 out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp/demo/T-700-01" 2>&1)
 check 'block-mr.sh routes an http://localhost:8929 origin to glab' 'glab mr create' \
   "$(printf '%s\n' "$out" | grep -o '^glab mr create' | head -n1)"

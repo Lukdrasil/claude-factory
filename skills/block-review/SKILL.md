@@ -31,7 +31,7 @@ code change, no MR of your own**: a fix is a follow-up task (ADR-0014).
    snapshot and run `state-report.sh --task <id>` again, and repeat it at every milestone and before a long run
    (ADR-0009).
 2. `git fetch origin && git checkout <branch>`; the diff is `git diff origin/<base>...HEAD`, `<base>` being
-   `default_branch` for `<key>` in `$WORK_DIR/state/repos.yml`. Read the MR with
+   the source task's `base_branch:`, else `default_branch` for `<key>` in `$WORK_DIR/state/repos.yml`. Read the MR with
    `${CLAUDE_PLUGIN_ROOT}/bin/forge.sh mr <mr_url>`; a description not matching it is a finding.
 3. Judge against the source task's `## Acceptance` and `## Out of scope`, never your own. A `- mr: <url>`
    source with no task runs `${CLAUDE_PLUGIN_ROOT}/skills/mr-review/SKILL.md` instead of steps 2 to 5.

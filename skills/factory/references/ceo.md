@@ -89,11 +89,12 @@ Every line that asks for an action goes on to a session of its own, `sh <plugin-
 ... --spawn herdr` in your workspace, and you only act on what that session reports. A line whose shape is known
 goes straight to its handler; anything else the human says goes to a route session, which judges it. You never
 judge a line whose shape is in the table, and you never ask the human which handler it goes to: a doubt is a
-route session's to settle.
+route session's to settle. The `set` lines are the exception to a session of their own: each is one script you
+run yourself, then one line to the human with what it printed, or its refusal.
 
 | the line | you dispatch |
 |---|---|
-| `request: <text>, priority <P>` | Intake |
+| `request: <text>, priority <P>[, base <branch>]` | Intake |
 | `question[ <keys>][ branch <branch>]: <text>` | `--step route --message "<the line as received>"` (`references/route.md`) |
 | `research[ <keys>][ branch <branch>]: <text>` | `--step research --message "<the line as received>"` (`references/research.md`) |
 | `add repo <url>[ alias <ALIAS>]` | Add a repository |
@@ -101,6 +102,9 @@ route session's to settle.
 | `start the daily pass for <key>/<agent>` | `--step pass --scope <key>/<agent>` (Memory) |
 | `start the weekly pass for <scope>` | `--step weekly --scope <scope>` (Memory) |
 | `<T-id> cross-repo need <key>`, from a lead | A cross-repo need |
+| `set capacity <sessions|role> <N>` | you run `sh <plugin-root>/bin/state-set.sh capacity <name> <N>` |
+| `set default branch <key> <branch>` | you run `sh <plugin-root>/bin/state-set.sh default-branch <key> <branch>` |
+| `set base <T-id> <branch>` | you run `sh <plugin-root>/bin/state-report.sh --task <T-id> --no-status --base-branch <branch>` |
 | anything else from the human | `--step route --message "<the message as received>"` (`references/route.md`) |
 
 What those sessions report arrives as a prompt in this session, a claim like a lead's, which you check against the
@@ -130,7 +134,8 @@ A request comes from the human in the terminal or through the UI's intake ask, w
 
 1. `sh <plugin-root>/bin/map.sh new --next --destination "<the request in one line>"` allocates
    `R-YYYYMMDD-n` under the lock, prints it and opens the map at `charting`.
-2. `sh <plugin-root>/bin/session-monitor.sh --step intake --scope <R-id> --priority <P> --spawn herdr`: the
+2. `sh <plugin-root>/bin/session-monitor.sh --step intake --scope <R-id> --priority <P>[ --base <branch>] --spawn herdr`,
+   `--base` when the line named one: the
    intake session (`references/intake.md`) routes the request and writes one parent per repository, and reports
    (Hand-off). A priority changes later only through `sh <plugin-root>/bin/task-priority.sh <T-id> <P0-P3>`, on
    the parent only, which carries it to the blocks in one commit.

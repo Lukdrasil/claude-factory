@@ -351,6 +351,17 @@ async function repos(page) {
     ok(note.includes('It picks it up when it is idle'), `note: ${note.slice(0, 300)}`);
   });
 
+  await check('a registered row shows its default branch, and Set posts set default branch <key> <branch> to the CEO', async () => {
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+    const field = row(p, 'plain').locator('[data-base-for="plain"]');
+    const shown = await field.inputValue();
+    await field.fill('develop');
+    await row(p, 'plain').getByRole('button', { name: 'Set' }).click();
+    const got = await lastPost(posted).finally(() => p.close());
+    ok(shown === 'main', `shown: ${shown}`);
+    ok(got.body.text === 'set default branch plain develop', `body: ${JSON.stringify(got.body)}`);
+  });
+
   await check('Send without an alias posts add repo <url> alone', async () => {
     const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);

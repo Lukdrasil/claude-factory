@@ -69,6 +69,16 @@ ul { margin: 0; padding-left: 18px; }
 .tab-body table { min-width: 0; overflow-wrap: normal; white-space: nowrap; }
 .tab-body th, .tab-body td { text-align: left; }
 .scroll-x { overflow-x: auto; max-width: 100%; }
+[data-org] table { table-layout: auto; min-width: 0; }
+[data-org] th, [data-org] td { text-align: left; }
+[data-org] td .id { overflow-wrap: anywhere; }
+.cap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.cap-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font: 12px/1.5 var(--mono); }
+.cap-card .cap b { display: block; font-weight: 600; color: var(--ink); }
+.cap-card .cap meter { width: 70px; height: 8px; vertical-align: middle; }
+.cap-card [data-full="true"] { color: var(--warn); }
+.cap-set { display: flex; gap: 6px; align-items: center; }
+.cap-set input { width: 7ch; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; background: var(--bg); color: inherit; font: inherit; }
 .requests { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 10px; }
 .requests .btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
 .dest { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 6px 12px; border-radius: 0 6px 6px 0; }
@@ -103,6 +113,8 @@ ul { margin: 0; padding-left: 18px; }
 .repos-head h3 { margin: 0; }
 .repo-form { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 10px; margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .repo-form label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.repo-base { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.repo-base input { width: 18ch; margin-left: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; background: var(--bg); color: inherit; font: 12px var(--mono); }
 .repo-form input { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--bg); color: inherit; font: 13px var(--mono); }
 .repo-form input[data-k="url"] { width: min(46ch, 100%); }
 .repo-form input[data-k="alias"] { width: 8ch; }
@@ -126,7 +138,8 @@ th, td { border-bottom: 1px solid var(--line); padding: 6px; text-align: center;
 th { font-size: 12px; font-weight: 600; color: var(--muted); }
 th small { display: block; font-weight: 400; }
 thead th { position: sticky; top: 0; z-index: 2; background: var(--panel); vertical-align: bottom; }
-thead th:nth-child(2) { width: 56px; }
+/* why: the Prio column of the pipeline grid; every other table sizes its own columns */
+.grid-wrap thead th:nth-child(2) { width: 56px; }
 th.task, td.task { position: sticky; left: 0; z-index: 1; width: 280px; text-align: left; background: var(--panel); border-right: 1px solid var(--line); }
 thead th.task { z-index: 3; }
 td.task button { display: block; width: 100%; border: 0; background: none; text-align: left; cursor: pointer; padding: 0; }
@@ -213,6 +226,7 @@ aside.decide { width: max(560px, 64vw); }
 .edit textarea { flex: 1; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--bg); }
 [data-intake] .edit { flex-wrap: wrap; }
 [data-intake] .edit textarea { min-width: 200px; }
+[data-intake] input[type="text"] { width: 22ch; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--bg); color: inherit; font: 13px var(--mono); }
 .intake-repos { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; flex-basis: 100%; order: 1; margin: 0; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; }
 .intake-repos legend { padding: 0 4px; color: var(--muted); font-size: 12px; }
 .staged { margin-top: 6px; font-size: 12px; color: var(--muted); }

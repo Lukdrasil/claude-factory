@@ -251,4 +251,31 @@ check 'a recorded block base that no longer exists exits 0' 0 "$rc"
 check 'a recorded block base that no longer exists falls back to the work branch' "$M" "$(tip block/T-620-03)"
 check 'its base: is the work branch' feat/T-620-demo "$(progress_field T-620-03 base)"
 
+# --- a parent is cut from its base as the remote has it, after a fetch; its base_branch: overrides the repo's ---
+task T-700 null
+publish
+add T-700
+check 'a parent with no origin to fetch is cut from the local default branch' "$(tip main)" "$(tip feat/T-700)"
+git init -q --bare "$tmp/clone-origin.git"
+git -C "$clone" remote add origin "$tmp/clone-origin.git"
+git -C "$clone" push -q origin main develop 2>/dev/null || git -C "$clone" push -q origin main
+R=$(commit_on main 'on the remote only')
+git -C "$clone" push -q origin main
+git -C "$clone" update-ref refs/heads/main "$R^"
+git -C "$clone" update-ref -d refs/remotes/origin/main
+task T-701 null
+publish
+add T-701
+check 'a parent is cut from origin/<default_branch> after the fetch, not the older local branch' "$R" "$(tip feat/T-701)"
+git -C "$clone" branch -q develop main
+D=$(commit_on develop 'develop work')
+git -C "$clone" push -q origin develop
+git -C "$clone" update-ref refs/heads/develop "$D^"
+task T-702 null
+printf 'base_branch: develop\n' > "$tmp/bb"
+awk -v f="$tmp/bb" 'NR == 2 { while ((getline l < f) > 0) print l } { print }' "$state/repos/demo/tasks/T-702.md" > "$tmp/t" && mv "$tmp/t" "$state/repos/demo/tasks/T-702.md"
+publish
+add T-702
+check "a parent's base_branch: is its base, from the remote" "$D" "$(tip feat/T-702)"
+
 exit $fail

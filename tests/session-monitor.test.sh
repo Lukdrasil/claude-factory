@@ -859,6 +859,8 @@ check 'the intake role is intake'                    '^FACTORY_ROLE=intake$'
 check 'the intake step names its request'            '^FACTORY_STEP=Intake R-20260925-1$'
 out=$(sm --step intake --scope R-20260925-1 --dry-run 2>/dev/null)
 check 'an intake with no priority takes P2'          '"/claude-factory:factory intake R-20260925-1 P2"$'
+out=$(sm --step intake --scope R-20260925-1 --base develop --dry-run 2>/dev/null)
+check 'an intake with --base passes the branch after the priority' '"/claude-factory:factory intake R-20260925-1 P2 develop"$'
 
 rm -rf "$lease"
 : > "$HERDR_STUB_LOG"
@@ -924,7 +926,7 @@ herdr tab close tab-41 >/dev/null
 rm -rf "$lease"
 
 for bad in '--step weekly' '--step weekly --scope repo-agent:ecs/../x' '--task T-ECS-12 --step weekly --scope global' \
-  '--step intake' '--step intake --scope T-ECS-12' '--step intake --scope R-20260925-1 --priority P7' \
+  '--step intake' '--step intake --scope T-ECS-12' '--step intake --scope R-20260925-1 --base bad..name' '--step route --message x --base develop' '--step intake --scope R-20260925-1 --priority P7' \
   '--step add-repo' '--step add-repo --url -x' '--step add-repo --url https://forge.test/a.git --alias toolong' \
   '--step add-repo --url https://forge.test/a;b.git' '--step route' '--step research' '--step research --scope x --message y' '--step cross-repo' '--step pass --scope ecs-core/implementer --priority P1' \
   '--task T-ECS-12 --step triage --url https://forge.test/a.git'; do

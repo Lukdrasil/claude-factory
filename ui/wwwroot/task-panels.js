@@ -1,5 +1,5 @@
 import { esc } from './ask-card.js';
-import { STEPS, currentStep } from './pipeline.js';
+import { STEPS, currentStep, groupOf } from './pipeline.js';
 
 // why: an inline SVG and not a character, so the rail's text stays the grid's labels while a step shows its tick
 const TICK = '<svg role="img" aria-label="done" viewBox="0 0 12 12" width="10" height="10"><path d="M2 6.5l2.5 2.5L10 3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
@@ -47,6 +47,19 @@ function triaged(f) {
   return `<p>${[f.tier, f.archetype, f.complexity].filter((v) => !placeholder(v)).map((v) => `<span class="chip">${esc(v)}</span>`).join(' ')}</p>`;
 }
 
+/** A parent's base branch, its `base_branch:` or the repository's default; up to `ready` a field and a Set that sends
+ * `set base <T-id> <branch>` (`data-act="set-base"`), after that the base it was cut from, as text. */
+function baseLine(task) {
+  const id = task.task.id;
+  if (groupOf(id) !== id || ['triage', 'ops'].includes(task.fields.archetype)) return '';
+  const base = placeholder(task.fields.base_branch) ? '' : task.fields.base_branch;
+  if (!['draft', 'triaged', 'ready'].includes(task.task.status)) {
+    return `<p class="muted" data-base>Base branch: ${base ? `<code>${esc(base)}</code>` : "the repository's default"}</p>`;
+  }
+  return `<p class="repo-base" data-base><label>Base branch <input type="text" data-base-of="${esc(id)}" value="${esc(base)}" placeholder="the repository's default" spellcheck="false" autocomplete="off"></label>`
+    + `<button class="btn sm" data-act="set-base" data-id="${esc(id)}">Set</button></p>`;
+}
+
 function blockList(blocks) {
   return blocks.length
     ? `<ul>${blocks.map((b) => `<li><span class="id">${esc(b.task.id)}</span> <span class="chip">${esc(b.task.status)}</span> ${esc(b.task.goal)}</li>`).join('')}</ul>`
@@ -70,7 +83,7 @@ export function renderTaskPanels(task) {
     + panel('triage', 'Triage', `${triaged(f)}${md(section(h.body, 'Context'))}`)
     + panel('grill', 'Grill', md(['Terms', 'Program design', 'Gap ledger'].flatMap((head) => section(grill, head))))
     + panel('decompose', 'Decompose', blockList(blocks) + md(section(h.progress, 'Wave plan')) + md(section(h.verdicts, 'cut-check')))
-    + panel('approve', 'Approve', md(parse(h.body)) + blockList(blocks))
+    + panel('approve', 'Approve', baseLine(task) + md(parse(h.body)) + blockList(blocks))
     + panel('blocks', 'Blocks', blockList(blocks))
     + panel('verdicts', 'Verify and review', blocks.map((b) => `<h4>${esc(b.task.id)}</h4>${md(section(b.html.progress, 'Evidence'))}`).join('')
       + `<h4>Review</h4>${md(section(h.progress, 'Review'))}`)

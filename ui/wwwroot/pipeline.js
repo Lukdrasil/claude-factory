@@ -22,14 +22,14 @@ const TABS = ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup'];
 const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
 
 /** The New request box's draft, kept across the page's re-renders; app.js empties `text` once the CEO has it. */
-export const intake = { text: '', priority: 'P2', kind: 'request', repos: [], branch: '' };
+export const intake = { text: '', priority: 'P2', kind: 'request', repos: [], branch: '', base: '' };
 
-/** The line Send posts to the CEO: `request: <text>, priority <P>`, or for a question or research
+/** The line Send posts to the CEO: `request: <text>, priority <P>[, base <branch>]`, or for a question or research
  * `<kind>[ <keys joined by ,>][ branch <branch>]: <text>`, the branch only with one repository; '' with no text. */
 export function intakeLine() {
   const text = intake.text.trim();
   if (!text) return '';
-  if (intake.kind === 'request') return `request: ${text}, priority ${intake.priority}`;
+  if (intake.kind === 'request') return `request: ${text}, priority ${intake.priority}${intake.base.trim() ? `, base ${intake.base.trim()}` : ''}`;
   const branch = intake.repos.length === 1 && intake.branch.trim();
   return `${intake.kind}${intake.repos.length ? ` ${intake.repos.join(',')}` : ''}${branch ? ` branch ${branch}` : ''}: ${text}`;
 }
@@ -177,6 +177,7 @@ function intakeBox(ceo, note, keys) {
   const kinds = [['request', 'Request'], ['question', 'Question'], ['research', 'Research']];
   const target = intake.kind === 'request'
     ? `<select data-intake-prio aria-label="Priority"${off}>${['P0', 'P1', 'P2', 'P3'].map((p) => `<option${p === intake.priority ? ' selected' : ''}>${p}</option>`).join('')}</select>`
+      + `<input type="text" data-intake-base aria-label="Base branch" placeholder="Base branch, else the repository's default" value="${esc(intake.base)}"${off}>`
     : `<fieldset class="intake-repos"><legend>Repositories, none for the org</legend>${keys.map((k) => `<label><input type="checkbox" data-act="intake-repo" value="${esc(k)}"${intake.repos.includes(k) ? ' checked' : ''}${off}> ${esc(k)}</label>`).join('')}`
       + `<input type="text" data-intake-branch aria-label="Branch" placeholder="Branch, with one repository" value="${esc(intake.branch)}"${intake.repos.length === 1 ? off : ' disabled'}></fieldset>`;
   return '<section class="tab-body" data-intake aria-label="New request"><h3>New request</h3>'
@@ -230,6 +231,7 @@ export function renderPipeline(board, sessions, requests = [], capacity = null, 
     if (e.target.matches('[data-intake] textarea')) intake.text = e.target.value;
     if (e.target.matches('[data-intake-prio]')) intake.priority = e.target.value;
     if (e.target.matches('[data-intake-branch]')) intake.branch = e.target.value;
+    if (e.target.matches('[data-intake-base]')) intake.base = e.target.value;
   });
   return el;
 }

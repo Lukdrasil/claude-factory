@@ -1,7 +1,8 @@
 #!/bin/sh
 # The task worktree, path and branch in one call (T-150), so the rule that lived in four prose files lives in
-# one script: `$WORK_DIR/<key>/<task-id>/` on `feat/<id>-<slug>` for a parent task, cut from the repo's
-# default branch, and on `block/<id>` for a block, cut from the parent's `branch:`. The branch is written into
+# one script: `$WORK_DIR/<key>/<task-id>/` on `feat/<id>-<slug>` for a parent task, cut from its base (the task's
+# `base_branch:`, else the repo's `default_branch:`) as `origin/<base>` after a `git fetch origin <base>`, the
+# local branch when the fetch fails or the remote has none, and on `block/<id>` for a block, cut from the parent's `branch:`. The branch is written into
 # the task's `branch:` through state-report.sh, which is the only writer of task frontmatter.
 #
 #   worktree-add.sh <task-id> [--from <branch>] [--state <dir>]
@@ -139,9 +140,14 @@ else
       branch="feat/$id"
       [ -z "$slug" ] || branch="feat/$id-$slug"
     fi
-    base=$(yml_field "$key" default_branch)
+    base=$(task_base "$task" "$key")
     [ -n "$base" ] || base=$(git -C "$clone" symbolic-ref --short HEAD 2>/dev/null) || base=''
     [ -n "$base" ] || die "repo $key has no 'default_branch:' in $state/repos.yml and its clone is on no branch: pass --from <branch>"
+    # why: the local branch of the human's clone may be behind the remote; a new task starts from the remote's
+    if [ -z "$from" ] && git -C "$clone" fetch --quiet origin "$base" 2>/dev/null \
+      && git -C "$clone" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null; then
+      base="origin/$base"
+    fi
 fi
 [ -z "$from" ] || base=$from
 

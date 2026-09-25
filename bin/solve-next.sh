@@ -105,14 +105,9 @@ clone_path() { # <key>
     }' "$state/repos.yml"
 }
 
-# the `default_branch:` of a repo in repos.yml, main when it names none
+# the parent's base: its `base_branch:`, else the repo's `default_branch:` in repos.yml, main when neither names one
 base_branch() {
-  b=$(awk -v want="$key" '
-    /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
-    index($0, "default_branch:") && k == want {
-      p = $0; sub(/.*default_branch:[ \t]*/, "", p); sub(/[ \t]*[,}].*$/, "", p)
-      gsub(/^["'"'"']|["'"'"']$/, "", p); if (p != "") { print p; exit }
-    }' "$state/repos.yml" 2>/dev/null || :)
+  b=$(task_base "$task" "$key")
   [ -n "$b" ] || b=main
   printf '%s' "$b"
 }

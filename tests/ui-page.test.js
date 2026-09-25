@@ -407,8 +407,8 @@ async function stage(q, button, text) {
     await until('the New request box', () => box.isVisible());
     const text = (await box.innerText()).replace(/\s+/g, ' ');
     ok(text.includes("claude '/claude-factory:factory ceo'"), `box: ${text}`);
-    const controls = await box.locator('textarea, select, button').evaluateAll((els) => els.map((e) => `${e.tagName}${e.disabled ? '' : ' enabled'}`));
-    ok(controls.join(' ') === 'SELECT TEXTAREA SELECT BUTTON', `controls: ${controls.join(' ')}`);
+    const controls = await box.locator('textarea, select, input, button').evaluateAll((els) => els.map((e) => `${e.tagName}${e.disabled ? '' : ' enabled'}`));
+    ok(controls.join(' ') === 'SELECT TEXTAREA SELECT INPUT BUTTON', `controls: ${controls.join(' ')}`);
   });
 
   await check('every /api request carries the token from the fragment as X-Factory-Token', async () => {
@@ -1213,6 +1213,17 @@ async function stage(q, button, text) {
     ok((await box.locator('textarea').inputValue()) === '', 'the text stays after the send');
   });
 
+  await check('Send of a request with a Base branch posts request: <text>, priority P2, base <branch>', async () => {
+    posted.length = 0;
+    await box.locator('[data-intake-prio]').selectOption('P2');
+    await box.locator('[data-intake-base]').fill('develop');
+    await box.locator('textarea').fill('Bump the SDK');
+    await box.getByRole('button', { name: /^send$/i }).click();
+    await until('the request post', () => posted.length);
+    ok(posted[0].text === 'request: Bump the SDK, priority P2, base develop', `posted: ${JSON.stringify(posted)}`);
+    await until('the sent note', async () => (await box.innerText()).includes('Sent to the CEO: request: Bump the SDK'));
+  });
+
   await check('Question with no repository posts question: <text>, the branch field disabled', async () => {
     posted.length = 0;
     await box.locator('[data-act="intake-kind"]').selectOption('question');
@@ -1222,6 +1233,7 @@ async function stage(q, button, text) {
     await box.getByRole('button', { name: /^send$/i }).click();
     await until('the question post', () => posted.length);
     ok(posted[0].text === 'question: Which sessions run?', `posted: ${JSON.stringify(posted)}`);
+    await until('the sent note', async () => (await box.innerText()).includes('Sent to the CEO: question:'));
   });
 
   await check('Research over one repository with a branch posts research <key> branch <branch>: <text>', async () => {

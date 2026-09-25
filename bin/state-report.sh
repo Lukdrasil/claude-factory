@@ -8,7 +8,7 @@
 #
 #   state-report.sh --task <id> [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]
 #                   [--owner <owner>] [--set-status <status>] [--set-phase <tests|implement>] [--no-status]
-#                   [--branch <branch>] [--mr-url <url>]
+#                   [--branch <branch>] [--base-branch <branch>] [--mr-url <url>]
 #
 # `--task` names the task and is required.
 # `--no-status` leaves `status` out of the report, and with it the status and evidence checks: a caller that is
@@ -32,6 +32,9 @@
 # block-merge.sh merges by. worktree-add.sh writes it right after it created the worktree, so the branch a task
 # is worked on is recorded by the script that made it instead of by hand. Combine it with `--no-status` when the
 # status is not changing.
+# `--base-branch <branch>` rewrites the task's `base_branch:`, the branch worktree-add.sh cuts it from and mr-open.sh
+# targets instead of the repo's `default_branch:`. It is refused (exit 1) once the task is past `ready`, when its
+# worktree may already be cut, on a triage or ops task, which has no branch, and for a name git would not take.
 #
 # Exit 0 = the report is committed, 1 = it was refused (the reason is on stderr, fix it and run again),
 # 2 = the report could not be written or committed (no task, git refusing the commit, another session holding
@@ -47,12 +50,13 @@ owner=''
 set_status=''
 set_phase=''
 branch=''
+base_branch=''
 set_mr_url=''
 die2() { printf 'state-report: %s\n' "$1" >&2; exit 2; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --attempts|--tool-failures|--message|--task|--owner|--set-status|--set-phase|--branch|--mr-url)
+    --attempts|--tool-failures|--message|--task|--owner|--set-status|--set-phase|--branch|--base-branch|--mr-url)
       [ $# -ge 2 ] || die2 "$1 needs a value"
       case "$1" in
         --attempts) attempts=$2 ;;
@@ -63,6 +67,7 @@ while [ $# -gt 0 ]; do
         --set-status) set_status=$2 ;;
         --set-phase) set_phase=$2 ;;
         --branch) branch=$2 ;;
+        --base-branch) base_branch=$2 ;;
         --mr-url) set_mr_url=$2 ;;
       esac
       shift 2 ;;
@@ -96,6 +101,18 @@ state=$(resolve_state_dir "$PWD")
 task=$(task_of "$id")
 case "$task" in */archive/*) die2 "task $id is archived in $task, there is nothing left to report" ;; esac
 [ -n "${task:-}" ] && [ -f "$task" ] || die2 "no task file with 'id: $id' in $state/repos/*/tasks/"
+
+if [ -n "$base_branch" ]; then
+  refuse() { printf 'state-report: the report was refused: %s\n' "$1" >&2; exit 1; }
+  git check-ref-format --branch "$base_branch" >/dev/null 2>&1 || refuse "--base-branch '$base_branch' is no branch name"
+  case "$(sed -n 's/^archetype:[[:space:]]*//p' "$task" | head -n1)" in
+    triage|ops) refuse "$id is a triage or ops task, which has no branch to cut from $base_branch" ;;
+  esac
+  case "$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1)" in
+    draft|triaged|ready) ;;
+    *) refuse "$id is past ready, its worktree may be cut already: its base stays" ;;
+  esac
+fi
 
 status=''
 if [ "$send_status" = 1 ]; then status=$(sed -n 's/^status:[[:space:]]*//p' "$task" | head -n1); fi
@@ -205,6 +222,9 @@ fi
 # branch named in the task, and setf is what keeps that key inside the frontmatter fence exactly once
 if [ -n "$branch" ]; then
   setf "$task" branch "$branch" || die2 "branch could not be rewritten in $task"
+fi
+if [ -n "$base_branch" ]; then
+  setf "$task" base_branch "$base_branch" || die2 "base_branch could not be rewritten in $task"
 fi
 # the MR link block-mr.sh just opened, written the one way frontmatter is written (T-164)
 if [ -n "$set_mr_url" ]; then

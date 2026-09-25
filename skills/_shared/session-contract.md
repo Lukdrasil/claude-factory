@@ -36,8 +36,8 @@ like any other. No `arch-build` in the toolset is the Preconditions case above: 
 
 ## Output
 
-1. `git fetch origin && git rebase origin/<base>`, `<base>` being `default_branch` for `<key>` in
-   `$WORK_DIR/state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
+1. `git fetch origin && git rebase origin/<base>`, `<base>` being the task's `base_branch:`, else
+   `default_branch` for `<key>` in `$WORK_DIR/state/repos.yml`. Resolve conflicts here, never `--skip` and never a blind `--ours`/`--theirs`; one
    you cannot reconcile inside the task's scope is `blocked`.
 2. Run acceptance again: a rebase can break what was green.
 3. `git push --force-with-lease=<branch>:<sha> origin <branch>`, the only rewrite permitted and only on a

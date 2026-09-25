@@ -93,4 +93,27 @@ check 'a repo-lead that owns an in_progress block is still blocked' 2 "$?"
 check 'and asked for the self-report of the block' yes "$(has "$tmp/err" 'task T-014-01')"
 check 'and not of the parent' no "$(has "$tmp/err" 'task T-014 ')"
 
+# --base-branch: written while the task is at most ready, refused once it is past that, on a triage task and for a
+# name git would not take
+printf -- '---\nid: T-020\nrepo: demo\nbranch: feat/T-020\nstatus: ready\narchetype: feature\nowner: null\n---\n\n# Goal\nx\n' \
+  > "$state/repos/demo/tasks/T-020.md"
+printf -- '---\nid: T-021\nrepo: demo\nstatus: ready\narchetype: triage\nowner: null\n---\n\n# Goal\nx\n' \
+  > "$state/repos/demo/tasks/T-021.md"
+git -C "$state" add -A
+git -C "$state" -c user.name=t -c user.email=t@t commit -q -m base
+based() { # <id> <branch>
+  (cd "$state" && GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t \
+    WORK_DIR=$W sh "$bin/state-report.sh" --task "$1" --no-status --base-branch "$2" >/dev/null 2>"$tmp/err")
+}
+based T-020 develop
+check 'a ready task takes --base-branch' 0 "$?"
+check 'and carries base_branch: develop' yes "$(has "$state/repos/demo/tasks/T-020.md" 'base_branch: develop')"
+based T-020 'bad..name'
+check 'a name git would not take is refused' 1 "$?"
+based T-021 develop
+check 'a triage task is refused' 1 "$?"
+based T-011 develop
+check 'a task past ready is refused' 1 "$?"
+check 'and says its base stays' yes "$(has "$tmp/err" 'its base stays')"
+
 exit "$fail"

@@ -2,7 +2,8 @@
 # M8 of docs/plans/slim-harness.md: the MR contract of skills/_shared/mr-description.md as a script. It reads the
 # task and its progress file, builds the description (the sections in the contract's order, under 120 words, no
 # factory bookkeeping), writes it to <WORK_DIR>/<key>/.harness/<id>/mr.md and opens the MR from the task's session
-# worktree with the task's `branch:` as source and the repo's default branch as target.
+# worktree with the task's `branch:` as source and its base as target: its `base_branch:`, else the repo's
+# `default_branch:`.
 #
 #   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
 #
@@ -163,7 +164,7 @@ if [ -n "$listed" ]; then printf '\n## Blocks\n%s' "$listed" >> "$desc"; fi
 
 base=''
 if [ -f "$state/repos.yml" ]; then
-  base=$(sed -n "s/^$key:.*default_branch:[[:space:]]*\([A-Za-z0-9._/-][A-Za-z0-9._/-]*\).*/\1/p" "$state/repos.yml" | head -n1)
+  base=$(task_base "$task" "$key")
 fi
 if [ -z "$base" ]; then
   base=$(git -C "$worktree" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || :)

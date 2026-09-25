@@ -5,7 +5,7 @@
 #
 #   session-monitor.sh [--task <T-id> [--wave N] [--step <name>]] [--all] [--queue] [--step pass --scope
 #                      <key>/<agent>] [--step onboard --scope <key>] [--step weekly --scope <scope>]
-#                      [--step intake --scope <R-id> [--priority P0-P3]] [--step add-repo --url <url> [--alias A]]
+#                      [--step intake --scope <R-id> [--priority P0-P3] [--base <branch>]] [--step add-repo --url <url> [--alias A]]
 #                      [--step route|research --message <text>] [--max N] [--workspace <id>] [--state <dir>] [--dry-run]
 #
 # Seven modes:
@@ -41,7 +41,8 @@
 #                    claim, and the runs-already check of an onboarding. weekly --scope <scope> (global,
 #                    repo:<key>, agent:<a>, repo-agent:<key>/<a> or <key>/<a>, tail the scope with `:` and `/`
 #                    as `-`) prompts `/claude-factory:memory-weekly <scope>`; intake --scope <R-id> [--priority
-#                    <P0-P3>, default P2] prompts `/claude-factory:factory intake <R-id> <P>`; add-repo --url
+#                    <P0-P3>, default P2] [--base <branch>] prompts `/claude-factory:factory intake <R-id> <P>
+#                    [<branch>]`; add-repo --url
 #                    <url> [--alias <A>] (tail the key, the URL's basename without .git) prompts
 #                    `/claude-factory:factory add-repo --clone '<url>' [--alias <A>]` on sonnet; route --message
 #                    <text> (tail the epoch second) prompts `/claude-factory:factory route <text>`; research
@@ -134,7 +135,7 @@ die() { printf 'session-monitor: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 parent='' wave='' state='' dry='' max=5 step='' spawn='' all='' queue='' scope='' workspace=${HERDR_WORKSPACE_ID:-}
-priority='' url='' alias='' message='' has_message=''
+priority='' base='' url='' alias='' message='' has_message=''
 while [ $# -gt 0 ]; do
   case "$1" in
     # --parent is the old spelling of --task, kept so `factory herd` and every recipe that names it keep working
@@ -145,6 +146,7 @@ while [ $# -gt 0 ]; do
     --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --scope) [ $# -ge 2 ] || die "--scope needs a value"; scope=$2; shift 2 ;;
     --priority) [ $# -ge 2 ] || die "--priority needs a value"; priority=$2; shift 2 ;;
+    --base) [ $# -ge 2 ] || die "--base needs a value"; base=$2; shift 2 ;;
     --url) [ $# -ge 2 ] || die "--url needs a value"; url=$2; shift 2 ;;
     --alias) [ $# -ge 2 ] || die "--alias needs a value"; alias=$2; shift 2 ;;
     --message) [ $# -ge 2 ] || die "--message needs a value"; message=$(printf '%s' "$2" | tr '\n\r' '  '); has_message=1; shift 2 ;;
@@ -162,6 +164,8 @@ case "$step" in
   *) die "--step takes triage, chart, grill, plan-check, decompose, lead, cross-repo, pass, onboard, weekly, intake, add-repo, route or research, not '$step'" ;;
 esac
 [ -z "$priority" ] || [ "$step" = intake ] || die "--priority belongs to --step intake"
+[ -z "$base" ] || [ "$step" = intake ] || die "--base belongs to --step intake"
+[ -z "$base" ] || git check-ref-format --branch "$base" >/dev/null 2>&1 || die "--base takes a branch name, not '$base'"
 [ -z "$url$alias" ] || [ "$step" = add-repo ] || die "--url and --alias belong to --step add-repo"
 [ -z "$has_message" ] || [ "$step" = route ] || [ "$step" = research ] || die "--message belongs to --step route or research"
 case "$step" in
@@ -462,7 +466,7 @@ if [ "$step" = onboard ]; then
 elif [ "$step" = weekly ]; then
   org_unit weekly "$(printf '%s' "$scope" | tr ':/' '--')" opus "/claude-factory:memory-weekly $scope" > "$units"
 elif [ "$step" = intake ]; then
-  org_unit intake "$scope" opus "/claude-factory:factory intake $scope $priority" > "$units"
+  org_unit intake "$scope" opus "/claude-factory:factory intake $scope $priority${base:+ $base}" > "$units"
 elif [ "$step" = add-repo ]; then
   org_unit add-repo "$ar_key" sonnet "/claude-factory:factory add-repo --clone '$url'${alias:+ --alias $alias}" > "$units"
 elif [ "$step" = route ]; then

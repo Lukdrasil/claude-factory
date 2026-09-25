@@ -35,6 +35,15 @@ export const onboardLine = (key) => `onboard repo ${key}`;
 export const proposalLine = (key, p, priority) => `request: ${key}: ${p.text} (onboarding ${p.id}), priority ${priority}`;
 
 export const keysOf = (reposYml) => (reposYml || '').match(/^[A-Za-z0-9_-]+(?=:)/gm) || [];
+
+/** The `default_branch:` of `key` in repos.yml, flat or indented; '' when it names none. */
+export function defaultBranchOf(reposYml, key) {
+  const entry = (reposYml || '').split('\n').reduce((acc, l) => {
+    if (/^[A-Za-z0-9_-]+:/.test(l)) acc.on = l.startsWith(`${key}:`);
+    return acc.on ? { ...acc, text: `${acc.text}${l}\n` } : acc;
+  }, { on: false, text: '' }).text;
+  return (/default_branch[ \t]*:[ \t]*["']?([^\s,}"'#]+)/.exec(entry) || [])[1] || '';
+}
 const openAsk = (sessions, id) => sessions.some((s) => (s.asks || []).some((a) => a.ask === id && a.status === 'open'));
 const onboarding = (sessions, key) => sessions.some((s) => s.agent !== 'gone' && (s.step.match(/^Onboarding ([A-Za-z0-9_-]+)$/) || [])[1] === key);
 
@@ -100,6 +109,9 @@ function repoRow(key, setup, sessions, off) {
   return `<li class="repo-row" data-repo-row="${esc(key)}" data-state="${state}">`
     + (failed ? `<p class="bad" data-failed>Adding ${esc(key)} failed: ${esc(failed.detail)}. Fix it and send again.</p>` : '')
     + `<div class="repo-line"><strong>${esc(key)}</strong>${line}</div>`
+    + (state === 'unregistered' || state === 'unconfirmed' || state === 'cloning' || state === 'confirm' ? ''
+      : `<div class="repo-base"><label>Default branch <input type="text" data-base-for="${esc(key)}" value="${esc(defaultBranchOf(setup.reposYml, key))}" spellcheck="false" autocomplete="off"${off}></label>`
+        + `<button class="btn sm" data-act="set-default-branch" data-key="${esc(key)}"${off}>Set</button></div>`)
     + (state === 'report' ? reportBody(key, report, off) : '')
     + '</li>';
 }
@@ -126,7 +138,8 @@ function form(off) {
  * The Setup tab's Repositories section: Add repository and its form, whose Send (`data-act="add-repo"`) posts the C1
  * `add repo` line to the CEO, then one row per repos.yml key and per key only an add-repo file names, each in its
  * `repoRowState`, with Start onboarding, Start again and Run again (`data-act="onboard"`) and a report's Make it a
- * request (`data-act="propose"`). Without a CEO session every button is off. Check lines are text; only the summary is
+ * request (`data-act="propose"`), and a registered repository's default branch with its Set (`data-act="set-default-branch"`),
+ * which sends `set default branch <key> <branch>`. Without a CEO session every button is off. Check lines are text; only the summary is
  * the server's rendered markdown. `note` is the outcome of the last send.
  */
 export function renderRepos(setup, sessions, ceo, note) {

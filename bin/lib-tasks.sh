@@ -79,6 +79,14 @@ yml_field() { # <key> <field>
     }' "$state/repos.yml"
 }
 
+# the branch a parent task starts from and its MR targets: the task's `base_branch:`, else the repo's
+# `default_branch:` in repos.yml; nothing when neither names one
+task_base() { # <task file> <key>
+  tb=$(task_fields "$1" base_branch)
+  case "$tb" in ''|null|'~') tb=$(yml_field "$2" default_branch) ;; esac
+  printf '%s' "$tb"
+}
+
 # the id alias of a repo, `alias:` in its repos.yml entry: 2 to 4 uppercase letters, which make its new ids
 # T-<ALIAS>-<n>. Prints nothing for a repo without one (it keeps the legacy T-<n> ids), and nothing with status 1
 # when the value is no alias, so a writer can refuse instead of silently falling back to a legacy id.

@@ -124,6 +124,12 @@ Mute sound, the switch next to it (hidden when the server has no `/api/mute-soun
 While it is on and the UI container runs, `bin/notify.sh` shows a waiting ask with `--sound none`. herdr's own
 sounds on an agent's state change are herdr's `[ui.sound]` setting and stay as they are.
 
+The settings the state repo holds are changed through the CEO, since `/state` is read only here: a cap's Set on the
+Org tab sends `set capacity <name> <N>`, a repository's default branch Set on the Setup tab `set default branch <key>
+<branch>`, and a draft, triaged or ready parent's base branch Set in its Approve panel `set base <T-id> <branch>`; the
+New request box's Base branch rides on the request as `, base <branch>`. The CEO writes them with `bin/state-set.sh`
+and `bin/state-report.sh --base-branch`.
+
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
 the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is

@@ -206,6 +206,13 @@ async function confirmYes(page, name, key) {
       'The last sentence of the body of T-021.', 'T-021-01', 'T-021-02']);
   });
 
+  await check('the approve panel of T-021, a draft parent, has a base branch field for the repository\'s default and a Set', async () => {
+    const field = page.locator('aside [data-panel="approve"] [data-base-of="T-021"]');
+    ok(await field.count() === 1, 'no base branch field');
+    ok(await field.inputValue() === '' && /default/.test(await field.getAttribute('placeholder')), `field: ${await field.inputValue()}`);
+    ok(await page.locator('aside [data-panel="approve"] [data-act="set-base"][data-id="T-021"]').count() === 1, 'no Set');
+  });
+
   await check('the panels of T-021 hold no pre: the body is rendered', async () => {
     await noPre(page);
   });

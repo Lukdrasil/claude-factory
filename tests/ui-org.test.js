@@ -225,6 +225,22 @@ async function real(context) {
     ok(full.join(' ') === 'implementer', `full: ${full.join(' ')}`);
   });
 
+  await check('each cap has a field with its cap, and Set posts set capacity <name> <N> to the CEO', async () => {
+    const posted = [];
+    await p.route('**/api/answers/**', (r) => {
+      posted.push(r.request().postDataJSON());
+      return r.fulfill({ status: 201, contentType: 'application/json', body: '{"file":"1-msg.txt"}' });
+    });
+    const field = p.locator('[data-cap-for="implementer"]');
+    ok(await field.inputValue() === '4', `implementer field: ${await field.inputValue()}`);
+    ok(await p.locator('[data-cap-for="code-reviewer"]').inputValue() === '', 'the uncapped role shows a cap');
+    await field.fill('6');
+    await p.locator('[data-act="set-cap"][data-name="implementer"]').click();
+    await until('the post', () => posted.length);
+    ok(posted[0].text === 'set capacity implementer 6', `posted: ${JSON.stringify(posted)}`);
+    await until('the sent note', async () => (await p.locator('[data-org]').innerText()).includes('Sent to the CEO: set capacity implementer 6'));
+  });
+
   await check('the Org tab lists every lease with its role, key, unit and session', async () => {
     const r = await rows(p, 'leases');
     ok(r.length === 4, `${r.length} lease rows: ${r.join(' | ')}`);

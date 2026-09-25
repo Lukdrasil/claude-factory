@@ -12,7 +12,7 @@ const app = document.getElementById('app');
 const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
-  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, stale: false,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, capNote: null, stale: false,
   busy: new Map(), auto: null, mute: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
@@ -182,7 +182,7 @@ function renderTab() {
   const el = {
     Map: () => renderMap(S.requests, rid, map),
     Plan: () => renderPlan(S.requests, rid, map),
-    Org: () => renderOrg(S.org),
+    Org: () => renderOrg(S.org, S.capNote),
     Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
     Setup: () => renderSetupTab(S.setup, S.sessions, S.org?.ceo, S.repoNote),
   }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity, S.org?.ceo, S.intakeNote, keysOf(S.setup?.reposYml));
@@ -347,18 +347,19 @@ async function startPass(b) {
   }
 }
 
-/** A line of the Setup tab's Repositories section, a free message to the CEO like the New request box sends; true once sent. */
-async function tellCeo(text) {
+/** A line of the Setup tab's Repositories section, or of another tab whose note is `note`, a free message to the CEO
+ * like the New request box sends; true once sent. */
+async function tellCeo(text, note = 'repoNote') {
   try {
     await api(`/api/answers/${S.org.ceo.sid}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ask: '', text }),
     });
-    S.repoNote = { text: `Sent to the CEO: ${text}. It picks it up when it is idle.` };
+    S[note] = { text: `Sent to the CEO: ${text}. It picks it up when it is idle.` };
     return true;
   } catch (err) {
-    S.repoNote = { text: `Couldn't send "${text}": ${err.message}.`, error: true };
+    S[note] = { text: `Couldn't send "${text}": ${err.message}.`, error: true };
     return false;
   }
 }
@@ -438,6 +439,42 @@ app.addEventListener('click', (e) => {
     return render();
   }
   if (act === 'add-repo') return track(b, sendRepo, false);
+  if (act === 'set-default-branch') {
+    const v = document.querySelector(`[data-base-for="${CSS.escape(b.dataset.key)}"]`)?.value.trim() ?? '';
+    if (!/^[A-Za-z0-9._/-]+$/.test(v)) {
+      S.repoNote = { text: `"${v}" is not a branch name.`, error: true };
+      return render();
+    }
+    return track(b, () => tellCeo(`set default branch ${b.dataset.key} ${v}`), false);
+  }
+  if (act === 'set-base') {
+    const field = document.querySelector(`[data-base-of="${CSS.escape(b.dataset.id)}"]`);
+    const v = field.value.trim();
+    field.setCustomValidity(!S.org?.ceo ? 'No CEO session runs, so nothing goes out.'
+      : /^[A-Za-z0-9._/-]+$/.test(v) ? '' : `"${v}" is not a branch name.`);
+    if (!field.reportValidity()) return;
+    return track(b, async () => {
+      try {
+        await api(`/api/answers/${S.org.ceo.sid}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ask: '', text: `set base ${b.dataset.id} ${v}` }),
+        });
+        return true;
+      } catch (err) {
+        showError(err);
+        return false;
+      }
+    });
+  }
+  if (act === 'set-cap') {
+    const n = document.querySelector(`[data-cap-for="${CSS.escape(b.dataset.name)}"]`)?.value.trim() ?? '';
+    if (!/^\d{1,2}$/.test(n)) {
+      S.capNote = { text: `A cap is a number from 0 to 99, not "${n}".`, error: true };
+      return render();
+    }
+    return track(b, () => tellCeo(`set capacity ${b.dataset.name} ${n}`, 'capNote'), false);
+  }
   if (act === 'onboard') return track(b, () => tellCeo(onboardLine(b.dataset.key)));
   if (act === 'propose') return track(b, () => propose(b));
   if (act === 'redraw') return track(b, () => redraw(b.closest('[data-visual]')));

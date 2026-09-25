@@ -42,11 +42,26 @@ export function capacityStrip(capacity) {
   }).join('')}</div>`;
 }
 
+/** The capacity of the Org tab: one card per entry of capacityStrip, each with a cap field and a Set that sends
+ * `set capacity <name> <N>` to the CEO (`data-act="set-cap"`), disabled without a CEO. */
+function capacityCards(capacity, ceo) {
+  const items = [['sessions', capacity.sessions], ...(capacity.roles || []).map((r) => [r.role, r])].filter(([, c]) => c);
+  const off = ceo ? '' : ' disabled';
+  return `<div class="cap-grid" data-capacity aria-label="Capacity in use">${items.map(([name, c]) => {
+    const capped = c.cap != null;
+    return `<div class="cap-card"><span class="cap" data-role="${esc(name)}" data-full="${capped && c.used >= c.cap}"><b>${esc(name)}</b> `
+      + `${capped ? `<meter min="0" max="${Number(c.cap)}" value="${Number(c.used)}"></meter> ` : ''}${Number(c.used)}/${capped ? Number(c.cap) : '-'}</span>`
+      + `<span class="cap-set"><input type="number" min="0" max="99" data-cap-for="${esc(name)}" aria-label="Cap of ${esc(name)}" value="${capped ? Number(c.cap) : ''}"${off}>`
+      + `<button class="btn" data-act="set-cap" data-name="${esc(name)}"${off}>Set</button></span></div>`;
+  }).join('')}</div>`;
+}
+
 /**
- * The Org tab from `GET /api/org`: the CEO session, the capacity of every role, one row per lead with its task, repo,
- * request, priority and status, and every lease. Null, a server without the route, reads as no data.
+ * The Org tab from `GET /api/org`: the CEO session, the capacity of every role with its cap to set, one row per lead
+ * with its task, repo, request, priority and status, and every lease. Null, a server without the route, reads as no
+ * data. `note` is the outcome of the last Set.
  */
-export function renderOrg(org) {
+export function renderOrg(org, note = null) {
   const el = document.createElement('section');
   el.className = 'tab-body';
   el.dataset.org = '';
@@ -59,7 +74,9 @@ export function renderOrg(org) {
   el.innerHTML = `<p data-ceo>${org.ceo
     ? `CEO session <span class="id">${esc(org.ceo.sid)}</span>${org.ceo.pane ? ` in herdr pane <span class="id" title="The herdr pane id, window:pane, of the terminal the CEO runs in">${esc(org.ceo.pane)}</span>` : ''}`
     : 'The CEO is not running. The Setup tab has the command that starts it.'}</p>`
-    + `<h3>Capacity</h3>${org.capacity ? capacityStrip(org.capacity) : '<p class="muted">No capacity.</p>'}`
+    + '<h3>Capacity</h3><p class="muted hint">A cap is how many run at once: sessions counts every herdr session, a role its subagents. Set sends the new cap to the CEO, which writes it into factory.yml.</p>'
+    + `${org.capacity ? capacityCards(org.capacity, org.ceo) : '<p class="muted">No capacity.</p>'}`
+    + (note ? `<p class="${note.error ? 'bad' : 'muted'}">${esc(note.text)}</p>` : '')
     + `<h3>Leads</h3>${leads.length
       ? table('leads', ['Task', 'Request', 'Prio', 'Status', 'Unit'], leads.map((l) => [
         `<span class="id">${esc(l.task)}</span> ${l.repo ? `<span class="chip repo">${esc(l.repo)}</span>` : ''}`,
