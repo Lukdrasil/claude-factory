@@ -112,7 +112,7 @@ it walks around the claim and the prompt contract above.
 herdr agent list                       # what is live, and its state
 herdr agent read <name>                # its terminal output
 herdr agent send-keys <name> <key>...  # answer a dialog: a digit, up, down, enter, esc
-herdr agent prompt <name> "<text>"     # send an idle session work
+herdr agent prompt <name> "<text>"     # a line to an idle or working session
 ```
 
 `blocked` means the session is at an approval or question dialog. Read it (`herdr agent read <name> --source
@@ -127,3 +127,10 @@ report does not come back to the caller: it lands in the state repo, and
 `<plugin-root>/bin/factory-list.sh` and `state-report.sh` are how the main session reads it. The rules in
 `<plugin-root>/skills/_shared/delegation.md` about verifying a claim still hold, more so, since nothing is
 returned to you directly.
+
+SendMessage reaches only the calling session's own subagents and teammates, never a spawned session. Two
+sessions talk through `herdr agent prompt <name> "<line>"`: the CEO is `ceo`, a lead `lead_<unit>`. An idle
+session takes the line as its next prompt, a `working` one queues it and reads it when its turn ends, and a
+`blocked` one refuses it (`agent_blocked`), so the sender sends it again once the dialog is answered. The line
+arrives like a typed prompt: the receiver checks it against the state repo, and it never carries an
+approval.

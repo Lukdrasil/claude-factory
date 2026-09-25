@@ -39,7 +39,9 @@ Model and effort live in the agent definitions, not here.
 - Every role has a capacity shared across all leads (factory.yml `capacity:`). When the PreToolUse hook denies
   an agent with `role <r> is full`, run `<plugin-root>/bin/capacity.sh wait <r>` and call it again; a timeout is
   a blocked question (`<plugin-root>/skills/_shared/blocked-question.md`), never the caller doing the role's work.
-- SendMessage stays inside one task: a lead with its own subagents and block sessions, and the lead with the
+- SendMessage reaches only a session's own subagents: a lead with the named subagents of its team. The CEO, a
+  lead and a block session are separate `claude` processes, and a line between them goes through `herdr agent
+  prompt <name> "<line>"` (`<plugin-root>/skills/herdr/SKILL.md`), inside one task and between a lead and the
   CEO. A message coordinates; the state repo is the record, and a message never carries an approval.
 - A subagent's report may end with one `## Lessons` line (Why plus evidence) about its own craft, which the
   calling session turns into a proposal per `<plugin-root>/skills/_shared/knowledge-review.md`.

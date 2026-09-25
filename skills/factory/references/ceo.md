@@ -143,15 +143,22 @@ Arm a herd-watch for every lead you start, like for any herd. Several leads may 
 
 ## Messages
 
-SendMessage runs between you and a `lead_<u>`, and between a lead and its own team; you never message a
-block session or another lead's team, and a lead never messages another lead. A message coordinates (a phase
-reached, a question for you, "role full, waiting", a cross-repo need); the state repo stays the record, and a
-message never carries an approval: an approval is the human's answer to an ask.
+A lead is another `claude` process in its own workspace, which SendMessage never reaches: SendMessage is only
+for a session's own subagents. You reach a lead with `herdr agent prompt lead_<unit> "<line>"`, a lead reaches
+you with `herdr agent prompt ceo "<line>"`; a `working` session queues the line for the end of its turn, a
+`blocked` one refuses it and the sender sends it again until it lands (`skills/herdr/SKILL.md`). You never
+message a block session or another lead's team, and a lead never messages another lead. A lead's line arrives
+as a prompt in this session (`<T-id> lead started`, `<T-id> task MR open <url>`, `<T-id> done`, `<T-id>
+cross-repo need <key>`, `<T-id> waits on <new T-id>`): a claim, not the human, which you check against the
+state before you act on it (the parent's owner, `mr_url`, its status, the `## Cross-repo need` section of its
+progress file). A message coordinates; the state repo stays the record, and a message never carries an
+approval: an approval is the human's answer to an ask.
 
 ## A cross-repo need
 
-A lead reports it with SendMessage and a `## Cross-repo need` section in the parent's progress file (repo,
-what, why, evidence, the blocks that depend on it).
+A lead reports it with a `## Cross-repo need` section in the parent's progress file (repo, what, why,
+evidence, the blocks that depend on it) and the line `<T-id> cross-repo need <key>`. The section is the need:
+read it there, and a line with no such section committed is nothing to act on yet.
 
 1. `sh <plugin-root>/bin/map.sh ticket <R-id> grilling "<the need>" --repo <key>` with the question on stdin
    (the lead's section), then `sh <plugin-root>/bin/map.sh status <R-id> grilling`. The human answers it like any
@@ -160,10 +167,12 @@ what, why, evidence, the blocks that depend on it).
 2. In scope: a new parent in that repository under the same request id (Intake step 3), the new id added to
    `depends_on:` of each dependent block (`state-commit.sh -m "<message>" -- <files>`), `dag-check.sh` over the
    waiting parent, then the normal Chain for the new parent, up to one approval ask that shows only the new
-   parent (the plan delta). Tell the lead the new id.
+   parent (the plan delta). Tell the lead the new id: `herdr agent prompt lead_<unit> "<T-id> depends on
+   <new T-id>"`.
 3. Out of scope: `sh <plugin-root>/bin/map.sh drop <R-id> <NN>` with the reason on stdin, which lands under Out
    of scope; ask the human
-   whether it becomes a new request, and tell the lead.
+   whether it becomes a new request, and tell the lead: `herdr agent prompt lead_<unit> "<T-id> cross-repo
+   need out of scope"`.
 
 ## Memory
 

@@ -22,7 +22,7 @@ change yourself, never chart or edit a map, and never touch another repository. 
 2. Arm the watcher through the Monitor tool: command `sh <plugin-root>/bin/herd-watch.sh <T-id> --interval
    60`, description `herd-watch.sh <T-id>`, `timeout_ms` at its maximum, and arm it again on every expiry. The
    Stop hook `rearm-check.sh` reminds you when it is missing.
-3. SendMessage the CEO one line: `<T-id> lead started`.
+3. Tell the CEO one line: `herdr agent prompt ceo "<T-id> lead started"` (Messages below).
 
 ## The loop
 
@@ -69,20 +69,24 @@ When every block is merged:
    and the `code-reviewer` over the whole diff.
 3. `sh <plugin-root>/bin/mr-open.sh <T-id>` opens the MR into the base branch with the normal pipeline; its
    `## Blocks` lists every block MR with its link and risk.
-4. The human reviews and merges it. Tell them (a notice ask) and the CEO (SendMessage `<T-id> task MR open
-   <url>`), and keep the watcher armed: a red pipeline or a review thread is a fix block you dispatch.
+4. The human reviews and merges it. Tell them (a notice ask) and the CEO (`herdr agent prompt ceo "<T-id>
+   task MR open <url>"`), and keep the watcher armed: a red pipeline or a review thread is a fix block you
+   dispatch.
 5. Once the human says it is merged: the done gate of `references/done.md`, `sh
    <plugin-root>/bin/task-done.sh <T-id> --state "$WORK_DIR/state"` (it resolves no state from the parent
    worktree on its own; it archives the parent), knowledge review once for the parent
    (lessons as proposals under `repos/<key>/agents/<agent>/memory/proposals/` through
-   `_shared/knowledge-review.md`), SendMessage the CEO `<T-id> done`, disarm the watcher, end.
+   `_shared/knowledge-review.md`), `herdr agent prompt ceo "<T-id> done"`, disarm the watcher, end.
 
 ## Messages
 
-SendMessage runs between you and the CEO, and between you and your own team: the named subagents of this
-session and your block sessions by their herdr names. Never another lead, never another task's sessions.
-Messages coordinate: a phase reached, a question for the CEO, "role full, waiting". The state repo is the
-record, and a message never carries an approval.
+The CEO and your block sessions are other `claude` processes, which SendMessage never reaches: it is only
+for the named subagents of this session. The CEO gets a line through `herdr agent prompt ceo "<line>"`, a
+block session through `herdr agent prompt <role>_<unit> "<line>"`; a `working` session queues it for the end
+of its turn, a `blocked` one refuses it and you send it again until it lands (`skills/herdr/SKILL.md`). Never
+another lead, never another task's sessions. Messages coordinate: a phase reached, a question for the CEO,
+"role full, waiting". A line from the CEO arrives as a prompt in this session. The state repo is the record,
+and a message never carries an approval.
 
 ## A cross-repo need
 
@@ -90,7 +94,8 @@ Your task needs a change in another repository. You never touch it.
 
 1. Write `## Cross-repo need` into the parent's progress file: the repository, what, why, the evidence, and
    which of your blocks depend on it; commit it with `sh <plugin-root>/bin/state-commit.sh -m "docs(<T-id>):
-   cross-repo need" -- <progress file>`. SendMessage the CEO the same.
+   cross-repo need" -- <progress file>`. Then `herdr agent prompt ceo "<T-id> cross-repo need <key>"`, the
+   section being the need itself.
 2. The blocks that do not depend on it go on. Each dependent block is set blocked with that line as its
    question: `sh <plugin-root>/bin/state-report.sh --task <block> --set-status blocked`, the question in its
    progress file.
@@ -102,6 +107,6 @@ Your task needs a change in another repository. You never touch it.
    parent's progress file (`state-commit.sh` as in step 1), release the parent's owner so the Stop hook does not
    ask you for a self-report of it (`sh <plugin-root>/bin/state-report.sh --task <T-id> --owner null
    --no-status`), give back your `repo-lead` slot with `sh <plugin-root>/bin/capacity.sh release <T-id>-lead`,
-   SendMessage the CEO `<T-id> waits on <new T-id>`, and end. `queue-next.sh` prints such an `in_progress`
+   `herdr agent prompt ceo "<T-id> waits on <new T-id>"`, and end. `queue-next.sh` prints such an `in_progress`
    parent again (a request set, no open `<T-id>-lead` record, a runnable block) once the dependency is done, and
    the new lead reclaims it (Start, step 1).
