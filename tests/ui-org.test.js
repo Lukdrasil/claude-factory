@@ -39,6 +39,7 @@ async function until(what, fn, ms = 5000) {
   }
 }
 
+const FIVE_MIN_AGO = String(Math.floor(Date.now() / 1000) - 300); // capacity.sh writes `at=<epoch>`
 const ORG = {
   capacity: {
     sessions: { used: 9, cap: 10 },
@@ -46,7 +47,7 @@ const ORG = {
       { role: 'code-reviewer', used: 1, cap: null }],
   },
   leases: [
-    { role: 'repo-lead', key: 'T-NEX-7', session: '', unit: 'T-NEX-7-lead', at: '2026-09-25T08:00:00Z' },
+    { role: 'repo-lead', key: 'T-NEX-7', session: '', unit: 'T-NEX-7-lead', at: FIVE_MIN_AGO },
     { role: 'repo-lead', key: 'T-NEX-9', session: '', unit: 'T-NEX-9-lead', at: '2026-09-25T08:10:00Z' },
     { role: 'implementer', key: 's1.toolu_01', session: 's1', unit: 'T-NEX-7-01', at: '2026-09-25T08:20:00Z' },
     { role: 'code-reviewer', key: 's2.toolu_02', session: 's2', unit: '', at: '2026-09-25T08:30:00Z' },
@@ -71,6 +72,8 @@ async function orgTab(context, body) { // a new page whose /api/org answers body
 
 const rows = (p, what) => p.locator(`[data-org] [data-${what}] tbody tr`).evaluateAll((trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, ' ').trim()));
 const capacity = (p) => p.locator('[data-capacity] [data-role]').allInnerTexts().then((t) => t.map((s) => s.replace(/\s+/g, ' ').trim()).join(', '));
+
+const cells = (p, what, col) => p.locator(`[data-org] [data-${what}] tbody tr`).evaluateAll((trs, i) => trs.map((tr) => tr.cells[i].textContent.replace(/\s+/g, ' ').trim()), col);
 
 async function tab(p, name) {
   await p.getByRole('tab', { name }).click();
@@ -117,6 +120,16 @@ async function real(context) {
     ok(/\bs-ceo\b/.test(ceo) && /w1:p9/.test(ceo), `ceo: ${ceo}`);
   });
 
+  await check('real: every lease shows its Since as a local time with its age, never the epoch of capacity.sh, and a unit lease its unit as the session', async () => {
+    const since = await cells(p, 'leases', 4);
+    ok(since.length && since.every((c) => /^\d{4}-\d\d-\d\d \d\d:\d\d \(\d+ min ago\)$/.test(c)), `since: ${since.join(' | ')}`);
+    const r = await rows(p, 'leases');
+    const session = await cells(p, 'leases', 3);
+    const lead = r.findIndex((x) => x.startsWith('repo-lead'));
+    ok(session[lead] === 'T-ECS-1-lead', `session of the repo-lead lease: ${session[lead]}`);
+    ok(session.every(Boolean), `sessions: ${session.join(' | ')}`);
+  });
+
   await check('real: a lease capacity.sh takes, which never reaches the event stream, shows in the Org tab within 10 s', async () => {
     fs.writeFileSync(path.join(UI, 'lease-now'), 'go\n');
     let got = '';
@@ -132,6 +145,13 @@ async function real(context) {
     });
     ok(t.join(' ') === '02* 04 05', `open: ${t.join(' ')}`);
     ok((await p.locator('[data-map] .dest').innerText()).includes('Invoices reach the ledger every night.'), 'no destination');
+  });
+
+  await check('real: the Map tab renders the markdown of the map, the term Ledger in bold, no ** or backtick left', async () => {
+    const text = await p.locator('[data-map]').innerText();
+    ok(!/\*\*|`/.test(text), `raw markdown in: ${text.slice(0, 600)}`);
+    ok((await p.locator('[data-map] strong').allInnerTexts()).includes('Ledger'), 'no bold Ledger');
+    ok(text.includes('Both repos post through the REST API.') && text.includes('How the two exports are ordered once both run.'), `notes and fog: ${text.slice(0, 600)}`);
   });
 
   await check('real: the Plan checklist lists T-CF-1 under claude-factory, then T-ECS-1 and its blocks with their acceptance under ecs', async () => {
@@ -218,6 +238,28 @@ async function real(context) {
     const text = await p.locator('[data-org] [data-ceo]').innerText();
     ok(/\bs-ceo\b/.test(text) && /w1:p3/.test(text), `ceo: ${text}`);
   });
+
+  await check('the Since of a lease at an epoch 5 min ago reads as a local time and (5 min ago), never the epoch', async () => {
+    const since = await cells(p, 'leases', 4);
+    ok(/^\d{4}-\d\d-\d\d \d\d:\d\d \(5 min ago\)$/.test(since[0]), `since: ${since[0]}`);
+    ok(!since.join(' ').includes(FIVE_MIN_AGO), `the raw epoch: ${since.join(' | ')}`);
+  });
+
+  await check('the Session column of a unit lease without a session shows its unit', async () => {
+    const session = await cells(p, 'leases', 3);
+    ok(session[0] === 'T-NEX-7-lead' && session[2] === 's1', `sessions: ${session.join(' | ')}`);
+  });
+
+  await check('the Org tab explains its jargon: the pane, the lease, unit, key and session columns carry a title, the Leases a caption', async () => {
+    const pane = await p.locator('[data-org] [data-ceo] [title]').evaluateAll((els) => els.map((e) => e.title).join(' '));
+    ok(/pane/i.test(pane), `pane title: ${pane}`);
+    for (const t of ['leases', 'leads']) {
+      const titles = await p.locator(`[data-org] [data-${t}] th`).evaluateAll((ths) => Object.fromEntries(ths.map((th) => [th.textContent.trim(), th.title])));
+      for (const h of t === 'leases' ? ['Role', 'Key', 'Unit', 'Session'] : ['Unit']) ok(titles[h], `no title on ${t} ${h}: ${JSON.stringify(titles)}`);
+    }
+    const caption = await p.locator('[data-org] h3', { hasText: 'Leases' }).evaluate((h) => h.nextElementSibling.matches('p') && h.nextElementSibling.textContent);
+    ok(/lease/i.test(caption || '') && /slot/i.test(caption || ''), `caption: ${caption}`);
+  });
   await p.close();
 
   await check('with no CEO, no lease and no lead the Org tab reads The CEO is not running, No lease. and No lead is running.', async () => {
@@ -236,6 +278,34 @@ async function real(context) {
     ok(!errors.length, `errors: ${errors.join(' | ')}`);
   });
 
+  await check('a lease with neither a session nor a unit shows - as its session', async () => {
+    const q = await orgTab(context, { ...ORG, leases: [{ role: 'scout', key: 'k1', session: '', unit: '', at: '' }] });
+    const session = await cells(q, 'leases', 3);
+    await q.close();
+    ok(session[0] === '-', `session: ${session[0]}`);
+  });
+
+  await check('at 400x844 every tab is inside the header, the grid starts within 180 px and every other tab within 150 px', async () => {
+    const q = await orgTab(context, ORG);
+    await q.setViewportSize({ width: 400, height: 844 });
+    await q.waitForTimeout(300);
+    const bad = [];
+    for (const name of ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup']) {
+      const { tabs, t, x } = await q.evaluate((name) => {
+        const box = document.querySelector('.tabs').getBoundingClientRect();
+        const el = [...document.querySelectorAll('[role="tab"]')].find((b) => b.textContent === name).getBoundingClientRect();
+        return { tabs: [box.left, box.right], t: [el.left, el.right], x: document.documentElement.clientWidth };
+      }, name);
+      if (t[0] < Math.max(0, tabs[0]) - 0.5 || t[1] > Math.min(x, tabs[1]) + 0.5) bad.push(`tab ${name} at ${t.map(Math.round)} outside ${tabs.map(Math.round)}`);
+      await q.getByRole('tab', { name }).click();
+      await q.waitForTimeout(200);
+      const top = await q.evaluate((name) => Math.round((document.querySelector(name === 'Pipeline' ? '.grid-wrap' : '[role="tabpanel"]')).getBoundingClientRect().top), name);
+      if (top > (name === 'Pipeline' ? 180 : 150)) bad.push(`${name} starts at ${top} px`);
+    }
+    await q.close();
+    ok(!bad.length, bad.join(', '));
+  });
+
   await check('at 390x844 the Org tab does not scroll the page sideways', async () => {
     const q = await orgTab(context, ORG);
     await q.setViewportSize({ width: 390, height: 844 });
@@ -244,6 +314,46 @@ async function real(context) {
     await q.close();
     ok(over <= 0, `the page scrolls sideways by ${over} px`);
   });
+
+  const REQ = { id: 'R-20260925-1', status: 'planned', destination: 'Invoices reach the ledger.', priority: 'P1', parents: ['T-NEX-7'], archived: false };
+  const DETAIL = { ...REQ, notes: '', terms: '', fog: 'How the exports are ordered.',
+    decisions: [], outOfScope: [{ title: 'Get access', file: '03-get-access.md', gist: 'Theirs.' }, { title: 'Anything about refunds.', file: '', gist: '' }],
+    tickets: [{ nn: '02', title: 'Pick the store', type: 'grilling', status: 'open', blockedBy: [], repo: 'nexusapi', claimedBy: '', question: '', answer: '' }],
+    frontier: ['02'],
+    parents: [{ id: 'T-NEX-7', repo: 'nexusapi', priority: 'P2', status: 'in_progress', goal: 'feat: export', acceptance: '', blocks: [
+      { id: 'T-NEX-7-01', status: 'done', goal: 'feat: cursor', acceptance: '' }, { id: 'T-NEX-7-02', status: 'ready', goal: 'feat: job', acceptance: '' }] }] };
+  const m = await context.newPage();
+  await m.route('**/api/requests', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([REQ]) }));
+  await m.route('**/api/requests/R-20260925-1', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(DETAIL) }));
+  await m.goto(`${BASE}/#${TOKEN}`);
+  await until('the Map tab', () => m.getByRole('tab', { name: 'Map' }).isVisible());
+  await tab(m, 'Map');
+  await until('the map', () => m.locator('[data-map] [data-col="out"]').isVisible());
+
+  await check('an out-of-scope line without a gist ends with its own text, no stray colon, and one with a gist reads title: gist', async () => {
+    const items = await m.locator('[data-map] [data-col="out"] li').evaluateAll((lis) => lis.map((li) => li.textContent.trim()));
+    ok(items.join(' | ') === 'Get access: Theirs. | Anything about refunds.', `out of scope: ${items.join(' | ')}`);
+  });
+
+  await check('the Map tab explains the frontier chip with a title and the fog with a caption', async () => {
+    const title = await m.locator('[data-map] [data-ticket="02"] .chip', { hasText: 'frontier' }).getAttribute('title');
+    ok(/blocked|unblocked/i.test(title || ''), `frontier title: ${title}`);
+    const fog = await m.locator('[data-map] [data-col="fog"]').innerText();
+    ok(/fog/i.test(fog), `fog column: ${fog}`);
+  });
+
+  await check('the Plan checklist marks each item with a status, not a box that reads as a checkbox', async () => {
+    await tab(m, 'Plan');
+    await until('the checklist', () => m.locator('[data-checklist] [data-item]').first().isVisible());
+    const marks = await m.locator('[data-checklist] [data-item]').evaluateAll((lis) => lis.map((li) => {
+      const s = getComputedStyle(li.firstElementChild);
+      return { id: li.dataset.item, border: s.borderTopStyle, text: li.firstElementChild.textContent.trim(), title: li.firstElementChild.title };
+    }));
+    ok(marks.every((x) => x.border === 'none'), `bordered marks: ${JSON.stringify(marks)}`);
+    ok(marks.find((x) => x.id === 'T-NEX-7-01').text === '✓', `done: ${JSON.stringify(marks)}`);
+    ok(marks.every((x) => x.title), `a mark without its status as title: ${JSON.stringify(marks)}`);
+  });
+  await m.close();
 
   await browser.close();
   process.exit(failed);

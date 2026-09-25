@@ -146,6 +146,20 @@ public sealed class StateReaderTests : IDisposable
     }
 
     [Fact]
+    public void A_request_carries_its_destination_notes_terms_and_fog_rendered()
+    {
+        Fixture();
+
+        var r = State.Request("R-20260925-1")!;
+
+        Assert.Equal("<p>Invoices reach the ledger.</p>\n", r.Html.Destination);
+        Assert.Equal("", r.Html.Notes);
+        Assert.Equal("", r.Html.Terms);
+        Assert.Equal("<p>The order.</p>\n", r.Html.Fog);
+        Assert.Equal([new MapLinkHtml("Access", "Not ours.")], r.Html.OutOfScope);
+    }
+
+    [Fact]
     public void An_archived_request_shows_its_archived_parent_and_blocks()
     {
         Fixture();

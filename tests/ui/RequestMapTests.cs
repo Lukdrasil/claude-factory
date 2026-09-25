@@ -107,6 +107,16 @@ public sealed class RequestMapTests
     }
 
     [Fact]
+    public void The_html_renders_the_sections_and_each_title_and_gist_inline()
+    {
+        var html = RequestHtml.Of(RequestMap.Parse(Map.Replace("Postgres.", "`Postgres`.")));
+
+        Assert.Equal("<ul>\n<li><strong>Ledger</strong>: the accounting system of record. Avoid: books</li>\n</ul>\n", html.Terms);
+        Assert.Equal([new MapLinkHtml("Which ledger API", "The REST API, v2."), new MapLinkHtml("Pick the store", "<code>Postgres</code>.")], html.Decisions);
+        Assert.Equal(new MapLinkHtml("Anything about refunds.", ""), html.OutOfScope[1]);
+    }
+
+    [Fact]
     public void An_empty_map_reads_empty_strings_and_lists()
     {
         var map = RequestMap.Parse("---\nrequest: R-20260925-2\n---\n\nStatus: charting\n\n## Destination\n\nX\n\n## Notes\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n\n## Terms\n");
