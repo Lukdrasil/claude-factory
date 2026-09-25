@@ -241,6 +241,33 @@ has 'solve-next.sh puts T-026 at step 3'                      '^## Step 3 of 16'
 has 'solve-next.sh --ui records the task in session.md'       '^task: T-026$' "$(cat "$ui/sessions/s26/session.md" 2>/dev/null)"
 has 'solve-next.sh --ui records the flow in session.md'       '^flow: solve$' "$(cat "$ui/sessions/s26/session.md" 2>/dev/null)"
 
+# --- T-029: an ask in every state, oldest first: x1 sent and held gone, x2 sent, gn1 of an ended session, then ---
+# the live short confirm c1 and the live long round r1 of s29
+goal 'feat(fx): the fixture task with an ask in every state' | task T-029 in_progress
+session --session s29 --pane w2:p29 --flow solve --task T-029 --step 'Step 9 of 16: approve and claim T-029'
+session --session s29g --pane w2:p29g --flow solve --task T-029 --step 'Step 9 of 16: approve and claim T-029'
+printf 'gone\n' > "$ui/sessions/s29g/agent"
+confirm s29 x1 T-029 solve 'held gone' 'Held gone?'
+confirm s29 x2 T-029 solve 'sent' 'Sent?'
+confirm s29g gn1 T-029 solve 'ended session' 'Ended session?'
+confirm s29 c1 T-029 solve 'live confirm' 'Live confirm?'
+{
+  printf -- '---\nask: r1\ntask: T-029\nflow: solve\nstep: long round\nstatus: open\n---\n'
+  for n in 1 2 3 4 5; do
+    printf '\n❓ **Q%s** - **Which fixture part %s?**: the question %s of the long round.\n  **A** the first part\n  **B** the second part\n  **C** the third part\n\n➡️ **A**: the first part is enough.\n' \
+      "$n" "$n" "$n"
+  done
+} | sh "$bin/ui-ask.sh" --session s29 >/dev/null || bad 'ui-ask.sh --session s29 (r1)'
+touch -d '2026-09-24 09:01' "$ui/sessions/s29/asks/x1.md"
+touch -d '2026-09-24 09:02' "$ui/sessions/s29/asks/x2.md"
+touch -d '2026-09-24 09:03' "$ui/sessions/s29g/asks/gn1.md"
+touch -d '2026-09-24 09:04' "$ui/sessions/s29/asks/c1.md"
+touch -d '2026-09-24 09:05' "$ui/sessions/s29/asks/r1.md"
+mkdir -p "$ui/sessions/s29/answers"
+printf 'Q1 A' > "$ui/sessions/s29/answers/1-x1.txt"
+printf 'Q1 A' > "$ui/sessions/s29/answers/2-x2.txt"
+printf '1 gone\n' > "$ui/sessions/s29/relay"
+
 # --- the server, then the browser --------------------------------------------------------------------------------
 up --state "$state1"; rc=$?
 is 'ui-up.sh exits 0'                                         "$rc" 0

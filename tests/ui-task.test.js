@@ -400,6 +400,145 @@ async function confirmYes(page, name, key) {
     holds(await current(page), [/^\s*3b chart\s*$/]);
   });
 
+  // --- T-029: one state per ask, live asks first and answerable, the rest read-only, one sticky footer ------------
+  const card = (key) => drawer(page).locator(`[data-ask="${key}"]`);
+  const opt = (key, q, k) => card(key).locator(`[data-q="${q}"] [data-act="pick"][data-k="${k}"]`);
+  const STATES = [['open', /Needs your answer/], ['sent', /Sent, waiting for the session/], ['answered', /\bAnswered\b/],
+    ['gone', /Not delivered: the session has ended/]];
+  const sticky = () => page.evaluate(() => [...document.querySelectorAll('aside .ask-f')]
+    .filter((f) => getComputedStyle(f).position === 'sticky').map((f) => f.closest('[data-ask]').dataset.ask).join(' '));
+  const lines = (text) => text.split('\n').map((l) => l.trim()).filter(Boolean).join('|');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openTask(page, 'T-029');
+
+  await check('the drawer of T-029 lists the live c1 and r1 first, then x1, x2 and gn1, each group oldest first', async () => {
+    await until('r1 in the drawer', () => card('s29/r1').isVisible());
+    const order = await drawer(page).locator('[data-ask]').evaluateAll((els) => els.map((e) => e.dataset.ask).join(' '));
+    ok(order === 's29/c1 s29/r1 s29/x1 s29/x2 s29g/gn1', `order: ${order}`);
+  });
+
+  for (const [key, state] of [['s29/c1', 'open'], ['s29/x2', 'sent'], ['s29/x1', 'gone'], ['s29g/gn1', 'gone']]) {
+    await check(`the header of ${key} reads the one state ${state}`, async () => {
+      const head = await card(key).locator('.ask-h').innerText();
+      const hits = STATES.filter(([, re]) => re.test(head)).map(([s]) => s);
+      ok(hits.join(' ') === state, `states ${JSON.stringify(hits)} in: ${head}`);
+    });
+  }
+
+  for (const key of ['s29/x1', 's29/x2', 's29g/gn1']) {
+    await check(`${key}, not open to an answer, is read-only: its options disabled, no Send, no answer box`, async () => {
+      const c = card(key);
+      const live = await c.locator('[data-act="pick"]').evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
+      ok(live === 0, `${live} enabled options`);
+      ok((await c.locator('[data-act="pick"]').count()) === 2, 'no options');
+      ok(!(await c.getByRole('button', { name: /send|write my answer|explain more/i }).count()), 'a Send or answer button');
+      ok(!(await c.getByRole('textbox').count()), 'a text box');
+    });
+  }
+
+  await check('the open c1 keeps its enabled options and its Send', async () => {
+    const live = await card('s29/c1').locator('[data-act="pick"]').evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
+    ok(live === 2, `${live} enabled options`);
+    ok(await card('s29/c1').getByRole('button', { name: /^send answer$/i }).count(), 'no Send');
+  });
+
+  await check('picking B of Q1 of r1 marks it aria-pressed with a visible check, the others not pressed', async () => {
+    await opt('s29/r1', 'Q1', 'B').click();
+    const pressed = await card('s29/r1').locator('[data-q="Q1"] [data-act="pick"]')
+      .evaluateAll((bs) => bs.map((b) => `${b.dataset.k}=${b.getAttribute('aria-pressed')}`).join(' '));
+    ok(pressed === 'A=false B=true C=false', `aria-pressed: ${pressed}`);
+    const tick = opt('s29/r1', 'Q1', 'B').getByText('✓');
+    ok((await tick.count()) === 1 && (await tick.isVisible()), 'no visible check mark on B');
+    ok(!(await opt('s29/r1', 'Q1', 'A').getByText('✓').count()), 'a check mark on A');
+    ok(await card('s29/r1').locator('[data-q="Q1"]').getByRole('button', { name: /^B\b/ }).count(), 'the name of B no longer starts with B');
+  });
+
+  await check('the focus stays on B of Q1 of r1 after the click re-renders the drawer', async () => {
+    const at = await page.evaluate(() => {
+      const a = document.activeElement;
+      return `${a.closest('[data-ask]')?.dataset.ask} ${a.closest('[data-q]')?.dataset.q} ${a.dataset.k}`;
+    });
+    ok(at === 's29/r1 Q1 B', `focus on ${at}`);
+  });
+
+  await check('Explain more on Q2 of r1 is aria-pressed once staged and keeps the focus', async () => {
+    const more = card('s29/r1').locator('[data-q="Q2"] [data-act="more"]');
+    ok(await more.getAttribute('aria-pressed') === 'false', `before: ${await more.getAttribute('aria-pressed')}`);
+    await more.click();
+    ok(await more.getAttribute('aria-pressed') === 'true', `after: ${await more.getAttribute('aria-pressed')}`);
+    const act = await page.evaluate(() => `${document.activeElement.closest('[data-q]')?.dataset.q} ${document.activeElement.dataset.act}`);
+    ok(act === 'Q2 more', `focus on ${act}`);
+  });
+
+  await check('the staged items of r1 read in a neutral colour and the preview reads them, the output keeps the exact text', async () => {
+    const q3 = card('s29/r1').locator('[data-q="Q3"]');
+    await q3.getByRole('button', { name: /write my answer/i }).click();
+    await q3.getByRole('textbox').fill('the fixture part, kept');
+    await q3.getByRole('button', { name: /add to answer/i }).click();
+    const colours = await page.evaluate(() => {
+      const probe = document.createElement('span');
+      probe.className = 'chip warn';
+      document.body.append(probe);
+      const warn = getComputedStyle(probe).color;
+      probe.remove();
+      return [...document.querySelectorAll('aside [data-ask="s29/r1"] .staged')].map((s) => getComputedStyle(s).color).concat(warn);
+    });
+    const warn = colours.pop();
+    ok(colours.length === 3, `${colours.length} staged lines`);
+    ok(colours.every((c) => c !== warn), `a staged line in the warning colour ${warn}`);
+    const f = card('s29/r1').locator('.ask-f');
+    const out = await f.locator('output').innerText();
+    ok(lines(out) === 'Q1 B|Q2 more|Q3 the fixture part, kept', `output: ${JSON.stringify(out)}`);
+    const shown = (await f.innerText()).replace(out, '');
+    holds(shown, ['Will be sent:', /Q1\W+B\b/, /Q2\W+Explain more/, /Q3\W+the fixture part, kept/]);
+    ok(!/Q2 more/.test(shown), `raw text in the preview: ${shown}`);
+  });
+
+  await check('Esc closes the drawer of T-029 and puts the focus on its row', async () => {
+    await page.keyboard.press('Escape');
+    await until('no drawer', async () => !(await drawer(page).count()), 1000);
+    const at = await page.evaluate(() => document.activeElement?.dataset.drawer);
+    ok(at === 'T-029', `focus on ${at}`);
+  });
+
+  await openTask(page, 'T-029');
+
+  await check('the answers staged on r1 are still there after a reload', async () => {
+    await until('r1 in the drawer', () => card('s29/r1').isVisible());
+    ok(await opt('s29/r1', 'Q1', 'B').getAttribute('aria-pressed') === 'true', 'B of Q1 is not pressed');
+    const out = await card('s29/r1').locator('.ask-f output').innerText();
+    ok(lines(out) === 'Q1 B|Q2 more|Q3 the fixture part, kept', `output: ${JSON.stringify(out)}`);
+  });
+
+  await check('only the first live card c1 has a sticky footer, so one Send sticks', async () => {
+    const got = await sticky();
+    ok(got === 's29/c1', `sticky footers: ${JSON.stringify(got)}`);
+  });
+
+  await check('with c1 scrolled out, the long r1 has the one sticky footer and its Send is in view', async () => {
+    await page.evaluate(() => {
+      const a = document.querySelector('aside');
+      a.scrollTop += a.querySelector('[data-ask="s29/c1"]').getBoundingClientRect().bottom - a.querySelector('.drawer-h').getBoundingClientRect().bottom + 20;
+    });
+    await until('r1 sticky', async () => (await sticky()) === 's29/r1', 1000);
+    const off = await exposed(page, 'aside [data-ask="s29/r1"] [data-act="send"]');
+    ok(!off.length, off.join(' | '));
+  });
+
+  await check('?ask=s29/r1 opens T-029 with r1 marked current and highlighted, c1 not', async () => {
+    await page.goto('about:blank');
+    await page.goto(`${BASE}/?ask=s29/r1#token=${TOKEN}`);
+    await until('r1 in the drawer', () => card('s29/r1').isVisible());
+    await until('r1 aria-current', async () => (await card('s29/r1').getAttribute('aria-current')) === 'true', 1000);
+    ok(!(await card('s29/c1').getAttribute('aria-current')), 'c1 is aria-current');
+    const look = (key) => card(key).evaluate((e) => {
+      const s = getComputedStyle(e);
+      return `${s.outlineStyle} ${s.outlineColor} ${s.borderColor} ${s.boxShadow}`;
+    });
+    const [r1, c1] = [await look('s29/r1'), await look('s29/c1')];
+    ok(r1 !== c1, `r1 looks like c1: ${r1}`);
+  });
+
   await browser.close();
   process.exit(failed);
 })().catch((e) => {
