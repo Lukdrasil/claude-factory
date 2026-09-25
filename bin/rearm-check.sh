@@ -2,8 +2,10 @@
 # Stop hook (agent-org plan 3.1, 3.7, herdr research R4): a session that watches herds must not go idle with a
 # herd unwatched. The CEO and every lead keep one `herd-watch.sh <T-id>` per herd armed through the Monitor tool;
 # a Monitor expires after at most 30 minutes and a restarted Claude has none, so at every Stop this hook looks at
-# the hook's `background_tasks` and, when a herd of this session has no `monitor` entry naming herd-watch.sh with
-# its id, exits 2 with one herd-list line per unwatched herd, `<request> <priority> <T-id> <repo> <status>`.
+# the hook's `background_tasks` and, when a herd of this session has no entry naming herd-watch.sh with its id,
+# exits 2 with one herd-list line per unwatched herd, `<request> <priority> <T-id> <repo> <status>`. An entry of
+# any type counts (the harness reports a Monitor task as `local_bash`), unless its `status` says it finished
+# (completed, failed, killed, stopped).
 #
 # Scope by the cwd:
 #   a parent worktree <root>/<key>/<T-id>  that herd, when the monitor recorded herdr units for it
@@ -28,12 +30,13 @@ set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 stdin=$(cat)
 
-# line 1 the stop_hook_active flag, line 2 the session id, then the text of every monitor entry naming herd-watch.sh
+# line 1 the stop_hook_active flag, line 2 the session id, then the text of every unfinished entry naming
+# herd-watch.sh
 parsed=$(printf '%s' "$stdin" | node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const h=JSON.parse(s);
 const out=[h.stop_hook_active===true?"active":"idle",typeof h.session_id==="string"?h.session_id:""];
 for(const t of Array.isArray(h.background_tasks)?h.background_tasks:[]){
-  if(!t||t.type!=="monitor")continue;
+  if(!t||/^(completed|failed|killed|stopped)$/.test(t.status||""))continue;
   const txt=((t.command||"")+" "+(t.description||"")).replace(/\s+/g," ");
   if(/herd-watch\.sh/.test(txt))out.push(txt);
 }
