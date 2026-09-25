@@ -177,4 +177,9 @@ check 'task-new does not run while another session holds the state lock' 1 "$rc"
 check 'nothing is written under a held lock' '' "$(ls "$st"/repos/cf/tasks/ | grep held)"
 check 'nothing is committed under a held lock' "$before" "$(commits)"
 
+# --- the <new-id> placeholder of task-template.sh is replaced, not kept behind the id ------
+draft "$tmp/placeholder.md" cf 'a branch with the template placeholder' 'feat/<new-id>-delete-and-search'
+new_task cf "$tmp/placeholder.md"
+check 'the <new-id> placeholder in the branch becomes the id' feat/T-CF-4-delete-and-search "$(field T-CF-4 branch)"
+
 exit $fail

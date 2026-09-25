@@ -129,7 +129,7 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   }
   s=set(s,"id",id);
   const br=parse(s).branch||"",sl=br.indexOf("/");
-  if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^T-(?:[A-Z]{2,4}-\d+|\d{3,})(-\d{2,})?-/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
+  if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^(?:T-(?:[A-Z]{2,4}-\d+|\d{3,})(-\d{2,})?|<new-id>)(?:-|$)/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
   for(const [k,v] of [["depends_on","[]"],["attempt","0"],["plan_hash","null"],["owner","null"],["mr_url","null"],["request","null"],["issue","null"]])
     if(!(k in parse(s)))s=set(s,k,v);
   if(!parse(s).priority)s=set(s,"priority","P2");
