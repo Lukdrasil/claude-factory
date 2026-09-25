@@ -393,6 +393,19 @@ ob 0 'ui-session.sh'                              Bash "$C/cf" "sh $P/ui-session
 ob 0 'herdr agent prompt ceo'                     Bash "$C/cf" 'herdr agent prompt ceo "onboard cf done 7 done 3 missing 1 failing 2 proposals"'
 ob 0 'herdr tab close of its own tab'             Bash "$C/cf" 'herdr tab close "$HERDR_TAB_ID"'
 ob 0 'herdr tab close of its own tab by id'       Bash "$C/cf" 'herdr tab close tab-3'
+# the exact shapes of skills/factory/references/onboard.md
+ob 0 'onboard.md: state-commit.sh of the stub with --state "$WORK_DIR/state"' Bash "$C/cf" \
+  "sh $P/state-commit.sh -m \"chore(cf): onboarding started\" --state \"\$WORK_DIR/state\" -- repos/cf/onboarding.md"
+ob 0 'onboard.md: state-commit.sh of the report with --state "$WORK_DIR/state"' Bash "$C/cf" \
+  "sh $P/state-commit.sh -m \"chore(cf): onboarding report\" --state \"\$WORK_DIR/state\" -- repos/cf/onboarding.md"
+ob 2 'onboard.md: state-commit.sh with --state "$WORK_DIR/state" of a task file' Bash "$C/cf" \
+  "sh $P/state-commit.sh -m \"chore(cf): onboarding report\" --state \"\$WORK_DIR/state\" -- repos/cf/tasks/T-900.md"
+ob 0 'onboard.md: factory-doctor.sh --root "$WORK_DIR" --repo <clone>' Bash "$C/cf" \
+  "sh $P/factory-doctor.sh --root \"\$WORK_DIR\" --repo $C/cf"
+ob 0 'onboard.md: doc-cites.sh <clone>'           Bash "$C/cf" "sh $P/doc-cites.sh $C/cf"
+ob 0 'onboard.md: herdr agent prompt ceo "onboard <key> done ..."' Bash "$C/cf" \
+  'herdr agent prompt ceo "onboard cf done 7 done 3 missing 1 failing 2 proposals"'
+ob 0 'onboard.md: herdr tab close "$HERDR_TAB_ID"' Bash "$C/cf" 'herdr tab close "$HERDR_TAB_ID"'
 ob 0 'reads in the clone'                         Bash "$C/cf" 'ls -la && cat README.md 2>/dev/null | head -n 20'
 ob 0 'git reads in the clone'                     Bash "$C/cf" "git -C $C/cf symbolic-ref refs/remotes/origin/HEAD && git log --oneline -5"
 ob 0 'a read of the state clone'                  Bash "$C/cf" "cat $S/repos/cf/toolset.md"
