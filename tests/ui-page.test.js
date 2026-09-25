@@ -64,11 +64,8 @@ async function currentStep(page, id) {
     const row = [...table.querySelectorAll('tr')].find(
       (r) => (r.textContent.match(/T-\d{3}(?:-\d{2})?/) || [''])[0] === id);
     if (!row) return `no row for ${id}`;
-    const cell = row.querySelector('[aria-current="step"]');
-    if (!cell) return `no aria-current="step" cell in the row of ${id}`;
-    const head = [...table.querySelectorAll('tr')].find((r) => r.querySelector('th'));
-    const index = [...row.children].indexOf(cell);
-    return head ? head.children[index].textContent.trim().split(/\s+/)[0] : 'no header row';
+    const seg = row.querySelector('[data-step][aria-current="step"]');
+    return seg ? seg.dataset.step : `no current step in the row of ${id}`;
   }, id);
 }
 
@@ -77,9 +74,7 @@ async function ticked(page, id) {
     const row = [...table.querySelectorAll('tr')].find(
       (r) => (r.textContent.match(/T-\d{3}(?:-\d{2})?/) || [''])[0] === id);
     if (!row) return `no row for ${id}`;
-    const head = [...table.querySelectorAll('tr')].find((r) => r.querySelector('th'));
-    return [...row.children].map((c, i) => (c.matches('.done') && /✓/.test(c.textContent) ? head.children[i].textContent.trim().split(/\s+/)[0] : ''))
-      .filter(Boolean).join(' ');
+    return [...row.querySelectorAll('[data-step].d')].map((seg) => seg.dataset.step).join(' ');
   }, id);
 }
 
@@ -196,7 +191,7 @@ async function stage(q, button, text) {
     const p = await context.newPage();
     await p.setViewportSize({ width: 400, height: 844 });
     await p.goto(`${BASE}/#${TOKEN}`);
-    await until('the rows', async () => (await taskRowIds(p)).length >= 4);
+    await until('the rows', async () => (await taskRowIds(p)).length >= 3);
     const got = await p.evaluate(() => ({
       grid: Math.round(document.querySelector('.grid-wrap').getBoundingClientRect().top),
       below: document.querySelector('[data-intake]').getBoundingClientRect().top >= document.querySelector('.grid-wrap').getBoundingClientRect().bottom,
@@ -254,9 +249,18 @@ async function stage(q, button, text) {
     ok(got.cells.every((x) => Math.abs(x) <= 1), `the Task column moved: ${JSON.stringify(got)}`);
   });
 
-  await check('the 14 step columns of the grid are equally wide', async () => {
-    const widths = await withBig(1440, 900, (p) => p.locator('thead th').evaluateAll((ths) => ths.slice(2).map((th) => Math.round(th.getBoundingClientRect().width))));
-    ok(widths.length === 14 && Math.max(...widths) - Math.min(...widths) <= 1, `widths: ${widths.join(' ')}`);
+  await check('the grid has five phase columns, Plan, Approve, Build, Verify and Ship, equally wide, each titled with its steps', async () => {
+    const got = await withBig(1440, 900, (p) => p.locator('thead th').evaluateAll((ths) => ths.slice(2)
+      .map((th) => ({ name: th.textContent.trim(), w: Math.round(th.getBoundingClientRect().width), title: th.title }))));
+    const widths = got.map((g) => g.w);
+    ok(got.map((g) => g.name).join(' ') === 'Plan Approve Build Verify Ship', `phases: ${got.map((g) => g.name).join(' ')}`);
+    ok(Math.max(...widths) - Math.min(...widths) <= 1, `widths: ${widths.join(' ')}`);
+    ok(got[0].title === '3 triage, 3b chart, 4 grill, 5 plan-check, 6 decompose, 8 cut', `Plan title: ${got[0].title}`);
+  });
+
+  await check('a task in review reads MR waits for you under Ship', async () => {
+    const text = await withBig(1440, 900, (p) => p.locator('table tr', { hasText: 'T-106' }).first().locator('td').nth(6).innerText());
+    ok(text.trim() === 'MR waits for you', `Ship of T-106: ${JSON.stringify(text)}`);
   });
 
   await check('a status chip reads its meaning: failed and blocked bad, triaged and review warn, ready to tests_ready accent, done ok, draft and closed plain', async () => {
@@ -265,21 +269,25 @@ async function stage(q, button, text) {
     const want = { draft: 'plain', triaged: 'warn', ready: 'accent', claimed: 'accent', in_progress: 'accent', tests_ready: 'accent', review: 'warn',
       blocked: 'bad', failed: 'bad', done: 'ok', closed: 'plain' };
     const wrong = [...new Set(got)].filter((g) => { const [st, tone] = g.split('='); return want[st] !== tone; });
-    ok(got.length >= 36 && !wrong.length, `chips: ${[...new Set(got)].join(' ')}`);
+    ok(got.length >= 30 && !wrong.length, `chips: ${[...new Set(got)].join(' ')}`);
   });
 
   await check('a task goal shows at most two lines and a block goal one, each whole in its title', async () => {
-    const got = await withBig(1440, 900, (p) => p.evaluate(() => {
+    const got = await withBig(1440, 900, async (p) => {
+      await p.locator('[data-act="blocks"][data-key="T-105"]').click();
+      await until('the blocks of T-105', async () => (await taskRowIds(p)).includes('T-105-01'));
+      return p.evaluate(() => {
       const lines = (el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight));
       const goal = document.querySelector('td.task .goal');
       const block = document.querySelector('tr.sub .goal');
       return { goal: lines(goal), block: lines(block), goalTitle: goal.title, blockTitle: block.title };
-    }));
+      });
+    });
     ok(got.goal <= 2 && got.block === 1, `lines: ${JSON.stringify(got)}`);
     ok(got.goalTitle === `T-101 ${LONG}` && got.blockTitle === `T-105-01 ${LONG} ${LONG}`, `titles: ${got.goalTitle} | ${got.blockTitle}`);
   });
 
-  await check('Repository offers every repository of the board and keeps only the tasks of the one picked, with their blocks', async () => {
+  await check('Repository offers every repository of the board and keeps only the tasks of the one picked', async () => {
     const got = await withBig(1440, 900, async (p) => {
       const pick = p.getByRole('combobox', { name: 'Repository' });
       const options = await pick.locator('option').allInnerTexts();
@@ -292,12 +300,12 @@ async function stage(q, button, text) {
       return { options, ids, focused: await pick.evaluate((el) => document.activeElement === el) };
     });
     ok(got.options.join('|') === 'All repositories|arthurcore|claude-factory', `options: ${got.options.join('|')}`);
-    ok(got.ids.length === 18 && got.ids.every((id) => Number(id.slice(2, 5)) % 2 === 0) && got.ids.includes('T-110-01'), `rows: ${got.ids.join(' ')}`);
+    ok(got.ids.length === 15 && got.ids.every((id) => Number(id.slice(2, 5)) % 2 === 0), `rows: ${got.ids.join(' ')}`);
     ok(got.focused, 'the focus left Repository');
   });
 
   await check('a render keeps the grid scrolled where it was, down and sideways', async () => {
-    const got = await withBig(1024, 600, async (p) => {
+    const got = await withBig(700, 600, async (p) => {
       await p.evaluate(() => Object.assign(document.querySelector('.grid-wrap'), { scrollTop: 500, scrollLeft: 200 }));
       await p.getByRole('checkbox', { name: /^Show done and closed/ }).click();
       await until('T-109 hidden', async () => !(await taskRowIds(p)).includes('T-109'));
@@ -320,12 +328,33 @@ async function stage(q, button, text) {
   });
 
   await fresh(page);
-  await check('the grid lists T-001, its block T-001-01 under it, then T-002 and T-003', async () => {
-    const ids = await until('four task rows', async () => {
+  await check('the grid lists T-001, T-002 and T-003, the block T-001-01 folded into the line 1 block · 1 in_progress of T-001', async () => {
+    const ids = await until('three task rows', async () => {
       const ids = await taskRowIds(page);
-      return ids.length >= 4 && ids;
+      return ids.length >= 3 && ids;
     });
-    ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003', `rows: ${ids.join(' ')}`);
+    const fold = page.locator('[data-act="blocks"][data-key="T-001"]');
+    ok(ids.join(' ') === 'T-001 T-002 T-003', `rows: ${ids.join(' ')}`);
+    ok((await fold.innerText()).trim() === '1 block · 1 in_progress', `fold: ${await fold.innerText()}`);
+    ok(await fold.getAttribute('aria-expanded') === 'false', 'the fold reads expanded');
+  });
+
+  await check('the fold of T-001 lists T-001-01 under it, and a second click folds it again', async () => {
+    const fold = page.locator('[data-act="blocks"][data-key="T-001"]');
+    await fold.click();
+    await until('T-001-01 under T-001', async () => (await taskRowIds(page)).join(' ') === 'T-001 T-001-01 T-002 T-003');
+    ok(await fold.getAttribute('aria-expanded') === 'true', 'the fold reads folded');
+    await fold.click();
+    await until('T-001-01 folded', async () => (await taskRowIds(page)).join(' ') === 'T-001 T-002 T-003');
+  });
+
+  await check('a task counts its live sessions in one chip with their ids in its title, a gone one left out: T-001 s1 and s6, T-003 s3 without the gone s5', async () => {
+    const chip = async (id) => {
+      const c = page.locator('table tr', { hasText: id }).first().locator('.sessions');
+      return `${(await c.innerText()).trim()}=${await c.getAttribute('title')}`;
+    };
+    const got = [await chip('T-001'), await chip('T-003')];
+    ok(got.join(' | ') === '2=sessions s1, s6 | 1=sessions s3', `chips: ${got.join(' | ')}`);
   });
 
   await check('with every task in one repository the grid offers no Repository', async () => {
@@ -341,11 +370,11 @@ async function stage(q, button, text) {
 
   await check('ticking Show done and closed lists T-004 and T-005 after T-003, unticking hides them again', async () => {
     await page.getByRole('checkbox', { name: /^Show done and closed/ }).check();
-    const ids = await until('six task rows', async () => {
+    const ids = await until('five task rows', async () => {
       const ids = await taskRowIds(page);
-      return ids.length >= 6 && ids;
+      return ids.length >= 5 && ids;
     });
-    ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003 T-004 T-005', `rows: ${ids.join(' ')}`);
+    ok(ids.join(' ') === 'T-001 T-002 T-003 T-004 T-005', `rows: ${ids.join(' ')}`);
     await page.getByRole('checkbox', { name: /^Show done and closed/ }).uncheck();
     await until('T-004 hidden', async () => !(await taskRowIds(page)).includes('T-004'));
   });
@@ -370,7 +399,7 @@ async function stage(q, button, text) {
     await page.getByRole('checkbox', { name: /^Show done and closed/ }).check();
     await until('T-004', async () => (await taskRowIds(page)).join(' ') === 'T-004');
     await fresh(page);
-    await until('four task rows again', async () => (await taskRowIds(page)).length === 4);
+    await until('three task rows again', async () => (await taskRowIds(page)).length === 3);
   });
 
   await check('without a CEO session the New request box names the command that starts one, and its text, priority and Send are disabled', async () => {
@@ -404,8 +433,8 @@ async function stage(q, button, text) {
     ok(text === '1 to answer', `row: ${JSON.stringify(text)}`);
   });
 
-  await check('the current cell of T-002 reads 3 to answer: r1, c1 and k1, the ask of s6 whose own task is T-002', async () => {
-    const cell = page.locator('table tr', { hasText: 'T-002' }).first().locator('[aria-current="step"]');
+  await check('the current phase cell of T-002 reads 3 to answer: r1, c1 and k1, the ask of s6 whose own task is T-002', async () => {
+    const cell = page.locator('table tr', { hasText: 'T-002' }).first().locator('td.cur');
     ok(await cell.getByText('3 to answer', { exact: true }).count(), `cell: ${JSON.stringify(await cell.innerText())}`);
   });
 
@@ -434,8 +463,8 @@ async function stage(q, button, text) {
     ok(chips.join(' | ') === 's4=doctor | s8=init · Step 2 of 4: repos', `chips: ${chips.join(' | ')}`);
   });
 
-  await check('every step header of the grid carries a short title, 8 cut the check of the cut and its wave plan', async () => {
-    const titles = await page.locator('table thead th').evaluateAll((ths) => ths.slice(2).map((th) => `${th.textContent.trim().split(/\s+/)[0]}=${th.title}`));
+  await check('every step of a row carries a short title, 8 cut the check of the cut and its wave plan', async () => {
+    const titles = await page.locator('table tr', { hasText: 'T-002' }).first().locator('[data-step]').evaluateAll((ss) => ss.map((seg) => `${seg.dataset.step}=${seg.title}`));
     const bare = titles.filter((t) => /=$/.test(t));
     ok(titles.length && !bare.length, `without a title: ${bare.join(' ')}`);
     const cut = titles.find((t) => t.startsWith('8='));
@@ -472,9 +501,9 @@ async function stage(q, button, text) {
 
   await check('the rail of T-002 lists the steps of the grid with the grid\'s labels in its order, then the done gate', async () => {
     await fresh(page);
-    const heads = await until('the grid header', async () => {
-      const h = await page.locator('table thead th').allInnerTexts();
-      return h.length > 2 && h.slice(2).map((t) => t.replace(/\s+/g, ' ').trim());
+    const heads = await until('the steps of T-002', async () => {
+      const h = await page.locator('table tr', { hasText: 'T-002' }).first().locator('[data-step]').evaluateAll((ss) => ss.map((seg) => seg.getAttribute('aria-label')));
+      return h.length && h;
     });
     await openTask(page, 'T-002');
     await expand(page);
@@ -541,6 +570,8 @@ async function stage(q, button, text) {
   await check('the held reason gone on the setup notice d1 names no solve command', async () => {
     const seq = answers('s4').find((n) => /^\d+-d1\.txt$/.test(n)).split('-')[0];
     writeAtomic(path.join(UI, 'sessions/s4/relay'), `${seq} gone\n`);
+    // the Send moved the drawer on to the next waiting ask; the sent d1 stays in the setup drawer
+    await page.locator('.strip').click({ position: { x: 20, y: 10 } });
     const text = await until('gone on d1', async () => {
       const t = await card(page, 's4/d1').innerText();
       return /Not delivered: the session has ended\./.test(t) && t;
@@ -662,12 +693,55 @@ async function stage(q, button, text) {
     ok(await details(page).first().evaluate((el) => el.open), 'Task details closed on the refresh');
   });
 
+  await check('each question of r1 is a box of its own, apart from the next one, headed Not answered yet', async () => {
+    await fresh(page);
+    await openTask(page, 'T-002');
+    const got = await card(page, 's2/r1').locator('[data-q]').evaluateAll((qs) => qs.map((q) => {
+      const r = q.getBoundingClientRect();
+      const cs = getComputedStyle(q);
+      return { top: r.top, bottom: r.bottom, border: cs.borderTopWidth, state: q.querySelector('.qstate')?.textContent.trim() };
+    }));
+    ok(got.length === 6, `${got.length} questions`);
+    ok(got.every((q) => q.border !== '0px'), `borders: ${got.map((q) => q.border).join(' ')}`);
+    ok(got.slice(1).every((q, i) => q.top - got[i].bottom >= 8), `gaps: ${got.slice(1).map((q, i) => Math.round(q.top - got[i].bottom)).join(' ')}`);
+    ok(got.every((q) => q.state === 'Not answered yet'), `states: ${got.map((q) => q.state).join(' | ')}`);
+  });
+
+  await check('a question shows Write my answer and More options; More options unfolds Explain more, Compare options, Ask a question and Decide later', async () => {
+    const q2 = question(card(page, 's2/r1'), 'Q2');
+    const names = async () => (await q2.locator('.actions button').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+    ok((await names()).join(' | ') === 'Write my answer | More options', `closed: ${(await names()).join(' | ')}`);
+    await q2.getByRole('button', { name: /more options/i }).click();
+    ok((await names()).join(' | ') === 'Write my answer | Hide options | Explain more | Compare options | Ask a question | Decide later', `open: ${(await names()).join(' | ')}`);
+    await q2.getByRole('button', { name: /hide options/i }).click();
+  });
+
+  await check('the Why of a recommendation sits right under its option: Why A of Q1 of r1 follows option A', async () => {
+    const got = await question(card(page, 's2/r1'), 'Q1').locator('.opts').evaluate((opts) => {
+      const why = opts.querySelector('.why');
+      return why ? `${why.previousElementSibling?.dataset.k}:${why.textContent.trim()}` : 'none';
+    });
+    ok(got === 'A:Why A: one writer.', `why: ${got}`);
+  });
+
+  await check('Accept 5 recommended stages the recommended option of each question that has one, and the header reads 5 of 6 answered', async () => {
+    const c = card(page, 's2/r1');
+    await c.getByRole('button', { name: 'Accept 5 recommended' }).click();
+    const out = (await c.locator('output').first().innerText()).split('\n').map((l) => l.trim()).filter(Boolean);
+    ok(out.join('|') === 'Q1 A|Q2 A|Q3 A|Q5 A|Q6 A', `output: ${out.join('|')}`);
+    ok(/\b5 of 6 answered\b/.test(await c.locator('.ask-h').innerText()), `header: ${await c.locator('.ask-h').innerText()}`);
+    ok(!(await c.getByRole('button', { name: /accept \d+ recommended/i }).count()), 'Accept still offered with every recommendation staged');
+    ok((await question(c, 'Q1').locator('.qstate').innerText()).trim() === 'Answered: A', 'Q1 does not read Answered: A');
+    await page.evaluate(() => sessionStorage.clear());
+  });
+
   const staged = ['Q1 B', 'Q2 more', 'explore Q3', 'Q4 cf-ui-fixture, on port 7171', 'Q5 ? why not both, SQLite and files', 'Q6 defer'];
   await check('the round card shows Will be sent: with one staged item per line, Own answer and Ask a question text with commas', async () => {
     await fresh(page);
     await openTask(page, 'T-002');
     const c = card(page, 's2/r1');
     await question(c, 'Q1').getByRole('button', { name: /^B\b/ }).click();
+    for (const q of ['Q2', 'Q3', 'Q5', 'Q6']) await question(c, q).getByRole('button', { name: /more options/i }).click();
     await question(c, 'Q2').getByRole('button', { name: /explain more/i }).click();
     await question(c, 'Q3').getByRole('button', { name: /compare options/i }).click();
     await stage(question(c, 'Q4'), /write my answer/i, 'cf-ui-fixture, on port 7171');
@@ -688,6 +762,11 @@ async function stage(q, button, text) {
     ok(files.length === 1, `files: ${files.join(' ')}`);
     const text = fs.readFileSync(path.join(UI, 'sessions/s2/answers', files[0]), 'utf8');
     ok(text === staged.join('\n'), `file: ${JSON.stringify(text)}`);
+  });
+
+  await check('after the Send of r1 the drawer moves on to c1, the next waiting ask of T-002, marked current', async () => {
+    await until('c1 current', async () => (await card(page, 's2/c1').getAttribute('aria-current')) === 'true');
+    ok(/T-002/.test(await drawer(page).locator('.drawer-h').innerText()), 'the drawer left T-002');
   });
 
   await check('r1 shows Sent, waiting for the session without a reload once its answer file exists', async () => {
@@ -798,7 +877,7 @@ async function stage(q, button, text) {
   await check('on a narrow screen the grid scrolls sideways in its container and the page does not', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await fresh(page);
-    await until('the grid', async () => (await taskRowIds(page)).length >= 4);
+    await until('the grid', async () => (await taskRowIds(page)).length >= 3);
     const widths = await page.locator('table').first().evaluate((table) => {
       let el = table.parentElement;
       while (el && el !== document.body && !/auto|scroll/.test(getComputedStyle(el).overflowX)) el = el.parentElement;
@@ -895,7 +974,7 @@ async function stage(q, button, text) {
     await page.getByRole('tab', { name: 'Map' }).click();
     await until('No request yet', async () => /No request yet/.test(await page.locator('#app').innerText()));
     await page.getByRole('tab', { name: 'Pipeline' }).click();
-    await until('the grid', async () => (await taskRowIds(page)).length >= 4);
+    await until('the grid', async () => (await taskRowIds(page)).length >= 3);
     ok(!(await page.locator('.error').count()), `error: ${await page.locator('.error').allInnerTexts()}`);
   });
 
@@ -957,15 +1036,15 @@ async function stage(q, button, text) {
   const org = await mocked({ '/api/board': BOARD, '/api/requests': REQUESTS, '/api/requests/R-20260925-1': DETAIL,
     '/api/requests/R-20260924-2': DETAIL2, '/api/org': ORG });
 
-  await check('the grid groups the rows under one header row per request, best priority first, then the rows without a request', async () => {
+  await check('the grid groups the rows under one header row per request, best priority first, then the rows without a request, blocks folded', async () => {
     const seq = await until('the grouped rows', async () => {
       const s = await org.locator('table').first().evaluate((table) => [...table.querySelectorAll('tbody tr')].map((r) => {
         if (r.querySelector('th[scope="rowgroup"]')) return `req:${(r.textContent.match(/R-\d+-\d+/) || ['none'])[0]}`;
         return (r.querySelector('.id') || { textContent: '?' }).textContent.trim();
       }));
-      return s.length >= 9 && s;
+      return s.length >= 8 && s;
     });
-    ok(seq.join(' ') === 'req:R-20260924-2 T-ART-21 req:R-20260925-1 T-ECS-12 T-ECS-12-01 T-BFF-3 T-ECS-14 req:none T-264',
+    ok(seq.join(' ') === 'req:R-20260924-2 T-ART-21 req:R-20260925-1 T-ECS-12 T-BFF-3 T-ECS-14 req:none T-264',
       `rows: ${seq.join(' ')}`);
   });
 
@@ -984,12 +1063,12 @@ async function stage(q, button, text) {
     ok(got.join(' ') === 'T-ART-21:arthurcore:P0 T-ECS-12:ecs:P1 T-BFF-3:bff:P1 T-ECS-14:ecs:P3 T-264:claude-factory:P2', `rows: ${got.join(' ')}`);
   });
 
-  await check('the capacity strip of the Pipeline tab shows sessions and every role as used/cap, a role without a cap as used/-', async () => {
+  await check('the Pipeline tab shows only the sessions of the capacity, the roles being the Org tab\'s', async () => {
     const items = await until('the capacity strip', async () => {
       const t = await org.locator('[data-capacity] [data-role]').allInnerTexts();
       return t.length && t.map((s) => s.replace(/\s+/g, ' ').trim());
     });
-    ok(items.join(', ') === 'sessions 9/10, repo-lead 2/3, implementer 4/4, researcher 1/-', `strip: ${items.join(', ')}`);
+    ok(items.join(', ') === 'sessions 9/10', `strip: ${items.join(', ')}`);
   });
 
   await check('with /api/org missing the capacity strip reads the capacity of /api/setup', async () => {
@@ -1134,6 +1213,39 @@ async function stage(q, button, text) {
     ok((await box.locator('textarea').inputValue()) === '', 'the text stays after the send');
   });
   await intake.close();
+
+  // auto answer runs on the server: last in the run, and switched off again, so it answers no other ask of the fixture
+  const auto = await context.newPage();
+  try {
+    await auto.goto(`${BASE}/#${TOKEN}`);
+    const toggle = auto.getByRole('button', { name: 'Auto answer' });
+    await check('Auto answer in the top bar reads off, and a click turns it on at the server', async () => {
+      await until('the Auto answer switch', () => toggle.isVisible());
+      ok(await toggle.getAttribute('aria-pressed') === 'false', 'Auto answer reads on');
+      await toggle.click();
+      await until('Auto answer on', async () => (await toggle.getAttribute('aria-pressed')) === 'true');
+      ok(fs.existsSync(path.join(UI, 'auto-answer')), 'no auto-answer file in the UI home');
+    });
+
+    await check('with Auto answer on the server answers a new round of s2 with its recommended options, a confirm of s2 not', async () => {
+      writeAtomic(path.join(UI, 'sessions/s2/asks/a9.md'), '---\nask: a9\ntask: T-002\nflow: grill\nstep: fixture\nstatus: open\n---\n\n'
+        + '❓ **Q1** - **Which cache?**: where.\n  **A** none\n  **B** memory\n\n➡️ **B**: fast enough.\n');
+      writeAtomic(path.join(UI, 'sessions/s2/asks/a10.md'), '---\nask: a10\ntask: T-002\nflow: grill\nstep: fixture\nstatus: open\n---\n\n'
+        + '❓ **Q1** - **Go on?**: the next round.\n  **A** yes\n  **B** no\n\n➡️ **A**: ready.\n');
+      const file = await until('the answer of a9', () => answers('s2').find((n) => /^\d+-a9\.txt$/.test(n)));
+      ok(fs.readFileSync(path.join(UI, 'sessions/s2/answers', file), 'utf8') === 'Q1 B', 'a9 not answered Q1 B');
+      await auto.waitForTimeout(2500);
+      ok(!answers('s2').some((n) => /^\d+-a10\.txt$/.test(n)), 'the confirm a10 was answered');
+    });
+
+    await check('a second click turns Auto answer off at the server', async () => {
+      await toggle.click();
+      await until('Auto answer off', async () => (await toggle.getAttribute('aria-pressed')) === 'false');
+      ok(!fs.existsSync(path.join(UI, 'auto-answer')), 'the auto-answer file is still there');
+    });
+  } finally {
+    await auto.close();
+  }
 
   await browser.close();
   process.exit(failed);

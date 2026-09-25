@@ -28,13 +28,38 @@ app.MapGet("/api/requests", (StateReader state) => Results.Ok(state.Requests()))
 app.MapGet("/api/requests/{id}", (string id, StateReader state) => Api.RequestDetail(id, state));
 app.MapGet("/api/org", (StateReader state, UiHome home) => Results.Ok(state.Org(home)));
 app.MapPost("/api/answers/{sid}", (string sid, AnswerRequest req, UiHome home) => Api.PostAnswer(sid, req, home));
+app.MapGet("/api/auto-answer", (UiHome home) => Results.Ok(new AutoAnswerState(home.AutoAnswer())));
+app.MapPost("/api/auto-answer", (AutoAnswerState req, UiHome home) =>
+{
+    home.SetAutoAnswer(req.On);
+    return Results.Ok(new AutoAnswerState(home.AutoAnswer()));
+});
 app.MapGet("/visual", (HttpContext ctx, UiHome home) => Api.Visual(ctx, home));
+// why: auto answer works with no page open, so the server itself answers once a second while it is on
+var autoHome = app.Services.GetRequiredService<UiHome>();
+_ = Task.Run(async () =>
+{
+    while (true)
+    {
+        try
+        {
+            autoHome.AutoAnswerPass();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
+        await Task.Delay(TimeSpan.FromSeconds(1));
+    }
+});
 app.Run();
 
 /// <summary>The page's composed shorthand for one ask, exactly as the relay will type it.</summary>
 public sealed record AnswerRequest(string Ask, string Text);
 
 public sealed record AnswerWritten(string File);
+
+/// <summary>Whether the server answers rounds with their recommended options (<c>/ui/auto-answer</c>).</summary>
+public sealed record AutoAnswerState(bool On);
 
 static class Api
 {
@@ -155,6 +180,7 @@ static class Api
 
 [JsonSerializable(typeof(AnswerRequest))]
 [JsonSerializable(typeof(AnswerWritten))]
+[JsonSerializable(typeof(AutoAnswerState))]
 [JsonSerializable(typeof(List<TaskRow>))]
 [JsonSerializable(typeof(TaskDetail))]
 [JsonSerializable(typeof(SetupInfo))]

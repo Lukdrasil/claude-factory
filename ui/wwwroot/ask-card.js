@@ -69,14 +69,20 @@ export function compose(view, items) {
     .join('\n');
 }
 
-function answerBox(q, staged, actions) {
+/** The answer controls of one question: Write my answer, and the rarer `extra` actions behind More options, which
+ * stay unfolded while one of them is staged or being written. */
+function answerBox(q, staged, extra) {
   const item = staged.items[q];
   const editing = staged.editing[q];
   const action = (act, label) => {
     const on = (item?.kind === act && !item.text) || editing === act;
     return `<button class="btn sm ${on ? 'on' : ''}" data-act="${act}" aria-pressed="${on}">${label}</button>`;
   };
-  let h = `<div class="actions">${actions.map(([act, label]) => action(act, label)).join('')}</div>`;
+  const busy = extra.some(([act]) => item?.kind === act || editing === act);
+  const open = busy || staged.menu?.[q];
+  const menu = extra.length && !busy
+    ? `<button class="btn sm more" data-act="menu" aria-expanded="${Boolean(open)}">${open ? 'Hide options' : 'More options'}</button>` : '';
+  let h = `<div class="actions">${action('own', 'Write my answer')}${menu}${open ? extra.map(([act, label]) => action(act, label)).join('') : ''}</div>`;
   if (editing) {
     h += `<div class="edit"><textarea rows="2" aria-label="${editing === 'own' ? 'Your answer' : 'Your question'} to ${q}">${esc(staged.drafts[q])}</textarea>`
       + '<button class="btn sm" data-act="stage">Add to answer</button></div>';
@@ -85,27 +91,39 @@ function answerBox(q, staged, actions) {
   return h;
 }
 
+/** How far one question is: its staged answer in a few words, or that it has none yet. */
+function qState(q, item) {
+  if (!item) return '<span class="qstate">Not answered yet</span>';
+  return `<span class="qstate on">Answered: ${esc(item.kind === 'pick' ? item.text : SHOWN[item.kind](item.text))}</span>`;
+}
+
+/** One question as a box of its own: its header with how far it is, its text (a long one folded until Show all), the
+ * options with the recommendation's Why right under the recommended one, and its answer controls. */
 function question(q, kind, staged, live) {
   const item = staged.items[q.q];
-  let h = `<section class="q" data-q="${q.q}"><h4><span class="qn">${q.q}</span> ${q.title}</h4>`;
+  const why = q.rec && `${q.recKey ? `Why ${q.recKey}: ${q.rec.replace(/^<strong>[A-Z]<\/strong>:?\s*/, '')}` : q.rec}`;
+  const long = plain(q.html).length > 420;
+  const full = !long || staged.full?.[q.q];
+  let h = `<section class="q" data-q="${q.q}"><h4><span class="qn">${q.q}</span> <span class="qtitle">${q.title}</span>${live ? qState(q, item) : ''}</h4>`;
   if (q.after) h += `<div class="muted">${esc(q.after)}</div>`;
-  h += `<div class="md">${q.html}</div>`;
+  h += `<div class="md${full ? '' : ' clamp'}">${q.html}</div>`;
+  if (long && live) h += `<button class="btn sm link" data-act="full" aria-expanded="${Boolean(full)}">${full ? 'Show less' : 'Show all'}</button>`;
   if (q.options.length) {
     h += `<div class="opts">${q.options.map((o) => {
       const on = item?.kind === 'pick' && item.text === o.key;
-      const name = `${o.key} ${plain(o.html)}${o.key === q.recKey ? ', recommended' : ''}`;
-      return `<button class="opt ${on ? 'on' : ''}" data-act="pick" data-k="${o.key}" aria-label="${esc(name)}" aria-pressed="${on}" ${live ? '' : 'disabled'}>`
-        + `<b>${o.key}</b> ${o.html}${o.key === q.recKey ? ' <span class="chip accent">recommended</span>' : ''}`
-        + `${on ? '<span class="tick" aria-hidden="true">✓</span>' : ''}</button>`;
+      const rec = o.key === q.recKey;
+      const name = `${o.key} ${plain(o.html)}${rec ? ', recommended' : ''}`;
+      return `<button class="opt ${on ? 'on' : ''}${rec ? ' rec' : ''}" data-act="pick" data-k="${o.key}" aria-label="${esc(name)}" aria-pressed="${on}" ${live ? '' : 'disabled'}>`
+        + `<b>${o.key}</b> ${o.html}${rec ? ' <span class="chip accent">recommended</span>' : ''}`
+        + `${on ? '<span class="tick" aria-hidden="true">✓</span>' : ''}</button>${rec && why ? `<p class="rec why">${why}</p>` : ''}`;
     }).join('')}</div>`;
   }
-  if (q.rec) h += `<p class="rec">${q.recKey ? `Why ${q.recKey}: ${q.rec.replace(/^<strong>[A-Z]<\/strong>:?\s*/, '')}` : q.rec}</p>`;
+  if (why && !(q.recKey && q.options.some((o) => o.key === q.recKey))) h += `<p class="rec">${why}</p>`;
   if (live) {
-    const actions = [['more', 'Explain more']];
-    if (kind === 'round' && q.options.length > 1) actions.push(['explore', 'Compare options']);
-    actions.push(['own', 'Write my answer']);
-    if (kind === 'round') actions.push(['discuss', 'Ask a question'], ['defer', 'Decide later']);
-    h += answerBox(q.q, staged, actions);
+    const extra = [['more', 'Explain more']];
+    if (kind === 'round' && q.options.length > 1) extra.push(['explore', 'Compare options']);
+    if (kind === 'round') extra.push(['discuss', 'Ask a question'], ['defer', 'Decide later']);
+    h += answerBox(q.q, staged, extra);
   }
   return `${h}</section>`;
 }
@@ -139,20 +157,25 @@ export function renderAsk(ask, given) {
   el.dataset.ask = `${ask.sid}/${ask.ask}`;
   el.dataset.state = state;
   const held = ask.held && state !== 'gone' && state !== 'answered';
+  const done = view.questions.filter(({ q }) => staged.items[q]).length;
+  const recs = live && view.kind === 'round' ? view.questions.filter((q) => q.recKey && !staged.items[q.q]).length : 0;
   let h = `<header class="ask-h"><b>${esc(ask.step)}</b>${n ? `<span class="muted">${n} question${n > 1 ? 's' : ''}</span>` : ''}`
     + `<span class="chip state ${TONE[state]}">${state === 'gone' ? HELD.gone(ask) : STATES[state]}</span>`
+    + `${live && n > 1 ? `<span class="prog">${done} of ${n} answered</span>` : ''}`
+    + `${recs ? `<button class="btn sm primary accept" data-act="accept">Accept ${recs} recommended</button>` : ''}`
     + '</header>';
   if (held) h += `<p class="note held">${HELD[ask.held]?.(ask) ?? `held: ${esc(ask.held)}`}</p>`;
   if (!ask.pane) h += '<p class="note">This session runs outside herdr, so answer it in its terminal.</p>';
   if (view.preamble) h += `<div class="md">${view.preamble}</div>`;
   h += view.questions.map((q) => question(q, view.kind, staged, live)).join('');
   if (answer) h += `<div class="note" data-sent><b>Sent:</b><ul class="preview">${sent ? preview(view, sent) : `<li><code>${esc(answer)}</code></li>`}</ul></div>`;
-  if (live && view.kind === 'notice') h += `<section class="q" data-q="notice">${answerBox('notice', staged, [['own', 'Write my answer']])}</section>`;
+  if (live && view.kind === 'notice') h += `<section class="q" data-q="notice">${answerBox('notice', staged, [])}</section>`;
   if (live) {
     const text = compose(view, staged.items);
     const answered = view.questions.filter(({ q }) => staged.items[q]).length;
     h += `<footer class="ask-f">${staged.error ? `<span class="bad">${esc(staged.error)}</span>` : ''}`
-      + `<div class="will">${text ? `<b>Will be sent:</b><ul class="preview">${preview(view, staged.items)}</ul>` : ''}`
+      + `<div class="will">${text ? `<b>Will be sent:</b><ul class="preview">${preview(view, staged.items)}</ul>`
+        : view.kind === 'notice' ? '' : `<span class="muted">Answer ${view.questions.map(({ q }) => q).join(', ')} to send${recs ? `, or Accept ${recs} recommended` : ''}.</span>`}`
       + `<output aria-label="Exact text">${esc(text)}</output></div>`
       + `<button class="btn primary${staged.sending ? ' sending' : ''}" data-act="send" ${text && !staged.sending ? '' : 'disabled'}>Send answer${answered > 1 ? 's' : ''}</button></footer>`;
   }

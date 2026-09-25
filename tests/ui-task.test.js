@@ -365,13 +365,9 @@ async function confirmYes(page, name, key) {
     await fresh(page);
     const row = page.locator('table tr', { hasText: 'T-026' }).first();
     await until('the row of T-026', () => row.isVisible());
-    const at = await until('the current cell of T-026', async () => {
-      const i = await row.locator('td').evaluateAll((tds) => tds.findIndex((td) => td.getAttribute('aria-current') === 'step'));
-      return i > 0 && i;
-    });
-    const head = await page.locator('table thead th').nth(at).innerText();
-    ok(/^3\b/.test(head.trim()), `current under the column ${JSON.stringify(head)}`);
-    ok(/\bs26\b/.test(await row.locator('td[aria-current="step"]').innerText()), 'no s26 chip in the current cell');
+    const at = await until('the current step of T-026', () => row.locator('[data-step][aria-current="step"]').getAttribute('data-step').catch(() => ''));
+    ok(at === '3', `current step ${JSON.stringify(at)}`);
+    ok(/\bs26\b/.test(await row.locator('.sessions').getAttribute('title')), 'no s26 in the sessions of the row');
   });
 
   await openTask(page, 'T-026');
@@ -385,13 +381,10 @@ async function confirmYes(page, name, key) {
     await fresh(page);
     const row = page.locator('table tr', { hasText: 'T-028' }).first();
     await until('the row of T-028', () => row.isVisible());
-    const at = await until('the current cell of T-028', async () => {
-      const i = await row.locator('td').evaluateAll((tds) => tds.findIndex((td) => td.getAttribute('aria-current') === 'step'));
-      return i > 0 && i;
-    });
-    const head = (await page.locator('table thead th').nth(at).innerText()).replace(/\s+/g, ' ').trim();
-    ok(head === '3b chart', `current under the column ${JSON.stringify(head)}`);
-    ok(/\bs28\b/.test(await row.locator('td[aria-current="step"]').innerText()), 'no s28 chip in the current cell');
+    const seg = row.locator('[data-step][aria-current="step"]');
+    const at = await until('the current step of T-028', () => seg.getAttribute('aria-label').catch(() => ''));
+    ok(at === '3b chart', `current step ${JSON.stringify(at)}`);
+    ok(/\bs28\b/.test(await row.locator('.sessions').getAttribute('title')), 'no s28 in the sessions of the row');
   });
 
   await openTask(page, 'T-028');
@@ -469,6 +462,7 @@ async function confirmYes(page, name, key) {
   });
 
   await check('Explain more on Q2 of r1 is aria-pressed once staged and keeps the focus', async () => {
+    await card('s29/r1').locator('[data-q="Q2"] [data-act="menu"]').click();
     const more = card('s29/r1').locator('[data-q="Q2"] [data-act="more"]');
     ok(await more.getAttribute('aria-pressed') === 'false', `before: ${await more.getAttribute('aria-pressed')}`);
     await more.click();

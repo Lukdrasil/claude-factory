@@ -84,13 +84,13 @@ async function real(context) {
   const p = await context.newPage();
   await p.goto(`${BASE}/#${TOKEN}`);
 
-  await check('real: the grid holds the tasks of R-20260925-1 under its header row, T-ECS-1 and its blocks before T-CF-1', async () => {
+  await check('real: the grid holds the tasks of R-20260925-1 under its header row, T-ECS-1 with its blocks folded before T-CF-1', async () => {
     const seq = await until('the rows', async () => {
       const s = await p.locator('table').first().evaluate((table) => [...table.querySelectorAll('tbody tr')].map((r) => (r.querySelector('th[scope="rowgroup"]')
         ? `req:${(r.textContent.match(/R-\d+-\d+/) || ['none'])[0]}` : (r.querySelector('.id') || { textContent: '?' }).textContent.trim())));
-      return s.length >= 5 && s;
+      return s.length >= 3 && s;
     });
-    ok(seq.join(' ') === 'req:R-20260925-1 T-ECS-1 T-ECS-1-01 T-ECS-1-02 T-CF-1', `rows: ${seq.join(' ')}`);
+    ok(seq.join(' ') === 'req:R-20260925-1 T-ECS-1 T-CF-1', `rows: ${seq.join(' ')}`);
     const head = await p.locator('th[scope="rowgroup"]').first().innerText();
     ok(head.includes('P1') && /grilling/.test(head) && head.includes('Invoices reach the ledger every night.'), `header: ${head}`);
   });
@@ -106,6 +106,7 @@ async function real(context) {
 
   await check('real: the capacity strip counts the leases capacity.sh took, the uncapped architecture-auditor as 1/-', async () => {
     const want = 'sessions 1/10, repo-lead 1/3, scout 1/8, implementer 1/4, architecture-auditor 1/-';
+    await tab(p, 'Org');
     let got = '';
     await until('the capacity strip', async () => (got = await capacity(p)) === want).catch(() => {});
     ok(got === want, `strip: ${got}`);

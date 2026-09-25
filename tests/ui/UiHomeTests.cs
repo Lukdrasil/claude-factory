@@ -28,6 +28,81 @@ public sealed class UiHomeTests : IDisposable
         Assert.Equal("start the daily pass for global", File.ReadAllText(Path.Combine(dir, "answers", "5-msg.txt")));
     }
 
+    const string Round = "❓ **Q1** - **Which store?**: where the rows live.\n  **A** SQLite\n  **B** Postgres\n\n➡️ **B**: one server.\n\n---\n\n"
+        + "❓ **Q2** - **Which port?**: the port.\n  **A** 7171\n  **B** a random one\n\n➡️ **A**: one URL.\n";
+
+    string Ask(string sid, string ask, string flow, string body, string pane = "w1:p2")
+    {
+        var dir = Path.Combine(_ui, "sessions", sid);
+        Directory.CreateDirectory(Path.Combine(dir, "asks"));
+        File.WriteAllText(Path.Combine(dir, "session.md"), $"---\nsid: {sid}\npane: {pane}\nflow: {flow}\ntask: T-001\nstep: x\n---\n");
+        File.WriteAllText(Path.Combine(dir, "asks", ask + ".md"), $"---\nask: {ask}\ntask: T-001\nflow: {flow}\nstep: x\nstatus: open\n---\n\n{body}");
+        return dir;
+    }
+
+    string[] Answers(string sid) => Directory.Exists(Path.Combine(_ui, "sessions", sid, "answers"))
+        ? Directory.EnumerateFiles(Path.Combine(_ui, "sessions", sid, "answers")).Select(Path.GetFileName).Order().ToArray()!
+        : [];
+
+    [Fact]
+    public void Auto_answer_is_off_until_switched_on_and_writes_nothing_while_off()
+    {
+        Ask("s1", "r1", "grill", Round);
+        var home = new UiHome(_ui);
+
+        Assert.False(home.AutoAnswer());
+        Assert.Empty(home.AutoAnswerPass());
+        Assert.Empty(Answers("s1"));
+        home.SetAutoAnswer(true);
+        Assert.True(home.AutoAnswer());
+        home.SetAutoAnswer(false);
+        Assert.False(home.AutoAnswer());
+    }
+
+    [Fact]
+    public void Auto_answer_sends_the_recommended_option_of_every_question_of_an_open_round_once()
+    {
+        var dir = Ask("s1", "r1", "grill", Round);
+        var home = new UiHome(_ui);
+        home.SetAutoAnswer(true);
+
+        Assert.Equal(["s1/r1"], home.AutoAnswerPass());
+        Assert.Equal("Q1 B\nQ2 A", File.ReadAllText(Path.Combine(dir, "answers", "1-r1.txt")));
+        Assert.Empty(home.AutoAnswerPass());
+        Assert.Equal(["1-r1.txt"], Answers("s1"));
+    }
+
+    [Theory]
+    [InlineData("grill", "❓ **Q1** - **Approve T-001?**: the cut is checked.\n  **A** yes\n  **B** no\n\n➡️ **A**: it passed.\n", "a confirm")]
+    [InlineData("doctor", "# Doctor\n\nDocker is running.\n", "a notice")]
+    [InlineData("grill", "❓ **Q1** - **Which store?**: where.\n  **A** SQLite\n  **B** Postgres\n\n➡️ **B**: one server.\n\n---\n\n❓ **Q2** - **Which name?**: one per machine.\n\n➡️ claude-factory-ui.\n", "a question without a recommended option")]
+    [InlineData("approve", Round, "the approve flow")]
+    [InlineData("done", Round, "the done flow")]
+    [InlineData("add-repo", Round, "the add-repo flow")]
+    public void Auto_answer_leaves_to_the_human(string flow, string body, string what)
+    {
+        Ask("s1", "r1", flow, body);
+        var home = new UiHome(_ui);
+        home.SetAutoAnswer(true);
+
+        Assert.True(home.AutoAnswerPass().Count == 0, what);
+        Assert.Empty(Answers("s1"));
+    }
+
+    [Fact]
+    public void Auto_answer_leaves_a_session_outside_herdr_and_one_whose_agent_is_gone()
+    {
+        Ask("s1", "r1", "grill", Round, pane: "");
+        var gone = Ask("s2", "r2", "grill", Round);
+        File.WriteAllText(Path.Combine(gone, "agent"), "gone\n");
+        var home = new UiHome(_ui);
+        home.SetAutoAnswer(true);
+
+        Assert.Empty(home.AutoAnswerPass());
+        Assert.Empty(Answers("s1"));
+        Assert.Empty(Answers("s2"));
+    }
+
     [Fact]
     public void A_free_message_to_an_unknown_session_is_unknown()
     {

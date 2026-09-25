@@ -13,7 +13,7 @@ const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
   tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, stale: false,
-  busy: new Map(),
+  busy: new Map(), auto: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -87,16 +87,17 @@ async function soft(path) {
 
 async function load() {
   const id = S.drawer;
-  const [board, sessions, setup, org, requests, detail] = await Promise.all([
+  const [board, sessions, setup, org, requests, detail, auto] = await Promise.all([
     ...['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())),
     soft('/api/org'),
     soft('/api/requests'),
     loadDetail(id).then((d) => d && JSON.stringify(d)),
+    soft('/api/auto-answer'),
   ]);
   const list = [JSON.parse(requests)].flat().filter(Boolean);
   const rid = (S.tab === 'Map' || S.tab === 'Plan') && pickRequest(list, S.request);
   const map = rid ? await soft(`/api/requests/${encodeURIComponent(rid)}`) : 'null';
-  const raw = [board, sessions, setup, org, requests, detail, map].join('\n');
+  const raw = [board, sessions, setup, org, requests, detail, map, auto].join('\n');
   if (raw === S.raw) return;
   S.raw = raw;
   S.board = JSON.parse(board);
@@ -106,6 +107,7 @@ async function load() {
   S.requests = list;
   S.map = JSON.parse(map);
   S.detail = detail && JSON.parse(detail);
+  S.auto = JSON.parse(auto)?.on ?? null;
   render();
   const a = linked && allAsks().find((w) => keyOf(w) === linked);
   linked = null;
@@ -193,7 +195,7 @@ function render() {
   const down = app.querySelector('.grid-wrap')?.scrollTop ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
-  const page = renderTop(S.sessions, S.tab);
+  const page = renderTop(S.sessions, S.tab, S.auto);
   page.querySelector('.strip').append(renderSetupStrip(S.setup));
   page.append(renderTab());
   app.replaceChildren(page);
@@ -264,8 +266,13 @@ async function send(key, staged) {
   } catch (err) {
     staged.error = `Couldn't send: ${err.message}. Your answer is kept, try Send again.`;
     staged.sending = false;
+    return render();
   }
   render();
+  // the next waiting ask opens by itself: one of this drawer first, so the context stays, else the oldest elsewhere
+  const rest = waiting(S.sessions).filter((w) => keyOf(w) !== key);
+  const next = rest.find((w) => groupOf(w.task) === S.drawer) || rest[0];
+  if (next) show(next);
 }
 
 async function redraw(visual) {
@@ -387,7 +394,26 @@ app.addEventListener('click', (e) => {
   }
   if (b.dataset.drawer) return open(b.dataset.drawer);
   const act = b.dataset.act;
+  if (act === 'blocks') {
+    if (!view.open.delete(b.dataset.key)) view.open.add(b.dataset.key);
+    return render();
+  }
   if (act === 'next') return next();
+  if (act === 'auto') {
+    return track(b, async () => {
+      try {
+        S.auto = (await (await api('/api/auto-answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: !S.auto }),
+        })).json()).on;
+        return true;
+      } catch (err) {
+        showError(err);
+        return false;
+      }
+    }, false);
+  }
   if (act === 'pass') return track(b, () => startPass(b));
   if (act === 'intake') return track(b, sendRequest, false);
   if (act === 'add-repo-form') {
@@ -406,6 +432,14 @@ app.addEventListener('click', (e) => {
   if (act === 'send') return send(key, staged);
   if (act === 'own' || act === 'discuss') {
     staged.editing[q] = staged.editing[q] === act ? undefined : act;
+  } else if (act === 'menu' || act === 'full') {
+    const k = act === 'menu' ? 'menu' : 'full';
+    staged[k] = { ...staged[k], [q]: !staged[k]?.[q] };
+  } else if (act === 'accept') {
+    // why: only a question with nothing staged takes its recommendation, so Accept never overwrites a pick
+    for (const x of allAsks().find((a) => keyOf(a) === key).view.questions) {
+      if (x.recKey && !staged.items[x.q]) staged.items[x.q] = { kind: 'pick', text: x.recKey };
+    }
   } else if (act === 'stage') {
     const text = b.closest('[data-q]').querySelector('textarea').value.trim();
     if (text) staged.items[q] = { kind: staged.editing[q], text };

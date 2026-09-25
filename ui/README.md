@@ -28,6 +28,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | `GET /api/requests/{id}` | one map: its destination, notes, terms, decisions, out of scope, fog, tickets and frontier, its parents with their blocks, status and acceptance, and `html`: the destination, notes, terms and fog rendered, and the `title` and `gist` of every line of decisions and out of scope rendered inline |
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
+| `GET /api/auto-answer`, `POST /api/auto-answer` | `{"on": <bool>}`: whether auto answer is on, the file `/ui/auto-answer`; the POST sets it and answers the new state |
 
 `POST /api/answers/{sid}` answers 201 when written, 400 for a `sid` or `ask` outside `[A-Za-z0-9-]+`, 404 for
 an unknown session or ask, and 409 for an ask whose status is not `open`. The seq runs per session, and the
@@ -73,7 +74,7 @@ date; it clears once the stream is back.
 
 | module | what |
 |---|---|
-| `pipeline.js` | `renderTop(sessions, tab)`: the tabs, the to-answer counter and the setup strip; `renderPipeline(board, sessions, requests, capacity)`: the capacity strip and the grid of tasks across the solve steps, grouped by request, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"` |
+| `pipeline.js` | `renderTop(sessions, tab)`: the tabs, the to-answer counter and the setup strip; `renderPipeline(board, sessions, requests, capacity)`: the filter bar and the grid of tasks across the five phases of the solve steps, grouped by request, blocks folded under their parent, the step a session reports marked `aria-current="step"` |
 | `requests.js` | `renderMap(list, id, detail)` and `renderPlan(list, id, detail)`: the request list and the map, or the final plan with its read-only checklist, of the request shown |
 | `org.js` | `renderOrg(org)`: the CEO, capacity, leads and leases of `/api/org`; `capacityStrip(capacity)`, `prio(p)` and `when(stamp)` |
 | `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope, the pass it is due for and their start buttons |
@@ -103,6 +104,21 @@ Send posts the staged items one answer per line in question order, since free te
 sent: the staged items read in words, the picked option with its label, and the `<output>` below them holds them
 exactly as the answer file will. Staged answers and drafts stay in the tab's `sessionStorage` across a reload.
 
+Each question of an open card is a box of its own, its header reading Not answered yet or `Answered: <item>`. The
+recommendation's `Why <key>: ...` sits right under the recommended option, which is outlined dashed. A question
+shows Write my answer and More options, which unfolds Explain more, Compare options, Ask a question and Decide later
+(Explain more alone on a confirm) and stays unfolded while one of them is staged. A question body of more than 420
+characters is folded until Show all. The header of an open round with more than one question reads `<k> of <n>
+answered`, and Accept `<n>` recommended stages the recommended option of every question that has one and nothing
+staged yet. With nothing staged the footer names the questions still to answer. After a Send the next waiting ask
+opens by itself: the next one of the same drawer, else the oldest one elsewhere.
+
+Auto answer, the switch in the top bar (hidden when the server has no `/api/auto-answer`), is one global setting
+kept in `/ui/auto-answer`. While it is on the server itself, once a second and with no page open, answers every open,
+unsent round of a session in herdr whose agent is not gone and whose every question has a recommended option, one
+`Q<n> <key>` per line through the same answer files. A confirm, a notice, an ask of the `approve`, `done` or
+`add-repo` flow, and a round with any question lacking a recommended option are always left to the human.
+
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
 the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is
@@ -122,20 +138,26 @@ shows all of it in one column. The panels render the task's markdown from its `h
 The header holds six tabs, and every tab keeps the counter, the setup strip and the drawer:
 - Pipeline: the New request box (a text, a priority P0 to P3, P2 by default), which posts `request: <text>,
   priority <P>` as a free message to the CEO's session and is disabled with the command that starts the CEO when
-  there is none; the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid, with Search
-  tasks, Repository and Show done and closed in its Task header. The grid hides the tasks at `done` or `closed`
-  until that box is ticked, Search tasks keeps the tasks whose id, goal, repo or request, or a block's id or goal,
-  holds the text, any case, and Repository, shown once the board holds more than one repository, keeps the tasks of
-  the one picked; with nothing left the grid reads No task matches. The filters last until a reload. The grid scrolls
-  inside its own box, one viewport high at most, with its header row and Task column in view, its 14 step columns
-  equally wide; a render keeps it scrolled where it was. A status chip reads its meaning: `failed` and `blocked` bad,
-  `triaged` and `review` warn, `ready` to `tests_ready` accent, `done` ok. A task's goal shows two lines, a block's
-  one, each whole in its title. A step is
-  ticked from the `steps` the state records, the step a session reports is only marked current. The tasks of one
-  request sit under its header row (id, priority, status, destination), the request with the best priority first,
-  then the newest, the tasks without a request last; without any request there is no header row. Each task shows
-  its repo as a chip next to its id and its priority in the Prio column. Step `3b`, the chart of the request map,
-  has a column of its own, and a step with a letter the grid has no column for sits under its number.
+  there is none; the filter bar, Search tasks, Repository, Show done and closed and the sessions in use
+  (`used/cap`, the roles being the Org tab's), then the grid. The grid hides the tasks at `done` or `closed` until
+  that box is ticked, Search tasks keeps the tasks whose id, goal, repo or request, or a block's id or goal, holds
+  the text, any case, and Repository, shown once the board holds more than one repository, keeps the tasks of the
+  one picked; with nothing left the grid reads No task matches. The filters last until a reload. The grid scrolls
+  inside its own box, one viewport high at most, with its header row and Task column in view; a render keeps it
+  scrolled where it was. It has five phase columns, equally wide, each titled with its steps: Plan (3, 3b, 4, 5, 6,
+  8), Approve (9), Build (10, 11), Verify (12, 13) and Ship (14, 15, 16). A phase cell holds one segment per step,
+  `data-step` with its label and title, done when the state records it in `steps`; the step a session reports is
+  marked current apart from that (`aria-current="step"`, the cell `.cur`), a step with a letter the grid has no
+  segment for under its number. Under the segments the cell reads the current step with its count done, the count
+  alone, `done`, or `MR waits for you` under Ship for a task in review, and the task's open asks sit in the cell of
+  its current step. A status chip reads its meaning: `failed` and `blocked` bad, `triaged` and `review` warn,
+  `ready` to `tests_ready` accent, `done` ok. A task shows its repo as a chip next to its id, its priority in the
+  Prio column, its live sessions as one count whose title names them (a session whose agent is `gone` is not
+  drawn), and its goal on two lines, whole in its title. Its blocks fold into one line, `<n> blocks · <n> <status>`
+  per status, which unfolds them in sub-rows on click and while Search tasks holds text; a block's goal is one
+  line. The tasks of one request sit under its header row (id, priority, status, destination on one line), the
+  request with the best priority first, then the newest, the tasks without a request last; without any request
+  there is no header row.
 - Map: the request list and the wayfinder map of the request picked (by default the newest live one): the
   destination, the open and claimed tickets with the frontier marked, the decisions so far, the fog and out of scope.
 - Plan: the final plan of the same request, its destination, decisions and out of scope, and the checklist of its

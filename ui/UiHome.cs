@@ -100,6 +100,55 @@ public sealed partial class UiHome(string root)
         }
     }
 
+    /// <summary>Whether auto answer is on: the file <c>auto-answer</c> in the UI home.</summary>
+    public bool AutoAnswer() => File.Exists(Path.Combine(root, "auto-answer"));
+
+    public void SetAutoAnswer(bool on)
+    {
+        var file = Path.Combine(root, "auto-answer");
+        if (on)
+        {
+            File.WriteAllText(file, "on\n");
+        }
+        else
+        {
+            File.Delete(file);
+        }
+    }
+
+    // why: these flows are the human's gates, whatever shape their ask takes
+    static readonly HashSet<string> Gates = ["approve", "done", "add-repo"];
+
+    /// <summary>
+    /// One pass of auto answer while it is on: every open, unsent and unheld round of a session in herdr whose agent is
+    /// not gone, outside the gate flows, whose every question has a recommended option, is answered with those options,
+    /// one <c>Q&lt;n&gt; &lt;key&gt;</c> per line, through <see cref="WriteAnswer"/>. A confirm, a notice and a round with
+    /// any question lacking a recommended option are left to the human. Returns <c>&lt;sid&gt;/&lt;ask&gt;</c> of each
+    /// ask it answered.
+    /// </summary>
+    public List<string> AutoAnswerPass()
+    {
+        var done = new List<string>();
+        if (!AutoAnswer())
+        {
+            return done;
+        }
+        foreach (var s in Sessions().Where(s => s.Pane != "" && s.Agent != "gone"))
+        {
+            foreach (var a in s.Asks.Where(a => a.Status == "open" && !a.Sent && a.Held is null && !Gates.Contains(a.Flow)
+                && a.View.Kind == "round" && a.View.Questions.Count > 0
+                && a.View.Questions.All(q => q.RecKey is { } k && q.Options.Any(o => o.Key == k))))
+            {
+                var text = string.Join('\n', a.View.Questions.Select(q => $"{q.Q} {q.RecKey}"));
+                if (WriteAnswer(s.Sid, a.Ask, text).Status == AnswerStatus.Written)
+                {
+                    done.Add($"{s.Sid}/{a.Ask}");
+                }
+            }
+        }
+        return done;
+    }
+
     /// <summary>
     /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file newer than the ask names it and is not a <c>Q&lt;n&gt; redraw</c> or <c>Q&lt;n&gt; more</c>, and held with the
     /// reason of <c>relay</c> while the relay holds any of its answers newer than the ask, a kept-open one included. An unreadable session is skipped.
