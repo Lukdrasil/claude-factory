@@ -185,8 +185,25 @@ async function stage(q, button, text) {
       const t = (await p.locator('table tbody').first().innerText()).replace(/\s+/g, ' ').trim();
       return t && t;
     });
+    const above = await p.evaluate(() => document.querySelector('[data-intake]').getBoundingClientRect().bottom
+      <= document.querySelector('.grid-wrap').getBoundingClientRect().top);
     await p.close();
     ok(text === 'No tasks yet. Start one with New request above.', `grid: ${JSON.stringify(text)}`);
+    ok(above, 'the New request box is not above the empty grid');
+  });
+
+  await check('at 400x844 with tasks the grid starts within 180 px and the New request box sits below it', async () => {
+    const p = await context.newPage();
+    await p.setViewportSize({ width: 400, height: 844 });
+    await p.goto(`${BASE}/#${TOKEN}`);
+    await until('the rows', async () => (await taskRowIds(p)).length >= 4);
+    const got = await p.evaluate(() => ({
+      grid: Math.round(document.querySelector('.grid-wrap').getBoundingClientRect().top),
+      below: document.querySelector('[data-intake]').getBoundingClientRect().top >= document.querySelector('.grid-wrap').getBoundingClientRect().bottom,
+    }));
+    await p.close();
+    console.log(`NOTE at 400x844 the grid starts at ${got.grid} px`);
+    ok(got.grid <= 180 && got.below, `positions: ${JSON.stringify(got)}`);
   });
 
   await check('with no state repo the setup chip reads No state repo: run factory init', async () => {
