@@ -98,6 +98,8 @@ on_exit() { # <exit status>
     *) status failed "${why:-exit $1}" ;;
   esac
 }
+# a URL as compared: no userinfo, no trailing / and no .git
+norm_url() { redact_urls "$1" | sed 's:/*$::; s:\.git$::'; }
 git_net() { GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" git "$@"; }
 # why: the cause is in the lines up to git's fatal: (ssh: connect to host ..., remote: Access denied); the lines
 # after it are advice, so a last line would read "and the repository exists."
@@ -127,12 +129,20 @@ if [ -n "$clone" ]; then
   esac
   top="$clones/$key"
   jpath=$top
+  if [ -e "$top" ] || [ -L "$top" ]; then
+    o=$(git -C "$top" remote get-url origin 2>/dev/null || :)
+    { [ -e "$top/.git" ] && [ -n "$o" ] && [ "$(norm_url "$o")" = "$(norm_url "$url")" ]; } \
+      || die "$top exists and is not a clone of $url: move it away"
+    echo "note: $top is already a clone of $url, reused"
+  fi
   # proves reachability and auth, and names the default branch; no password prompt that would hang the caller
   lr=$(git_net ls-remote --symref -- "$clone" HEAD 2>&1) || unreachable "$lr"
   branch=$(printf '%s\n' "$lr" | sed -n 's#^ref: refs/heads/\(.*\)	HEAD$#\1#p' | head -n1)
   [ -n "$branch" ] || branch=main
-  fresh=1
-  echo "+ git clone $url $top   (default branch $branch)"
+  if [ ! -e "$top" ]; then
+    fresh=1
+    echo "+ git clone $url $top   (default branch $branch)"
+  fi
 fi
 
 if [ -z "$branch" ]; then
@@ -209,6 +219,15 @@ if [ "$fresh" = 1 ] && [ "$yes" = 0 ]; then
   echo "pending - rerun with --yes to apply"
   refresh_doctor
   exit 3
+fi
+if [ "$fresh" = 1 ]; then
+  status cloning "$top"
+  # why: a clone is renamed into place only once complete; the temp directory a killed apply left is no clone
+  tmpd="$clones/.$key.cf-clone"
+  rm -rf "$tmpd"
+  gc=$(git_net clone -q -- "$clone" "$tmpd" 2>&1) || { rm -rf "$tmpd"; unreachable "$gc"; }
+  mv "$tmpd" "$top"
+  echo "cloned $url into $top"
 fi
 
 files=$(git -C "$top" ls-files)
