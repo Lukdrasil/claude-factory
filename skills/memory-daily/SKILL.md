@@ -51,19 +51,22 @@ A lesson is kept only when all three hold; name the one that fails when it does 
      otherwise a new `drafts/<slug>.md` in the format below. Remove the proposal and commit both in one:
      `state-commit.sh -m "chore(memory): draft <slug> from <proposal>" -- <draft> <proposal>` (a proposal
      that was never committed is removed and left out of the paths).
-   - keep: `curate-apply.sh approve <proposal> --reason "<why it stays in this tier>"`, only for a proposal
-     with no `Replaces:` line. Approve deletes every file `Replaces:` names, which is the human's call: such a
-     proposal stays in the queue for the weekly pass, named in the report as `waits, Replaces: <paths>`.
+   - keep: never approved here. Approve deletes every file a `Replaces:` line names, and policy-guard allows
+     `curate-apply.sh approve` to the `ceo` role only: the proposal stays in the queue for the weekly round,
+     where the CEO approves it after the human's yes (`pass-stamp.sh --due weekly` lists the scope), and the
+     report names it `keep, <why it stays in this tier>`.
+   - a proposal with a `Replaces:` line, in any scope: no verdict applied, it stays in the queue for the
+     weekly round, where the human decides it; the report names it `waits, Replaces: <paths>`.
    - a filed lesson is never deleted here: a draft verdict adds its line with `Source: <path>`, and the weekly
      pass deletes the source once the human promotes that draft; every other verdict goes into the report
      only (retiring filed lessons is `factory consolidate`'s).
-   Completion: the queue holds only the `Replaces:` proposals of a keep verdict.
+   Completion: the queue holds only the proposals of a keep verdict and those with a `Replaces:` line.
 4. **Age the drafts** of the scope's own `drafts/`: a draft with one lesson line dated more than 7 days ago is
    deleted (Q6), `state-commit.sh -m "chore(memory): drop draft <slug>, one lesson for 7 days" -- <draft>`.
    Completion: no such draft is left.
 5. **Stamp**: `pass-stamp.sh daily <scope>`. Completion: exit 0 and its line printed.
-6. **Report**: the counts (read, one-off, drafted as new, drafted into an existing draft, kept, drafts
-   deleted, left for the weekly pass), then one line per file, `<path> -> <verdict>, <reason or draft>`.
+6. **Report**: the counts (read, one-off, drafted as new, drafted into an existing draft, kept for the weekly
+   round, drafts deleted), then one line per file, `<path> -> <verdict>, <reason or draft>`.
 
 ## Draft format
 

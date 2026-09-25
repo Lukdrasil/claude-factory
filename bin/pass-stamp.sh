@@ -9,7 +9,9 @@
 #   repo-agent:<key>/<agent>  repos/<key>/agents/<agent>/passes.yml
 # --due prints one `<scope> <daily|weekly> <last stamp|never>` line per scope whose pass is due, sorted bytewise:
 # daily when never stamped or stamped 24 h ago or more and the scope holds a proposal (memory/proposals/*.md) or a
-# draft (drafts/*.md beside passes.yml), weekly when never stamped or stamped 7 d ago or more and it holds a draft.
+# draft (drafts/*.md beside passes.yml), weekly when never stamped or stamped 7 d ago or more and it holds a
+# draft, a proposal with a `Replaces:` line, or, in a legacy tier (global, repo:, agent:), any proposal: the daily
+# pass approves nothing and leaves those for the human's weekly round.
 # A scope with nothing to judge is never due: a pass is an interactive session and costs one. PASS_STAMP_NOW
 # (epoch seconds) stands in for the clock of --due.
 #
@@ -67,6 +69,11 @@ any_md() { # <dir> → 0 when it holds a top-level *.md
   return 1
 }
 
+any_replaces() { # <dir> → 0 when a top-level *.md in it has a `Replaces:` line
+  for ar_f in "$1"/*.md; do [ -f "$ar_f" ] && grep -q '^Replaces:' "$ar_f" && return 0; done
+  return 1
+}
+
 if [ "$due" = 1 ]; then
   now=${PASS_STAMP_NOW:-$(date +%s)}
   case "$kind" in daily) max=86400 ;; weekly) max=604800 ;; esac
@@ -84,7 +91,13 @@ if [ "$due" = 1 ]; then
     [ -n "$dir" ] || continue
     work=0
     any_md "$state/$dir/drafts" && work=1
-    if [ "$work" = 0 ] && [ "$kind" = daily ]; then any_md "$state/$(memory_dir "$s" "$dir")/proposals" && work=1; fi
+    if [ "$work" = 0 ]; then
+      q=$state/$(memory_dir "$s" "$dir")/proposals
+      case "$kind:$s" in
+        daily:*|weekly:global|weekly:repo:*|weekly:agent:*) any_md "$q" && work=1 ;;
+        weekly:*) any_replaces "$q" && work=1 ;;
+      esac
+    fi
     [ "$work" = 1 ] || continue
     at=$(last "$state/$dir/passes.yml" "$kind")
     # a stamp is UTC; days from the civil date, so no date(1) dialect is needed to read one back
