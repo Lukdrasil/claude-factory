@@ -17,6 +17,7 @@ projects=$(printf '%s' "$auth" | sed -n 's/.*"projectsDirectory": *"\([^"]*\)".*
 projects=${projects:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}
 
 tmp=$(mktemp -d)
+XDG_CONFIG_HOME="$tmp/xdg"; export XDG_CONFIG_HOME
 home="$tmp/ui" tab='' relay=''
 cleanup() {
   [ -z "$relay" ] || kill "$relay" 2>/dev/null

@@ -3,8 +3,9 @@
 # pane of that session.md, in seq order, once the pane has held idle or done for the settle time and still reports
 # the session id, then records the seq in delivered. A held answer stays queued and sessions/<sid>/relay says why:
 # `<seq> blocked|gone|prompt-failed`. Every pass writes sessions/<sid>/agent for every session, its only writer: the
-# pane's agent_status, or `gone` when herdr does not know the pane or it reports another session id. --once makes
-# one pass over every session and exits.
+# pane's agent_status, or `gone` when herdr does not know the pane or it reports another session id. Every pass also
+# turns herdr's own agent sounds off while <UI home>/mute-sound, the Mute sound switch, exists and on again once it
+# is gone, through herdr-sound.sh. --once makes one pass over every session and exits.
 #
 #   ui-relay.sh [--home <dir>] [--settle <s>] [--once]
 set -eu
@@ -98,9 +99,11 @@ step() { # <session dir>: types at most one answer; 0 while the queue may still 
   return 1
 }
 
-done_here=' '
+done_here=' ' sound=''
 while :; do
   busy=0 moved=0
+  want=on; [ ! -f "$home/mute-sound" ] || want=off
+  [ "$want" = "$sound" ] || { sh "$(dirname -- "$0")/herdr-sound.sh" "$want" || :; sound=$want; }
   for dir in "$home"/sessions/*/; do
     dir=${dir%/}
     case "$done_here" in *" ${dir##*/} "*) continue ;; esac

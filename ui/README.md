@@ -121,8 +121,9 @@ unsent round of a session in herdr whose agent is not gone and whose every quest
 `add-repo` flow, and a round with any question lacking a recommended option are always left to the human.
 
 Mute sound, the switch next to it (hidden when the server has no `/api/mute-sound`), is kept in `/ui/mute-sound`.
-While it is on and the UI container runs, `bin/notify.sh` shows a waiting ask with `--sound none`. herdr's own
-sounds on an agent's state change are herdr's `[ui.sound]` setting and stay as they are.
+While it is on and the UI container runs, `bin/notify.sh` shows a waiting ask with `--sound none`, and the relay
+turns herdr's own sounds on an agent's state change off through `bin/herdr-sound.sh`, which sets `[ui.sound]
+enabled` in herdr's `config.toml` and reloads it. Switched off again, or with `ui-down.sh`, they are on again.
 
 The settings the state repo holds are changed through the CEO, since `/state` is read only here: a cap's Set on the
 Org tab sends `set capacity <name> <N>`, a repository's default branch Set on the Setup tab `set default branch <key>

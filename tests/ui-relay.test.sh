@@ -6,6 +6,7 @@ set -u
 unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
+XDG_CONFIG_HOME="$tmp/xdg"; export XDG_CONFIG_HOME
 trap 'rm -rf "$tmp"' EXIT
 
 . "$(dirname -- "$0")/ui-relay-stub.sh"
@@ -202,5 +203,17 @@ session s1 w1:p1
 answer s1 1 q1 'Q1 A'
 FACTORY_UI_HOME="$home" timeout 60 sh "$bin/ui-relay.sh" --settle 0 --once >/dev/null 2>&1
 is 'without --home the relay reads FACTORY_UI_HOME'      "$(delivered s1)" 1
+
+# --- the Mute sound switch turns herdr's own agent sounds off, and on again once it is off ------------------------
+fresh 11
+sound() { awk '/^\[ui.sound\]/ { s = 1; next } /^\[/ { s = 0 } s && /^enabled/ { print $3 }' "$XDG_CONFIG_HOME/herdr/config.toml" 2>/dev/null; }
+relay 0 --once
+is 'with no mute-sound the herdr config is left alone'  "$(sound)" ''
+echo on > "$home/mute-sound"
+relay 0 --once
+is 'with mute-sound herdr sounds are off'                "$(sound)" false
+rm "$home/mute-sound"
+relay 0 --once
+is 'without mute-sound herdr sounds are on again'        "$(sound)" true
 
 exit $fail

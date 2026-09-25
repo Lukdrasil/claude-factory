@@ -8,6 +8,7 @@
 # the request, org and setup routes.
 
 unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
+XDG_CONFIG_HOME="$tmp/xdg"; export XDG_CONFIG_HOME
 fail=0
 pass() { printf 'PASS %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }

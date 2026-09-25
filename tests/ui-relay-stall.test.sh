@@ -6,6 +6,7 @@ set -u
 unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
+XDG_CONFIG_HOME="$tmp/xdg"; export XDG_CONFIG_HOME
 trap 'rm -rf "$tmp"' EXIT
 
 mkdir -p "$tmp/path" "$tmp/ui/sessions/s1/answers"
