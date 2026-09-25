@@ -6,7 +6,7 @@
 #   session-monitor.sh [--task <T-id> [--wave N] [--step <name>]] [--all] [--queue] [--step pass --scope
 #                      <key>/<agent>] [--step onboard --scope <key>] [--step weekly --scope <scope>]
 #                      [--step intake --scope <R-id> [--priority P0-P3]] [--step add-repo --url <url> [--alias A]]
-#                      [--step route --message <text>] [--max N] [--workspace <id>] [--state <dir>] [--dry-run]
+#                      [--step route|research --message <text>] [--max N] [--workspace <id>] [--state <dir>] [--dry-run]
 #
 # Seven modes:
 #   --task T-id      one named task as a unit, and nothing else: the current wave of its blocks when it has any
@@ -34,7 +34,7 @@
 #                    FACTORY_TASK=none, FACTORY_FLOW=onboard and FACTORY_STEP=`Onboarding <key>`. A live agent
 #                    with its herdr name that is idle or done has its tab closed and is replaced; one at work or
 #                    blocked is printed `skipped` with `onboard-<key> runs already` on stderr.
-#   --step weekly|intake|add-repo|route
+#   --step weekly|intake|add-repo|route|research
 #                    an org step: an action the CEO hands on to a session of its own instead of doing it
 #                    (references/ceo.md), in the state clone, role and FACTORY_FLOW the step, FACTORY_TASK=none,
 #                    unit `<step>-<tail>`, herdr name `<step>_<tail lowercased>` cut at 31, no tab record and no
@@ -44,7 +44,8 @@
 #                    <P0-P3>, default P2] prompts `/claude-factory:factory intake <R-id> <P>`; add-repo --url
 #                    <url> [--alias <A>] (tail the key, the URL's basename without .git) prompts
 #                    `/claude-factory:factory add-repo --clone '<url>' [--alias <A>]` on sonnet; route --message
-#                    <text> (tail the epoch second) prompts `/claude-factory:factory route <text>`.
+#                    <text> (tail the epoch second) prompts `/claude-factory:factory route <text>`; research
+#                    --message <text> (tail the epoch second) prompts `/claude-factory:factory research <text>`.
 #   --task T-id --step cross-repo
 #                    the cross-repo need a lead reported for T-id (references/cross-repo.md), in the state clone,
 #                    prompting `/claude-factory:factory cross-repo <T-id>`, FACTORY_STEP `Cross-repo need of <T-id>`.
@@ -157,14 +158,14 @@ while [ $# -gt 0 ]; do
 done
 case "$max" in ''|*[!0-9]*) die "--max takes a number, not '$max'" ;; esac
 case "$step" in
-  ''|triage|chart|grill|plan-check|decompose|lead|cross-repo|pass|onboard|weekly|intake|add-repo|route) ;;
-  *) die "--step takes triage, chart, grill, plan-check, decompose, lead, cross-repo, pass, onboard, weekly, intake, add-repo or route, not '$step'" ;;
+  ''|triage|chart|grill|plan-check|decompose|lead|cross-repo|pass|onboard|weekly|intake|add-repo|route|research) ;;
+  *) die "--step takes triage, chart, grill, plan-check, decompose, lead, cross-repo, pass, onboard, weekly, intake, add-repo, route or research, not '$step'" ;;
 esac
 [ -z "$priority" ] || [ "$step" = intake ] || die "--priority belongs to --step intake"
 [ -z "$url$alias" ] || [ "$step" = add-repo ] || die "--url and --alias belong to --step add-repo"
-[ -z "$has_message" ] || [ "$step" = route ] || die "--message belongs to --step route"
+[ -z "$has_message" ] || [ "$step" = route ] || [ "$step" = research ] || die "--message belongs to --step route or research"
 case "$step" in
-  weekly|intake|add-repo|route) [ -z "$parent" ] || die "--step $step is an action of the CEO's, not a step of a task; drop --task" ;;
+  weekly|intake|add-repo|route|research) [ -z "$parent" ] || die "--step $step is an action of the CEO's, not a step of a task; drop --task" ;;
 esac
 if [ "$step" = weekly ]; then
   printf '%s\n' "$scope" | grep -Eq '^(global|repo:[A-Za-z0-9_-]+|agent:[a-z0-9-]+|(repo-agent:)?[A-Za-z0-9_-]+/[a-z0-9-]+)$' \
@@ -180,9 +181,9 @@ elif [ "$step" = add-repo ]; then
   ar_key=${url%/}; ar_key=${ar_key##*/}; ar_key=${ar_key##*:}; ar_key=${ar_key%.git}
   printf '%s\n' "$ar_key" | grep -Eq '^[A-Za-z0-9_-]+$' || die "no repository key in '$url'"
   [ -z "$alias" ] || printf '%s\n' "$alias" | grep -Eq '^[A-Z]{2,4}$' || die "--alias takes 2 to 4 capital letters, not '$alias'"
-elif [ "$step" = route ]; then
-  [ -z "$scope" ] || die "--step route takes no --scope"
-  [ -n "$(printf '%s' "$message" | tr -d ' ')" ] || die "--step route needs --message <text>"
+elif [ "$step" = route ] || [ "$step" = research ]; then
+  [ -z "$scope" ] || die "--step $step takes no --scope"
+  [ -n "$(printf '%s' "$message" | tr -d ' ')" ] || die "--step $step needs --message <text>"
 elif [ "$step" = onboard ]; then
   [ -z "$parent" ] || die "--step onboard is a repo's onboarding, not a step of a task; drop --task"
   case "$scope" in
@@ -397,9 +398,10 @@ org_line() { # <step>
     intake) printf 'Intake %s' "$scope" ;;
     add-repo) printf 'Add repository %s' "$ar_key" ;;
     route) printf 'Route a message' ;;
+    research) printf 'Research' ;;
   esac
 }
-is_org() { case "$1" in onboard|weekly|intake|add-repo|route) return 0 ;; esac; return 1; }
+is_org() { case "$1" in onboard|weekly|intake|add-repo|route|research) return 0 ;; esac; return 1; }
 # a printed line carries the prompt inside double quotes, so a message keeps its quotes, dollars and backticks
 dq() { printf '%s' "$1" | sed 's/[\\"$`]/\\&/g'; }
 
@@ -465,6 +467,8 @@ elif [ "$step" = add-repo ]; then
   org_unit add-repo "$ar_key" sonnet "/claude-factory:factory add-repo --clone '$url'${alias:+ --alias $alias}" > "$units"
 elif [ "$step" = route ]; then
   org_unit route "$(date +%s)" opus "/claude-factory:factory route $message" > "$units"
+elif [ "$step" = research ]; then
+  org_unit research "$(date +%s)" opus "/claude-factory:factory research $message" > "$units"
 elif [ "$step" = pass ]; then
   pass_unit "$scope" > "$units"
 elif [ -n "$queue" ]; then
@@ -691,7 +695,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       set -- "$@" --env "FACTORY_TASK=${id%-"$role"}" --env "FACTORY_STEP=$(step_line "$role" "${id%-"$role"}")" ;;
     onboard)
       set -- "$@" --env FACTORY_TASK=none --env FACTORY_FLOW=onboard --env "FACTORY_STEP=Onboarding ${id#onboard-}" ;;
-    weekly|intake|add-repo|route)
+    weekly|intake|add-repo|route|research)
       set -- "$@" --env FACTORY_TASK=none --env "FACTORY_FLOW=$role" --env "FACTORY_STEP=$(org_line "$role")" ;;
     cross-repo)
       set -- "$@" --env "FACTORY_TASK=${id%-cross-repo}" --env "FACTORY_STEP=Cross-repo need of ${id%-cross-repo}" ;;

@@ -22,7 +22,17 @@ const TABS = ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup'];
 const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
 
 /** The New request box's draft, kept across the page's re-renders; app.js empties `text` once the CEO has it. */
-export const intake = { text: '', priority: 'P2' };
+export const intake = { text: '', priority: 'P2', kind: 'request', repos: [], branch: '' };
+
+/** The line Send posts to the CEO: `request: <text>, priority <P>`, or for a question or research
+ * `<kind>[ <keys joined by ,>][ branch <branch>]: <text>`, the branch only with one repository; '' with no text. */
+export function intakeLine() {
+  const text = intake.text.trim();
+  if (!text) return '';
+  if (intake.kind === 'request') return `request: ${text}, priority ${intake.priority}`;
+  const branch = intake.repos.length === 1 && intake.branch.trim();
+  return `${intake.kind}${intake.repos.length ? ` ${intake.repos.join(',')}` : ''}${branch ? ` branch ${branch}` : ''}: ${text}`;
+}
 
 /** The grid's filter, kept across the page's re-renders: the done and closed tasks shown or not, the search text, the
  * repository picked, '' for all, and the tasks whose blocks are unfolded. */
@@ -158,16 +168,22 @@ export function renderTop(sessions, tab, auto = null, mute = null) {
   return el;
 }
 
-/** The New request box: the request and its priority, P2 unless picked, that Send (`data-act="intake"`) posts to the CEO
- * as a free message; without a CEO session it names the command that starts one and takes nothing. `note` is the
- * outcome of the last send. */
-function intakeBox(ceo, note) {
+/** The New request box: a request with its priority, P2 unless picked, or a question or research over none or more of
+ * the registered `keys` with a branch when one is picked, that Send (`data-act="intake"`) posts to the CEO as a free
+ * message; without a CEO session it names the command that starts one and takes nothing. `note` is the outcome of
+ * the last send. */
+function intakeBox(ceo, note, keys) {
   const off = ceo ? '' : ' disabled';
+  const kinds = [['request', 'Request'], ['question', 'Question'], ['research', 'Research']];
+  const target = intake.kind === 'request'
+    ? `<select data-intake-prio aria-label="Priority"${off}>${['P0', 'P1', 'P2', 'P3'].map((p) => `<option${p === intake.priority ? ' selected' : ''}>${p}</option>`).join('')}</select>`
+    : `<fieldset class="intake-repos"><legend>Repositories, none for the org</legend>${keys.map((k) => `<label><input type="checkbox" data-act="intake-repo" value="${esc(k)}"${intake.repos.includes(k) ? ' checked' : ''}${off}> ${esc(k)}</label>`).join('')}`
+      + `<input type="text" data-intake-branch aria-label="Branch" placeholder="Branch, with one repository" value="${esc(intake.branch)}"${intake.repos.length === 1 ? off : ' disabled'}></fieldset>`;
   return '<section class="tab-body" data-intake aria-label="New request"><h3>New request</h3>'
     + (ceo ? '' : '<p class="muted">No CEO session runs, so no request goes out from here. Start one in the state directory: '
       + '<code>claude \'/claude-factory:factory ceo\'</code></p>')
-    + `<div class="edit"><textarea rows="2" aria-label="The request"${off}>${esc(intake.text)}</textarea>`
-    + `<select aria-label="Priority"${off}>${['P0', 'P1', 'P2', 'P3'].map((p) => `<option${p === intake.priority ? ' selected' : ''}>${p}</option>`).join('')}</select>`
+    + `<div class="edit"><select data-act="intake-kind" aria-label="Kind"${off}>${kinds.map(([v, l]) => `<option value="${v}"${v === intake.kind ? ' selected' : ''}>${l}</option>`).join('')}</select>`
+    + `<textarea rows="2" aria-label="The request"${off}>${esc(intake.text)}</textarea>${target}`
     + `<button class="btn primary" data-act="intake"${off}>Send</button></div>`
     + (note ? `<p class="${note.error ? 'bad' : 'muted'}">${esc(note.text)}</p>` : '')
     + '</section>';
@@ -180,7 +196,7 @@ function intakeBox(ceo, note) {
  * repo chip, priority and live sessions, its blocks folded into one line until unfolded or searched, and the step its
  * session reports marked `aria-current="step"`.
  */
-export function renderPipeline(board, sessions, requests = [], capacity = null, ceo = null, note = null) {
+export function renderPipeline(board, sessions, requests = [], capacity = null, ceo = null, note = null, keys = []) {
   const ids = new Set(board.map((t) => t.id));
   const all = board.filter((t) => groupOf(t.id) === t.id || !ids.has(groupOf(t.id)));
   const blocksOf = (t) => board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id));
@@ -205,14 +221,15 @@ export function renderPipeline(board, sessions, requests = [], capacity = null, 
   const el = document.createElement('div');
   el.className = 'pipeline';
   // why: with tasks the grid comes first, so on a phone it starts right under the header; an empty grid points to the box
-  const box = intakeBox(ceo, note);
+  const box = intakeBox(ceo, note, keys);
   el.innerHTML = (all.length ? '' : box) + filter
     + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th><th>Prio</th>${PHASES.map(([name, steps]) => `<th title="${steps
       .map((n) => `${n} ${STEPS.find(([m]) => m === n)[1]}`).join(', ')}">${name}</th>`).join('')}</tr></thead>`
     + `${bodies.join('') || `<tbody><tr><td colspan="${PHASES.length + 2}" class="muted">${all.length ? 'No task matches.' : 'No tasks yet. Start one with New request above.'}</td></tr></tbody>`}</table></div>${all.length ? box : ''}`;
   el.addEventListener('input', (e) => {
     if (e.target.matches('[data-intake] textarea')) intake.text = e.target.value;
-    if (e.target.matches('[data-intake] select')) intake.priority = e.target.value;
+    if (e.target.matches('[data-intake-prio]')) intake.priority = e.target.value;
+    if (e.target.matches('[data-intake-branch]')) intake.branch = e.target.value;
   });
   return el;
 }

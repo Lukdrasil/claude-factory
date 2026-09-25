@@ -16,9 +16,17 @@ through `_shared/ask.md` with flow `route` and task `none`.
    | a repository added | `add repo <url>[ alias <ALIAS>]` |
    | a repository's onboarding (again) | `onboard repo <key>` |
    | a memory pass | `start the <daily|weekly> pass for <scope>` |
+   | a question that needs a report | `research[ <keys>][ branch <branch>]: <text>` |
 
    A question about the org's state (a task, a request, a session, the queue) is answered here: read the state
-   clone and `herdr agent list`, and answer with one notice ask. Anything else is one notice that names the
+   clone and `herdr agent list`, and answer with one notice ask. So is the line `question[ <keys>][ branch
+   <branch>]: <text>` the UI's New request box sends as Question, `<keys>` none or more registered repository
+   keys joined by `,`: with no key it is a question about the org; with keys you read each key's registered
+   clone, the `path:` of its `repos.yml` line, read only (`git -C <clone> fetch`, `log`, `show`, `diff` and
+   `ls-tree`, never a checkout, pull, reset or build: the clone is the human's checkout), with `branch
+   <branch>` that branch as `origin/<branch>` after the fetch, read against the key's `default_branch`. The
+   notice cites a `path/file.ext:line` or a SHA for every claim. A question that needs more than a quick read
+   is the line `research[ <keys>][ branch <branch>]: <text>` instead. Anything else is one notice that names the
    lines above. A message with two readings is one round ask whose options are the readings. Completion: one
    line, an answer, or the notice.
 2. **Report** to the CEO, `<n>` from your `FACTORY_UNIT`: `herdr agent prompt ceo "route <n> -> <line>"`, or

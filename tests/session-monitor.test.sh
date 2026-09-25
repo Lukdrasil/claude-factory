@@ -891,6 +891,18 @@ check 'a printed route line escapes the quotes, $ and backticks' \
 
 rm -rf "$lease"
 : > "$HERDR_STUB_LOG"
+out=$(sm --step research --message 'research ecs-core,arthur: how do they log?' 2>/dev/null)
+check 'the research session goes out in the state clone' "^research-[0-9][0-9]* spawned $ostate\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the research agent is research_<n> on opus'   '^agent start research_[0-9][0-9]* --kind claude --pane pane-1 --timeout 120000 -- --model opus '
+check 'the research session prompts factory research with the message' \
+  '^agent prompt research_[0-9]* "/claude-factory:factory research research ecs-core,arthur: how do they log?" --wait '
+out=$(envof)
+check 'the research role is research'                '^FACTORY_ROLE=research$'
+check 'the research step reads Research'             '^FACTORY_STEP=Research$'
+
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
 out=$(sm --task T-ECS-12 --step cross-repo 2>/dev/null)
 check 'the cross-repo step goes out in the state clone' "^T-ECS-12-cross-repo spawned $ostate\$"
 out=$(cat "$HERDR_STUB_LOG")
@@ -914,7 +926,7 @@ rm -rf "$lease"
 for bad in '--step weekly' '--step weekly --scope repo-agent:ecs/../x' '--task T-ECS-12 --step weekly --scope global' \
   '--step intake' '--step intake --scope T-ECS-12' '--step intake --scope R-20260925-1 --priority P7' \
   '--step add-repo' '--step add-repo --url -x' '--step add-repo --url https://forge.test/a.git --alias toolong' \
-  '--step add-repo --url https://forge.test/a;b.git' '--step route' '--step cross-repo' '--step pass --scope ecs-core/implementer --priority P1' \
+  '--step add-repo --url https://forge.test/a;b.git' '--step route' '--step research' '--step research --scope x --message y' '--step cross-repo' '--step pass --scope ecs-core/implementer --priority P1' \
   '--task T-ECS-12 --step triage --url https://forge.test/a.git'; do
   # shellcheck disable=SC2086
   sm $bad --dry-run >/dev/null 2>&1; rc=$?

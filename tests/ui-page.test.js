@@ -408,7 +408,7 @@ async function stage(q, button, text) {
     const text = (await box.innerText()).replace(/\s+/g, ' ');
     ok(text.includes("claude '/claude-factory:factory ceo'"), `box: ${text}`);
     const controls = await box.locator('textarea, select, button').evaluateAll((els) => els.map((e) => `${e.tagName}${e.disabled ? '' : ' enabled'}`));
-    ok(controls.join(' ') === 'TEXTAREA SELECT BUTTON', `controls: ${controls.join(' ')}`);
+    ok(controls.join(' ') === 'SELECT TEXTAREA SELECT BUTTON', `controls: ${controls.join(' ')}`);
   });
 
   await check('every /api request carries the token from the fragment as X-Factory-Token', async () => {
@@ -1186,7 +1186,7 @@ async function stage(q, button, text) {
 
   await check('with a CEO the New request box offers P0 to P3 with P2 selected, enabled, and no command to start the CEO', async () => {
     await until('the enabled box', () => box.locator('textarea').isEnabled());
-    const options = await box.locator('select option').evaluateAll((os) => os.map((o) => `${o.textContent.trim()}${o.selected ? '*' : ''}`));
+    const options = await box.locator('[data-intake-prio] option').evaluateAll((os) => os.map((o) => `${o.textContent.trim()}${o.selected ? '*' : ''}`));
     ok(options.join(' ') === 'P0 P1 P2* P3', `options: ${options.join(' ')}`);
     ok(!(await box.innerText()).includes('factory ceo'), `box: ${await box.innerText()}`);
   });
@@ -1204,13 +1204,36 @@ async function stage(q, button, text) {
   });
 
   await check('Send of New request posts request: <text>, priority P1 to the CEO as a free message and says it was sent', async () => {
-    await box.locator('select').selectOption('P1');
+    await box.locator('[data-intake-prio]').selectOption('P1');
     await box.getByRole('button', { name: /^send$/i }).click();
     await until('the post to the CEO', () => posted.length);
     const want = { ask: '', text: `request: ${request}, priority P1` };
     ok(JSON.stringify(posted) === JSON.stringify([want]), `posted: ${JSON.stringify(posted)}`);
     await until('the sent note', async () => (await box.innerText()).includes(`Sent to the CEO: ${want.text}`));
     ok((await box.locator('textarea').inputValue()) === '', 'the text stays after the send');
+  });
+
+  await check('Question with no repository posts question: <text>, the branch field disabled', async () => {
+    posted.length = 0;
+    await box.locator('[data-act="intake-kind"]').selectOption('question');
+    await until('the repository list', () => box.locator('[data-act="intake-repo"]').first().isVisible());
+    ok(await box.locator('[data-intake-branch]').isDisabled(), 'the branch field is enabled with no repository');
+    await box.locator('textarea').fill('Which sessions run?');
+    await box.getByRole('button', { name: /^send$/i }).click();
+    await until('the question post', () => posted.length);
+    ok(posted[0].text === 'question: Which sessions run?', `posted: ${JSON.stringify(posted)}`);
+  });
+
+  await check('Research over one repository with a branch posts research <key> branch <branch>: <text>', async () => {
+    posted.length = 0;
+    await box.locator('[data-act="intake-kind"]').selectOption('research');
+    await box.locator('[data-act="intake-repo"][value="claude-factory"]').check();
+    await until('the branch field enabled', () => box.locator('[data-intake-branch]').isEnabled());
+    await box.locator('[data-intake-branch]').fill('develop');
+    await box.locator('textarea').fill('What does the branch change?');
+    await box.getByRole('button', { name: /^send$/i }).click();
+    await until('the research post', () => posted.length);
+    ok(posted[0].text === 'research claude-factory branch develop: What does the branch change?', `posted: ${JSON.stringify(posted)}`);
   });
   await intake.close();
 

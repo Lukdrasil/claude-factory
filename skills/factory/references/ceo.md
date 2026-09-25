@@ -87,11 +87,15 @@ again.
 
 Every line that asks for an action goes on to a session of its own, `sh <plugin-root>/bin/session-monitor.sh
 ... --spawn herdr` in your workspace, and you only act on what that session reports. A line whose shape is known
-goes straight to its handler; anything else the human says goes to a route session, which judges it.
+goes straight to its handler; anything else the human says goes to a route session, which judges it. You never
+judge a line whose shape is in the table, and you never ask the human which handler it goes to: a doubt is a
+route session's to settle.
 
 | the line | you dispatch |
 |---|---|
 | `request: <text>, priority <P>` | Intake |
+| `question[ <keys>][ branch <branch>]: <text>` | `--step route --message "<the line as received>"` (`references/route.md`) |
+| `research[ <keys>][ branch <branch>]: <text>` | `--step research --message "<the line as received>"` (`references/research.md`) |
 | `add repo <url>[ alias <ALIAS>]` | Add a repository |
 | `onboard repo <key>` | Add a repository, step 4 |
 | `start the daily pass for <key>/<agent>` | `--step pass --scope <key>/<agent>` (Memory) |
@@ -113,6 +117,8 @@ state before you act on it:
 | `<T-id> cross-repo out of scope` | `herdr agent prompt lead_<unit> "<T-id> cross-repo need out of scope"` |
 | `route <n> -> <line>` | act on `<line>` as on the human's own, with the same checks; a line that matches none of the table above is one line to the human, never a second route |
 | `route <n> answered` | nothing |
+| `research <n> done <path>` | nothing: the human has the answer in its notice |
+| `research <n> stopped <reason>` | one line to the human with the reason |
 
 A hand-off printed `skipped` with `capacity: sessions full` goes out again on the next pass that frees a slot
 (The loop, step 2); tell the human it waits. `runs already` means the same action is at work: nothing to do.

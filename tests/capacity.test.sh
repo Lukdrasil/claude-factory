@@ -214,19 +214,21 @@ cap sweep
 agents "- S1" "- S2"
 reset
 
-# an org step unit <step>-<tail> (weekly, intake, add-repo, route) is carried by the agent <step>_<tail lowercased>,
+# an org step unit <step>-<tail> (weekly, intake, add-repo, route, research) is carried by the agent <step>_<tail lowercased>,
 # cut at 31 characters, like an onboarding
 cap acquire sessions intake-R-20260925-1; age sessions/intake-R-20260925-1 600
 cap acquire sessions add-repo-NewRepo; age sessions/add-repo-NewRepo 600
 cap acquire sessions weekly-repo-agent-ecs-core-implementer; age sessions/weekly-repo-agent-ecs-core-implementer 600
 cap acquire sessions route-1790000000; age sessions/route-1790000000 600
+cap acquire sessions research-1790000001; age sessions/research-1790000001 600
 cap acquire sessions intake-R-20260925-9; age sessions/intake-R-20260925-9 600
-agents "intake_r-20260925-1 S1" "add-repo_newrepo S2" "weekly_repo-agent-ecs-core-impl S3" "route_1790000000 S4"
+agents "intake_r-20260925-1 S1" "add-repo_newrepo S2" "weekly_repo-agent-ecs-core-impl S3" "route_1790000000 S4" "research_1790000001 S5"
 cap sweep
 [ -f "$(lease sessions/intake-R-20260925-1)" ]; is 'an intake unit whose agent is intake_<R-id> stays' 0 $?
 [ -f "$(lease sessions/add-repo-NewRepo)" ]; is 'an add-repo unit is matched by its lowercased key' 0 $?
 [ -f "$(lease sessions/weekly-repo-agent-ecs-core-implementer)" ]; is 'a weekly unit is matched by the name cut at 31' 0 $?
 [ -f "$(lease sessions/route-1790000000)" ]; is 'a route unit whose agent is route_<n> stays' 0 $?
+[ -f "$(lease sessions/research-1790000001)" ]; is 'a research unit whose agent is research_<n> stays' 0 $?
 [ ! -e "$(lease sessions/intake-R-20260925-9)" ]; is 'an intake unit with no agent of its name is dropped' 0 $?
 agents "- S1" "- S2"
 reset

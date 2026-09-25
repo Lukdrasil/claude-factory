@@ -1,11 +1,11 @@
-import { groupOf, intake, renderPipeline, renderTop, view, waiting } from './pipeline.js';
+import { groupOf, intake, intakeLine, renderPipeline, renderTop, view, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
 import { compose } from './ask-card.js';
 import { renderSetupStrip, renderSetupTab } from './setup.js';
 import { renderOrg } from './org.js';
 import { pickRequest, renderMap, renderPlan } from './requests.js';
 import { renderMemory } from './memory.js';
-import { addRepoLine, aliasProblem, onboardLine, proposalLine, repoForm, urlProblem } from './repos.js';
+import { addRepoLine, aliasProblem, keysOf, onboardLine, proposalLine, repoForm, urlProblem } from './repos.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
@@ -185,7 +185,7 @@ function renderTab() {
     Org: () => renderOrg(S.org),
     Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
     Setup: () => renderSetupTab(S.setup, S.sessions, S.org?.ceo, S.repoNote),
-  }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity, S.org?.ceo, S.intakeNote);
+  }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity, S.org?.ceo, S.intakeNote, keysOf(S.setup?.reposYml));
   el.setAttribute('role', 'tabpanel');
   el.setAttribute('aria-label', S.tab);
   return el;
@@ -313,8 +313,8 @@ async function track(b, post, hold = true) {
 
 /** A new request from the Pipeline tab's box: a free message to the CEO, as the Memory tab's start buttons send. */
 async function sendRequest() {
-  if (!intake.text.trim()) return false;
-  const text = `request: ${intake.text.trim()}, priority ${intake.priority}`;
+  const text = intakeLine();
+  if (!text) return false;
   try {
     await api(`/api/answers/${S.org.ceo.sid}`, {
       method: 'POST',
@@ -474,6 +474,11 @@ app.addEventListener('input', (e) => {
     if (act === 'find') view.q = e.target.value;
     else if (act === 'repo') view.repo = e.target.value;
     else view.finished = e.target.checked;
+    return render();
+  }
+  if (act === 'intake-kind' || act === 'intake-repo') {
+    if (act === 'intake-kind') intake.kind = e.target.value;
+    else intake.repos = [...document.querySelectorAll('[data-act="intake-repo"]:checked')].map((c) => c.value);
     return render();
   }
   const box = e.target.closest('[data-ask] textarea');

@@ -178,7 +178,7 @@ const sids=new Set(a.map(x=>String((x.agent_session&&x.agent_session.value)||"")
 const ends=new Set(a.map(x=>String(x.terminal_title_stripped||"").trim().split(/\s+/).pop()));
 const live=u=>{
   if(ends.has(u)||names.includes(u.toLowerCase()))return true;
-  const org=/^(onboard|weekly|intake|add-repo|route)-(.+)$/.exec(u);
+  const org=/^(onboard|weekly|intake|add-repo|route|research)-(.+)$/.exec(u);
   if(org)return names.includes((org[1]+"_"+org[2]).toLowerCase().slice(0,31));
   const m=/^(.*?)-([a-z].*)$/.exec(u),step=m?m[2]:"";
   let t=(m?m[1]:u).toLowerCase();if(!/^t-[0-9]/.test(t))t=t.replace(/^t-/,"");

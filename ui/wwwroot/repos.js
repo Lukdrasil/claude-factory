@@ -34,7 +34,7 @@ export const onboardLine = (key) => `onboard repo ${key}`;
 /** C1: a proposal of the report of `key` as the intake line of the New request box. */
 export const proposalLine = (key, p, priority) => `request: ${key}: ${p.text} (onboarding ${p.id}), priority ${priority}`;
 
-const keysOf = (reposYml) => (reposYml || '').match(/^[A-Za-z0-9_-]+(?=:)/gm) || [];
+export const keysOf = (reposYml) => (reposYml || '').match(/^[A-Za-z0-9_-]+(?=:)/gm) || [];
 const openAsk = (sessions, id) => sessions.some((s) => (s.asks || []).some((a) => a.ask === id && a.status === 'open'));
 const onboarding = (sessions, key) => sessions.some((s) => s.agent !== 'gone' && (s.step.match(/^Onboarding ([A-Za-z0-9_-]+)$/) || [])[1] === key);
 
