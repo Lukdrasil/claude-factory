@@ -170,6 +170,8 @@ public sealed partial class UiHome(string root)
     /// <summary>
     /// Every session under <c>sessions/</c> with its asks and the pane state the relay wrote to <c>agent</c>. An ask is sent once an answer file newer than the ask names it and is not a <c>Q&lt;n&gt; redraw</c> or <c>Q&lt;n&gt; more</c>, and held with the
     /// reason of <c>relay</c> while the relay holds any of its answers newer than the ask, a kept-open one included. An unreadable session is skipped.
+    /// An open ask of a session whose agent is gone reads answered once another session wrote the same ask of the same task
+    /// later: the step was started again and asked it anew.
     /// </summary>
     public List<SessionInfo> Sessions()
     {
@@ -192,7 +194,11 @@ public sealed partial class UiHome(string root)
             {
             }
         }
-        return list;
+        return list.Select(s => s.Agent != "gone" ? s : s with
+        {
+            Asks = s.Asks.Select(a => a.Status == "open" && list.Any(o => o.Sid != s.Sid
+                && o.Asks.Any(b => b.Ask == a.Ask && b.Task == a.Task && b.Modified > a.Modified)) ? a with { Status = "answered" } : a).ToList(),
+        }).ToList();
     }
 
     static SessionInfo? ReadSession(string dir)

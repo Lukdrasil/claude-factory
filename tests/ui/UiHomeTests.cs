@@ -102,6 +102,23 @@ public sealed class UiHomeTests : IDisposable
     }
 
     [Fact]
+    public void An_open_ask_of_an_ended_session_reads_answered_once_a_later_session_asked_it_again()
+    {
+        var old = Ask("s1", "r1", "herd", Round);
+        File.WriteAllText(Path.Combine(old, "agent"), "gone\n");
+        File.SetLastWriteTimeUtc(Path.Combine(old, "asks", "r1.md"), DateTime.UtcNow.AddMinutes(-10));
+        var lone = Ask("s3", "r3", "herd", Round);
+        File.WriteAllText(Path.Combine(lone, "agent"), "gone\n");
+        Ask("s2", "r1", "herd", Round);
+
+        var asks = new UiHome(_ui).Sessions().ToDictionary(s => s.Sid, s => s.Asks.Single().Status);
+
+        Assert.Equal("answered", asks["s1"]);
+        Assert.Equal("open", asks["s2"]);
+        Assert.Equal("open", asks["s3"]);
+    }
+
+    [Fact]
     public void Auto_answer_leaves_a_permission_dialog_to_the_human()
     {
         Ask("s1", "dialog-t-001-triage-1", "solve", "❓ **Q1** - **Allow the command?**\n  **A** allow\n  **B** deny\n\n➡️ **A**: read-only.\n");
