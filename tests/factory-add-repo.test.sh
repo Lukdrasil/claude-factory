@@ -134,4 +134,10 @@ git -C "$tmp/scpform" remote set-url origin git@gitlab.example.com:g/scpform.git
 add --repo "$tmp/scpform" --yes >/dev/null
 grep -qE '^scpform: \{url: "git@gitlab\.example\.com:g/scpform\.git", ' "$state/repos.yml"; check 'an scp-style url is written as it is' $?
 
+# --- redact_urls (lib-tasks.sh): the userinfo of every scheme URL in a line is cut out ------------------------------
+red=$(. "$bin/lib-tasks.sh"; redact_urls "fatal: unable to access 'https://u:tok-SECRET@h.test/g/x.git/' and ssh://git@h.test/y")
+[ "$red" = "fatal: unable to access 'https://h.test/g/x.git/' and ssh://h.test/y" ]; check 'redact_urls cuts user:token@ and user@ out of every URL of the line' $?
+red=$(. "$bin/lib-tasks.sh"; redact_urls 'git@h.test:g/x.git and https://h.test/a@b')
+[ "$red" = 'git@h.test:g/x.git and https://h.test/a@b' ]; check 'redact_urls keeps an scp-style URL and an @ in the path' $?
+
 exit "$fail"
