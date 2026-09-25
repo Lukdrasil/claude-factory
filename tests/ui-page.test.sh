@@ -16,9 +16,11 @@ fi
 
 tmp=$(mktemp -d)
 name="cf-ui-page-$$"
+image="claude-factory-ui:test-$$"
 cleanup() {
   FACTORY_UI_CONTAINER=$name HERDR_ENV=1 timeout 120 sh "$bin/ui-down.sh" >/dev/null 2>&1
   docker rm -f "$name" "$name-free" >/dev/null 2>&1
+  docker image rm "$image" >/dev/null 2>&1
   chmod -R u+rwx "$tmp" 2>/dev/null
   rm -rf "$tmp"
 }
@@ -170,12 +172,12 @@ printf '1 blocked\n' > "$ui/sessions/s1/relay"
 has 'CONTEXT.md defines the drawer'                           '^- \*\*drawer\*\*:' "$(cat "$repo/CONTEXT.md")"
 
 # --- the image from this tree, so the page under test is the one in ui/wwwroot, then the server and the browser ---
-ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/.claude-plugin/plugin.json" | head -n1)
-timeout 15m docker build -q -t "claude-factory-ui:$ver" "$repo/ui" > "$tmp/build.out" 2>&1 \
-  || { bad "building claude-factory-ui:$ver failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
+timeout 15m docker build -q -t "$image" "$repo/ui" > "$tmp/build.out" 2>&1 \
+  || { bad "building $image failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
 up --state "$state1"; rc=$?
 is 'ui-up.sh exits 0'                                         "$rc" 0
 [ "$rc" = 0 ] || { sed 's/^/  up: /' "$tmp/up.err" | tail -n 30; exit 1; }
+is 'the server runs the image of this checkout'               "$(docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null)" "$image"
 port=$(cat "$ui/port" 2>/dev/null)
 token=$(cat "$ui/token" 2>/dev/null)
 ready "$port" || { bad "the server never answered / on $port: $(docker logs "$name" 2>&1 | tail -n 20)"; exit 1; }

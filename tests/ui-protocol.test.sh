@@ -351,6 +351,22 @@ for f in "$repo"/tests/ui-*.test.sh "$repo/tests/ui-fixture.sh"; do
   done
   [ -z "$miss" ] && pass "${f##*/} unsets the caller's UI env first" || flunk "${f##*/} unsets the caller's UI env first:$miss"
 done
+# F23: a suite on the shared tag claude-factory-ui:<version> could not remove it while a real UI ran it, so it tested
+# that old image; ui-up.sh takes FACTORY_UI_IMAGE over the shared tag, the fixture hands it each suite's own $image
+# and the suite removes that image in its cleanup
+grep -Fqx 'image=${FACTORY_UI_IMAGE:-claude-factory-ui:$ver}' "$bin/ui-up.sh" \
+  && pass "ui-up.sh runs FACTORY_UI_IMAGE when set, else claude-factory-ui:<version>" \
+  || flunk "ui-up.sh runs FACTORY_UI_IMAGE when set, else claude-factory-ui:<version>"
+grep -Fqx 'FACTORY_UI_IMAGE=$image' "$repo/tests/ui-fixture.sh" \
+  && grep -Eq '^export .*[[:space:]]FACTORY_UI_IMAGE([[:space:]]|$)' "$repo/tests/ui-fixture.sh" \
+  && pass "ui-fixture.sh exports the suite's \$image as FACTORY_UI_IMAGE" \
+  || flunk "ui-fixture.sh exports the suite's \$image as FACTORY_UI_IMAGE"
+for f in $(grep -l '^\. "\$repo/tests/ui-fixture\.sh"' "$repo"/tests/ui-*.test.sh); do
+  if grep -Eq '(image=|docker (build|image rm)).*claude-factory-ui:\$\{?ver\}?"' "$f"; then flunk "${f##*/} never builds or runs the shared tag claude-factory-ui:\$ver"
+  else pass "${f##*/} never builds or runs the shared tag claude-factory-ui:\$ver"; fi
+  grep -Fqx '  docker image rm "$image" >/dev/null 2>&1' "$f" && pass "${f##*/} removes its own image in its cleanup" \
+    || flunk "${f##*/} removes its own image in its cleanup"
+done
 for term in ask 'answer file' relay 'UI home'; do
   grep -qi "\*\*$term\*\*" "$repo/CONTEXT.md" 2>/dev/null && pass "CONTEXT.md defines $term" || flunk "CONTEXT.md defines $term"
 done

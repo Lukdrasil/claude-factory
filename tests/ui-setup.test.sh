@@ -17,11 +17,13 @@ fi
 
 tmp=$(mktemp -d)
 name="cf-ui-setup-$$"
+image="claude-factory-ui:test-$$"
 pw_version=1.63.0
 pw="cf-ui-playwright:$pw_version"
 cleanup() {
   FACTORY_UI_CONTAINER=$name HERDR_ENV=1 timeout 120 sh "$bin/ui-down.sh" >/dev/null 2>&1
   docker rm -f "$name" "$name-free" >/dev/null 2>&1
+  docker image rm "$image" >/dev/null 2>&1
   chmod -R u+rwx "$tmp" 2>/dev/null
   rm -rf "$tmp"
 }
@@ -44,9 +46,8 @@ has 'doctor.md asks a question per tool'                      '[Qq]uestion per (
 hasnt 'doctor.md no longer asks one ask per missing tool'     'One ask \(`_shared/ask\.md`\) per missing tool' "$(cat "$refs/doctor.md")"
 
 # --- the image from this tree, so the page under test is the one in ui/wwwroot ---------------------------------------
-ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$repo/.claude-plugin/plugin.json" | head -n1)
-timeout 15m docker build -q -t "claude-factory-ui:$ver" "$repo/ui" > "$tmp/build.out" 2>&1 \
-  || { bad "building claude-factory-ui:$ver failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
+timeout 15m docker build -q -t "$image" "$repo/ui" > "$tmp/build.out" 2>&1 \
+  || { bad "building $image failed: $(tail -n 20 "$tmp/build.out")"; exit 1; }
 if ! docker image inspect "$pw" >/dev/null 2>&1; then
   printf 'FROM mcr.microsoft.com/playwright:v%s-noble\nRUN npm install -g playwright-core@%s\nENV NODE_PATH=/usr/lib/node_modules\n' \
     "$pw_version" "$pw_version" | timeout 15m docker build -q -t "$pw" - >/dev/null \
@@ -116,6 +117,7 @@ mounts() { docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$name"
 up --state "$state1"; rc=$?
 is 'ui-up.sh --state over the fixture exits 0'                "$rc" 0
 [ "$rc" = 0 ] || { sed 's/^/  up: /' "$tmp/up.err" | tail -n 30; exit 1; }
+is 'the server runs the image of this checkout'               "$(docker inspect -f '{{.Config.Image}}' "$name" 2>/dev/null)" "$image"
 token=$(cat "$ui/token")
 ready "$(cat "$ui/port")" || { bad "the server never answered: $(docker logs "$name" 2>&1 | tail -n 20)"; exit 1; }
 browse fixture ''
