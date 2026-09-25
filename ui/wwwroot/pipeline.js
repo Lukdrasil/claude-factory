@@ -128,9 +128,10 @@ function intakeBox(ceo, note) {
 }
 
 /**
- * The Pipeline tab: the capacity strip, the New request box and the grid of tasks across the solve steps, the tasks of each request of
- * `/api/requests` under one header row with its priority, status and destination, each task with its repo chip and
- * priority, its blocks in sub-rows under it and the step its session reports marked `aria-current="step"`.
+ * The Pipeline tab: the capacity strip, the grid of tasks across the solve steps and the New request box under it,
+ * above it while there is no task. The tasks of each request of `/api/requests` sit under one header row with its
+ * priority, status and destination, each task with its repo chip and priority, its blocks in sub-rows under it and
+ * the step its session reports marked `aria-current="step"`.
  */
 export function renderPipeline(board, sessions, requests = [], capacity = null, ceo = null, note = null) {
   const ids = new Set(board.map((t) => t.id));
@@ -141,9 +142,11 @@ export function renderPipeline(board, sessions, requests = [], capacity = null, 
     + board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id)).map((b) => blockRow(b, t.id, sessions)).join('')).join('')}</tbody>`);
   const el = document.createElement('div');
   el.className = 'pipeline';
-  el.innerHTML = (capacity ? capacityStrip(capacity) : '') + intakeBox(ceo, note)
+  // why: with tasks the grid comes first, so on a phone it starts right under the header; an empty grid points to the box
+  const box = intakeBox(ceo, note);
+  el.innerHTML = (capacity ? capacityStrip(capacity) : '') + (bodies.length ? '' : box)
     + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th><th>Prio</th>${STEPS.map(([n, label, title]) => `<th title="${title}">${n} <small>${label}</small></th>`).join('')}</tr></thead>`
-    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">No tasks yet. Start one with New request above.</td></tr></tbody>`}</table></div>`;
+    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">No tasks yet. Start one with New request above.</td></tr></tbody>`}</table></div>${bodies.length ? box : ''}`;
   el.addEventListener('input', (e) => {
     if (e.target.matches('[data-intake] textarea')) intake.text = e.target.value;
     if (e.target.matches('[data-intake] select')) intake.priority = e.target.value;
