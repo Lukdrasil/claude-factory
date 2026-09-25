@@ -8,15 +8,50 @@ import { renderMemory } from './memory.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
+const KEPT = 'factory-staged';
 const S = {
-  board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null,
+  board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
   tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
 const keyOf = (a) => `${a.sid}/${a.ask}`;
-const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane })));
+const allAsks = () => S.sessions.flatMap((s) => s.asks.map((a) => ({ ...a, sid: s.sid, pane: s.pane, agent: s.agent })));
 const stagedFor = (key) => (S.staged[key] ||= { items: {}, editing: {}, drafts: {} });
+
+/** The answers staged in this tab before a reload, without a send in flight or its error. */
+function kept() {
+  try {
+    const staged = JSON.parse(sessionStorage.getItem(KEPT)) || {};
+    for (const st of Object.values(staged)) {
+      delete st.sending;
+      delete st.error;
+    }
+    return staged;
+  } catch {
+    return {};
+  }
+}
+
+function keep() {
+  try {
+    sessionStorage.setItem(KEPT, JSON.stringify(S.staged));
+  } catch {
+    // why: storage may be off or full; the staged answers then last until a reload, as before
+  }
+}
+
+/** A selector for the focused control that finds its twin after a render: its card, question and data attributes. */
+function focusPath(el) {
+  if (!el || el === document.body || !app.contains(el)) return null;
+  const own = ['act', 'k', 'tab', 'drawer', 'request', 'kind', 'scope'].filter((k) => el.dataset[k] !== undefined)
+    .map((k) => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
+  if (!own && el.tagName !== 'TEXTAREA') return null;
+  const ask = el.closest('[data-ask]')?.dataset.ask;
+  const q = el.closest('[data-q]')?.dataset.q;
+  const scope = `${ask ? `[data-ask="${CSS.escape(ask)}"] ` : ''}${q ? `[data-q="${CSS.escape(q)}"] ` : ''}`;
+  return { at: `${scope}${el.tagName.toLowerCase()}${own}`, question: q && scope.trim(), caret: el.selectionStart };
+}
 
 async function api(path, init = {}) {
   const r = await fetch(path, { ...init, headers: { 'X-Factory-Token': token, ...init.headers } });
@@ -108,6 +143,7 @@ function group(id) {
       .filter((a) => groupOf(a.task) === id && (a.status === 'open' || S.shown.has(keyOf(a))))
       .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified)),
     staged: S.staged,
+    cursor: S.cursor,
     detail: S.detail?.task.id === id ? S.detail : null,
     token,
   };
@@ -129,8 +165,7 @@ function renderTab() {
 }
 
 function render() {
-  const typing = document.activeElement?.tagName === 'TEXTAREA' ? document.activeElement : null;
-  const at = typing && [typing.closest('[data-ask]').dataset.ask, typing.closest('[data-q]').dataset.q, typing.selectionStart];
+  const focus = focusPath(document.activeElement);
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
@@ -144,10 +179,22 @@ function render() {
     app.append(renderDrawer(group(S.drawer)));
     if (details) app.querySelector('aside .details')?.setAttribute('open', '');
     app.querySelector('aside').scrollTop = top;
+    app.querySelector('aside').dispatchEvent(new Event('scroll'));
   }
-  const box = at && app.querySelector(`[data-ask="${at[0]}"] [data-q="${at[1]}"] textarea`);
-  box?.focus();
-  box?.setSelectionRange(at[2], at[2]);
+  keep();
+  if (!focus) return;
+  // why: every render replaces the page; the focus goes back to the same control, else to the first one of its question
+  const to = app.querySelector(focus.at) || (focus.question && app.querySelector(`${focus.question} button:not(:disabled)`));
+  to?.focus({ preventScroll: true });
+  if (to?.tagName === 'TEXTAREA') to.setSelectionRange(focus.caret, focus.caret);
+}
+
+/** Closes the drawer and gives the focus back to the row that opens it. */
+function close() {
+  const id = S.drawer;
+  S.drawer = null;
+  render();
+  app.querySelector(`[data-drawer="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
 }
 
 function open(id) {
@@ -237,10 +284,7 @@ app.addEventListener('click', (e) => {
   if (act === 'next') return next();
   if (act === 'pass') return startPass(b);
   if (act === 'redraw') return redraw(b.closest('[data-visual]'));
-  if (act === 'close') {
-    S.drawer = null;
-    return render();
-  }
+  if (act === 'close') return close();
   const key = b.closest('[data-ask]')?.dataset.ask;
   if (!key) return;
   const staged = stagedFor(key);
@@ -261,7 +305,13 @@ app.addEventListener('click', (e) => {
 
 app.addEventListener('input', (e) => {
   const box = e.target.closest('textarea');
-  if (box) stagedFor(box.closest('[data-ask]').dataset.ask).drafts[box.closest('[data-q]').dataset.q] = box.value;
+  if (!box) return;
+  stagedFor(box.closest('[data-ask]').dataset.ask).drafts[box.closest('[data-q]').dataset.q] = box.value;
+  keep();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && S.drawer) close();
 });
 
 async function stream() {
