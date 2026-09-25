@@ -57,8 +57,8 @@ The same steps, with `--clone '<url>'` in place of `--repo <clone-dir>`:
 - **Clones directory.** The clone goes to `<clones>/<key>`, `<clones>` being `clones: <absolute dir>` in
   `<root>/state/factory.yml`. It must be absolute and outside `<root>` (whose `<root>/<key>` holds the task
   worktrees), symlinks resolved. Without it the script exits 1 with
-  `no clones directory: add clones: <absolute dir> to <state>/factory.yml`: ask the user for the directory
-  (their other clones usually share one) and add that line. Completion: `clones:` is set.
+  `no clones directory: add clones: <absolute dir> to <state>/factory.yml`, which is the error notice below;
+  the user adds that line (their other clones usually share one directory) and sends the URL again.
 - **Preview.** It asks the remote with `git ls-remote` (no password prompt: the user's own git login, a
   credential helper, `gh auth login`, `glab auth login` or an ssh key has to work), then prints the key,
   `+ git clone <url> <clones>/<key>   (default branch <branch>)`, the alias note, the `repos.yml` line and
