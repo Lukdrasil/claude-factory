@@ -4,9 +4,10 @@
 # same lines are printed for the human to run.
 #
 #   session-monitor.sh [--task <T-id> [--wave N] [--step <name>]] [--all] [--queue] [--step pass --scope
-#                      <key>/<agent>] [--max N] [--workspace <id>] [--state <dir>] [--dry-run]
+#                      <key>/<agent>] [--step onboard --scope <key>] [--max N] [--workspace <id>] [--state <dir>]
+#                      [--dry-run]
 #
-# Six modes:
+# Seven modes:
 #   --task T-id      one named task as a unit, and nothing else: the current wave of its blocks when it has any
 #                    a dispatch may start (the plan of bin/spawn-plan.sh, less every block that is neither ready
 #                    and unowned nor tests_ready with phase: implement armed, which is skipped), and otherwise
@@ -25,6 +26,13 @@
 #   --step pass --scope <key>/<agent>
 #                    the daily memory pass of one repo agent (plan 3.8), unit `pass-<key>-<agent>`, in the state
 #                    clone, prompting `/claude-factory:memory-daily <key>/<agent>`.
+#   --step onboard --scope <key>
+#                    the onboarding session of one registered repo, unit `onboard-<key>`, role `onboard`, on
+#                    sonnet in the repo's registered clone (its repos.yml `path:`; none, or none on disk, is exit
+#                    1), prompting `/claude-factory:factory onboard <key>`. A herdr spawn also passes
+#                    FACTORY_TASK=none, FACTORY_FLOW=onboard and FACTORY_STEP=`Onboarding <key>`. A live agent
+#                    with its herdr name that is idle or done has its tab closed and is replaced; one at work or
+#                    blocked is printed `skipped` with `onboard-<key> runs already` on stderr.
 #   --queue          the lines of queue-next.sh (`<T-id> <key> <priority> <request>`, in dispatch order) from the
 #                    top, each as --step lead, while `capacity.sh count sessions` leaves two slots free and
 #                    `count repo-lead` one; the first line that does not fit ends the take.
@@ -66,7 +74,8 @@
 # `claude` command line, spawned or printed (a test factory loads the plugin under test with `--plugin-dir` and its
 # own WORK_DIR with `--settings`). The herdr agent name is plan 3.6's `<role>_<task id lowercased>`,
 # `lead` for a lead, the leading `t-` dropped for an alias id and kept for a legacy one (`lead_ecs-12`,
-# `implementer_t-264-02`), and `pass_<alias>-<agent>` for a pass, cut at 31 characters.
+# `implementer_t-264-02`), `pass_<alias>-<agent>` for a pass and `onboard_<key lowercased>` for an onboarding,
+# cut at 31 characters.
 #
 # Capacity (plan 3.3): the `sessions` and `repo-lead` counts of capacity.sh are read once per pass, and every
 # unit the pass sends out, printed ones included, counts against them. A unit needs one free session slot, a
@@ -76,9 +85,10 @@
 # tab; a create or an agent start that fails releases them again. herd-watch.sh releases them when the unit ends.
 #
 # Every unit carries the session name `<emoji> <repo> <id>` of `herdr-tabs.sh name`: the tab label and the
-# `claude --name` of a herdr spawn, and the `--name` of a printed manual line; a pass, which has no task, is
-# named by its unit. Each tab a herdr spawn creates is appended to the tab record through `herdr-tabs.sh
-# record`, `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-id>/herdr-tabs`; a pass has no record. A tab
+# `claude --name` of a herdr spawn, and the `--name` of a printed manual line; a pass and an onboarding, which
+# have no task, are named by their unit. Each tab a herdr spawn creates is appended to the tab record through
+# `herdr-tabs.sh record`, `<unit> <tab_id> <pane_id>` in `<root>/<key>/.harness/<T-id>/herdr-tabs`; a pass and an
+# onboarding have no record. A tab
 # with no tab id, or a record that fails, is one line on stderr and the unit still starts.
 #
 # The agent starts with `herdr agent start --timeout 120000`. A start that answers `agent_not_ready` stopped at a
@@ -127,10 +137,16 @@ while [ $# -gt 0 ]; do
 done
 case "$max" in ''|*[!0-9]*) die "--max takes a number, not '$max'" ;; esac
 case "$step" in
-  ''|triage|chart|grill|plan-check|decompose|lead|pass) ;;
-  *) die "--step takes triage, chart, grill, plan-check, decompose, lead or pass, not '$step'" ;;
+  ''|triage|chart|grill|plan-check|decompose|lead|pass|onboard) ;;
+  *) die "--step takes triage, chart, grill, plan-check, decompose, lead, pass or onboard, not '$step'" ;;
 esac
-if [ "$step" = pass ]; then
+if [ "$step" = onboard ]; then
+  [ -z "$parent" ] || die "--step onboard is a repo's onboarding, not a step of a task; drop --task"
+  case "$scope" in
+    '') die "--step onboard needs --scope <key>" ;;
+    -*|*[!A-Za-z0-9_-]*) die "--scope takes <key> for --step onboard, not '$scope'" ;;
+  esac
+elif [ "$step" = pass ]; then
   [ -z "$parent" ] || die "--step pass is a repo agent's memory pass, not a step of a task; drop --task"
   case "$scope" in
     */*/*|/*|*/) die "--scope takes <key>/<agent>, not '$scope'" ;;
@@ -138,7 +154,7 @@ if [ "$step" = pass ]; then
     *) die "--step pass needs --scope <key>/<agent>" ;;
   esac
 else
-  [ -z "$scope" ] || die "--scope belongs to --step pass"
+  [ -z "$scope" ] || die "--scope belongs to --step pass or --step onboard"
   [ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --task it is a step of"
 fi
 [ -z "$parent" ] || [ -z "$all" ] || die "--task names one task and --all takes every ready one; pass one of them"
@@ -316,6 +332,16 @@ pass_unit() { # <key>/<agent>
     "$(printf 'pass_%s-%s' "$(lower "$pu_alias")" "$pu_agent" | cut -c1-31)" "/claude-factory:memory-daily $1"
 }
 
+# the onboarding of one registered repo (references/onboard.md): it reads the registered clone and reports into
+# the state clone, so it runs in the clone
+onboard_unit() { # <key>
+  ou_cwd=$(clone_path "$1")
+  [ -n "$ou_cwd" ] || die "repo '$1' has no path: in $state/repos.yml, so there is no clone to onboard"
+  [ -d "$ou_cwd" ] || die "the registered clone of '$1' is not at $ou_cwd"
+  unit "onboard-$1" "$ou_cwd" sonnet - onboard "$(printf 'onboard_%s' "$(lower "$1")" | cut -c1-31)" \
+    "/claude-factory:factory onboard $1"
+}
+
 # the ready, unowned tasks of the whole state repo, one `<id> <repo> <status> <archetype> <goal>` per line
 list_ready() {
   task_files | while IFS= read -r t; do
@@ -368,7 +394,9 @@ fi
 units=$(mktemp)
 trap 'rm -f "$units"' EXIT
 
-if [ "$step" = pass ]; then
+if [ "$step" = onboard ]; then
+  onboard_unit "$scope" > "$units"
+elif [ "$step" = pass ]; then
   pass_unit "$scope" > "$units"
 elif [ -n "$queue" ]; then
   [ -f "$bin/queue-next.sh" ] || die "bin/queue-next.sh is not there, so there is no queue to take from"
@@ -504,8 +532,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # the unit's own earlier tab and the step tabs of its parent close before it starts again, and before the
   # room check and the claim: a unit whose tab is still at work is neither claimed nor started twice, and every
   # tab that closes gives its leases back, so a finished step does not hold the slot its successor needs; a pass
-  # has no record
-  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ]; then
+  # and an onboarding have no record
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" != pass ] && [ "$role" != onboard ]; then
     t=${id%%-[a-z]*}
     if is_block_id "$t"; then t=${t%-*}; fi
     closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-chart" "$t-grill" "$t-plan-check" "$t-decompose" \
@@ -520,6 +548,20 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       printf 'session-monitor: %s has a tab herdr-tabs.sh kept: %s\n' "$id" "$kept" >&2
       continue
     fi
+  fi
+  # an onboarding has no record either: the live agent of its name is the one to look at. Idle or done, its run
+  # ended and its tab closes, which gives the slot back; at work or blocked, it runs already
+  if [ "$mode" = herdr ] && [ -z "$dry" ] && [ "$role" = onboard ] && got=$(herdr agent get "$name" 2>/dev/null); then
+    case "$(printf '%s' "$got" | json result.agent.agent_status)" in
+      idle|done)
+        herdr tab close "$(printf '%s' "$got" | json result.agent.tab_id)" >/dev/null 2>&1 || :
+        [ ! -f "$state/.capacity/sessions/$id" ] || s_used=$((s_used - 1))
+        unlease "$id" ;;
+      *)
+        printf '%s skipped %s\n' "$id" "$cwd"
+        printf 'session-monitor: %s runs already\n' "$id" >&2
+        continue ;;
+    esac
   fi
   need=1 leads=0
   [ "$role" != repo-lead ] || need=2 leads=1
@@ -553,7 +595,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
   s_used=$((s_used + 1)) l_used=$((l_used + leads))
-  if [ "$role" = pass ]; then
+  if [ "$role" = pass ] || [ "$role" = onboard ]; then
     label=$id
   else
     label=$(sh "$bin/herdr-tabs.sh" name "$id" --state "$state")
@@ -578,6 +620,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   case "$role" in
     triage|chart|grill|plan-check|decompose)
       set -- "$@" --env "FACTORY_TASK=${id%-"$role"}" --env "FACTORY_STEP=$(step_line "$role" "${id%-"$role"}")" ;;
+    onboard)
+      set -- "$@" --env FACTORY_TASK=none --env FACTORY_FLOW=onboard --env "FACTORY_STEP=Onboarding ${id#onboard-}" ;;
   esac
   created=$(herdr "$@" || :)
   pane=$(printf '%s' "$created" | json result.root_pane.pane_id)
@@ -587,7 +631,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     rc=2; continue
   fi
   tab=$(printf '%s' "$created" | json result.tab.tab_id)
-  if [ "$role" != pass ] && { [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; }; then
+  if [ "$role" != pass ] && [ "$role" != onboard ] && { [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --state "$state"; }; then
     echo "session-monitor: no tab record for $id, so its tab is not closed by the scripts" >&2
   fi
   if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" --name "$label" ${FACTORY_CLAUDE_ARGS:-} 2>&1 >/dev/null); then
@@ -611,7 +655,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   fi
   # plan 3.7: reattach after a herdr restart finds the agent by its session id when the pane id changed
   sid=$(herdr agent get "$name" 2>/dev/null | json result.agent.agent_session.value || :)
-  [ "$role" = pass ] || [ -z "$sid" ] || sh "$bin/herdr-tabs.sh" session "$id" "$sid" --state "$state" || :
+  [ "$role" = pass ] || [ "$role" = onboard ] || [ -z "$sid" ] || sh "$bin/herdr-tabs.sh" session "$id" "$sid" --state "$state" || :
   printf '%s spawned %s\n' "$id" "$cwd"
 done < "$units"
 end_pass $rc

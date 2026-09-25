@@ -27,12 +27,12 @@ identity_line() {
   [ -n "$host" ] || host=localhost
   printf 'Session identity: session_id %s, owner string factory@%s:%s, use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
 }
-register_ui() { # <state>: the session's answer inbox, under `ui: docker` in herdr, with the task and the solve
-  # step of a step session session-monitor.sh started (FACTORY_TASK, FACTORY_STEP)
+register_ui() { # <state>: the session's answer inbox, under `ui: docker` in herdr, with the flow, the task and the
+  # step of a session session-monitor.sh started (FACTORY_FLOW, default solve, FACTORY_TASK, FACTORY_STEP)
   ui=$(sed -n 's/^ui:[[:space:]]*//p' "$1/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
   if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
     set -- --session "$sid" --pane "${HERDR_PANE_ID:-}"
-    [ -z "${FACTORY_STEP:-}" ] || set -- "$@" --flow solve --task "${FACTORY_TASK:-}" --step "$FACTORY_STEP"
+    [ -z "${FACTORY_STEP:-}" ] || set -- "$@" --flow "${FACTORY_FLOW:-solve}" --task "${FACTORY_TASK:-}" --step "$FACTORY_STEP"
     sh "$(dirname -- "$0")/ui-session.sh" "$@" >/dev/null
   fi
 }
