@@ -147,7 +147,7 @@ while charting that never was a ticket goes in with `map.sh set <R-id> out-of-sc
 
 Nobody has to type it: the CEO dispatches the chart step session for a request (solve-next step 3b,
 `/claude-factory:wayfinder chart <R-id> <T-id>`, once per request, for the request's first parent) and
-dispatches it again while `map.sh clear <R-id>` does not exit 0. It runs at request level, in the CEO's
+dispatches it again while `map.sh clear <R-id>` does not exit 0 or the map is not yet `planned`. It runs at request level, in the CEO's
 workspace, before any lead exists; a lead never charts or edits a map. The human may start it by hand in the
 state clone the same way.
 

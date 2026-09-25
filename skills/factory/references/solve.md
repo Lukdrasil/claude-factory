@@ -23,7 +23,7 @@ worktree means no spawn.
 - **Triage.** `<plugin-root>/bin/investigate.sh <repo-dir> <symbol>` gathers the recon a `triage-analyst`
   judges into the parent's `## Context`.
 - **Chart.** A parent with a `request:` whose map is not cleared gets step 3b: the request map of
-  `claude-factory:wayfinder` (`chart <R-id> <T-id>`), until `<plugin-root>/bin/map.sh clear <R-id>` exits 0.
+  `claude-factory:wayfinder` (`chart <R-id> <T-id>`), until `<plugin-root>/bin/map.sh clear <R-id>` exits 0 and the chart has set the map `planned`.
   The grill of such a parent starts from `<plugin-root>/bin/map.sh export <R-id> <key>`. You never edit a map by
   hand.
 - **Grill.** `<plugin-root>/bin/plan-lint.sh <plan-ready.md>` comes back clean before the cut.
