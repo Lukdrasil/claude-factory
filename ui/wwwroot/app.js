@@ -5,13 +5,14 @@ import { renderSetupStrip, renderSetupTab } from './setup.js';
 import { renderOrg } from './org.js';
 import { pickRequest, renderMap, renderPlan } from './requests.js';
 import { renderMemory } from './memory.js';
+import { addRepoLine, aliasProblem, onboardLine, proposalLine, repoForm, urlProblem } from './repos.js';
 
 const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
 const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
-  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, stale: false,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, stale: false,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -44,7 +45,7 @@ function keep() {
 /** A selector for the focused control that finds its twin after a render: its card, question and data attributes. */
 function focusPath(el) {
   if (!el || el === document.body || !app.contains(el)) return null;
-  const own = ['act', 'k', 'tab', 'drawer', 'request', 'kind', 'scope'].filter((k) => el.dataset[k] !== undefined)
+  const own = ['act', 'k', 'key', 'tab', 'drawer', 'request', 'kind', 'scope'].filter((k) => el.dataset[k] !== undefined)
     .map((k) => `[data-${k}="${CSS.escape(el.dataset[k])}"]`).join('');
   if (!own && el.tagName !== 'TEXTAREA') return null;
   const ask = el.closest('[data-ask]')?.dataset.ask;
@@ -176,7 +177,7 @@ function renderTab() {
     Plan: () => renderPlan(S.requests, rid, map),
     Org: () => renderOrg(S.org),
     Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
-    Setup: () => renderSetupTab(S.setup),
+    Setup: () => renderSetupTab(S.setup, S.sessions, S.org?.ceo, S.repoNote),
   }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity, S.org?.ceo, S.intakeNote);
   el.setAttribute('role', 'tabpanel');
   el.setAttribute('aria-label', S.tab);
@@ -206,7 +207,7 @@ function render() {
   // why: every render replaces the page; the focus goes back to the same control, else to the first one of its question
   const to = app.querySelector(focus.at) || (focus.question && app.querySelector(`${focus.question} button:not(:disabled)`));
   to?.focus({ preventScroll: true });
-  if (to?.tagName === 'TEXTAREA') to.setSelectionRange(focus.caret, focus.caret);
+  if (to?.tagName === 'TEXTAREA' || (to?.tagName === 'INPUT' && to.type === 'text')) to.setSelectionRange(focus.caret, focus.caret);
 }
 
 /** Closes the drawer and gives the focus back to the row that opens it. */
@@ -302,6 +303,38 @@ async function startPass(b) {
   render();
 }
 
+/** A line of the Setup tab's Repositories section, a free message to the CEO like the New request box sends; true once sent. */
+async function tellCeo(text) {
+  try {
+    await api(`/api/answers/${S.org.ceo.sid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ask: '', text }),
+    });
+    S.repoNote = { text: `Sent to the CEO: ${text}. It picks it up when it is idle.` };
+    return true;
+  } catch (err) {
+    S.repoNote = { text: `Couldn't send "${text}": ${err.message}.`, error: true };
+    return false;
+  }
+}
+
+/** Send of the Add repository form: the C1 add repo line, the draft kept until the CEO has it. */
+async function sendRepo() {
+  if (!repoForm.url.trim() || urlProblem(repoForm.url.trim()) || aliasProblem(repoForm.alias)) return;
+  if (await tellCeo(addRepoLine(repoForm))) Object.assign(repoForm, { open: false, url: '', alias: '' });
+  render();
+}
+
+/** Make it a request of one proposal of a report, at the priority picked for that report, P3 unless picked. */
+async function propose(b) {
+  const key = b.dataset.key;
+  const p = (S.setup.onboarding || []).find((o) => o.repo === key)?.proposals.find((x) => x.id === b.dataset.id);
+  if (!p) return;
+  await tellCeo(proposalLine(key, p, repoForm.prio[key] || 'P3'));
+  render();
+}
+
 function toggle(staged, act, q, text) {
   const item = staged.items[q];
   if (item && item.kind === act && item.text === text) delete staged.items[q];
@@ -322,6 +355,13 @@ app.addEventListener('click', (e) => {
   if (act === 'next') return next();
   if (act === 'pass') return startPass(b);
   if (act === 'intake') return sendRequest();
+  if (act === 'add-repo-form') {
+    repoForm.open = !repoForm.open;
+    return render();
+  }
+  if (act === 'add-repo') return sendRepo();
+  if (act === 'onboard') return tellCeo(onboardLine(b.dataset.key)).then(render);
+  if (act === 'propose') return propose(b);
   if (act === 'redraw') return redraw(b.closest('[data-visual]'));
   if (act === 'close') return close();
   const key = b.closest('[data-ask]')?.dataset.ask;

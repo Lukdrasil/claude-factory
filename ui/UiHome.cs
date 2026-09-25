@@ -7,6 +7,12 @@ public sealed record DoctorFile(string? At, string? Root, List<DoctorFileStep>? 
 
 public sealed record DoctorFileStep(string? Id, string? State, string? Detail, string? Fix);
 
+/// <summary><c>setup/add-repo/&lt;key&gt;.json</c> as read (contract C3); every field may be missing.</summary>
+public sealed record AddRepoFile(string? At, string? Key, string? Url, string? Path, string? State, string? Detail);
+
+/// <summary>One add-repo status file for the page, a missing field <c>""</c>.</summary>
+public sealed record AddRepoInfo(string Key, string Url, string Path, string State, string Detail, string At);
+
 public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Answer, string? Held, AskView View);
 
 public sealed record VisualInfo(string Row, string Version, string Status);
@@ -236,6 +242,34 @@ public sealed partial class UiHome(string root)
         {
             return ([], "");
         }
+    }
+
+    /// <summary>
+    /// Every <c>setup/add-repo/*.json</c> factory-add-repo.sh wrote, newest <c>at</c> first, then by key. A dot file (its
+    /// temp file before the rename) and a file that cannot be read or parsed are skipped.
+    /// </summary>
+    public List<AddRepoInfo> AddRepos()
+    {
+        var dir = Path.Combine(root, "setup", "add-repo");
+        if (!Directory.Exists(dir))
+        {
+            return [];
+        }
+        var list = new List<AddRepoInfo>();
+        foreach (var file in Directory.EnumerateFiles(dir, "*.json").Where(f => !Path.GetFileName(f).StartsWith('.')))
+        {
+            try
+            {
+                if (JsonSerializer.Deserialize(File.ReadAllText(file), UiJson.Default.AddRepoFile) is { } a)
+                {
+                    list.Add(new AddRepoInfo(a.Key ?? "", a.Url ?? "", a.Path ?? "", a.State ?? "", a.Detail ?? "", a.At ?? ""));
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+            {
+            }
+        }
+        return list.OrderByDescending(a => a.At, StringComparer.Ordinal).ThenBy(a => a.Key, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>The session registered with flow <c>ceo</c>, the most recently updated one when there are several, or null.</summary>

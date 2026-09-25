@@ -350,6 +350,23 @@ sh "$bin/ui-session.sh" --session s-ceo --pane w1:p9 --flow ceo --task ceo || ba
 mkdir -p "$ui/setup"
 printf '{\n  "at": "2026-09-25T10:00:00Z",\n  "root": "%s",\n  "steps": [\n    {"id": "git", "state": "done", "detail": "git 2.51", "fix": ""},\n    {"id": "herdr", "state": "missing", "detail": "herdr is not on PATH", "fix": "install herdr"},\n    {"id": "repo:ecs:alias", "state": "failing", "detail": "no alias", "fix": "factory-add-repo.sh ecs --alias ECS"}\n  ]\n}\n' \
   "$tmp" > "$ui/setup/doctor.json"
+# the add-repo status files of factory-add-repo.sh (C3) and two onboarding reports (C5), written here as the contracts say
+mkdir -p "$ui/setup/add-repo"
+printf '{"at":"2026-09-25T09:00:00Z","key":"gone","url":"https://example.test/g/gone.git","path":"/c/gone","state":"failed","detail":"cannot reach https://example.test/g/gone.git: 404"}\n' \
+  > "$ui/setup/add-repo/gone.json"
+printf '{"at":"2026-09-25T11:00:00Z","key":"fresh","url":"https://example.test/g/fresh.git","path":"/c/fresh","state":"pending","detail":"/c/fresh"}\n' \
+  > "$ui/setup/add-repo/fresh.json"
+printf '{"key":"half","state":"cloning"}\n' > "$ui/setup/add-repo/half.json"
+printf '{"key":"broken",' > "$ui/setup/add-repo/broken.json"
+printf -- '---\nrepo: ecs\nstatus: done\nat: 2026-09-25T12:00:00Z\nsession: 5f1c\nstack: dotnet\n---\n# Onboarding of ecs\n\n%s\n\n## Summary\nA **dotnet** service.\n\n## Checks\n%s\n%s\nnot a check line\n\n## Proposals\n%s\n' \
+  'An onboarding session reports and proposes; it changes nothing. Send a proposal as a request to have a lead do it.' \
+  '- done registration: ecs is in repos.yml' \
+  '- failing ci: <script>x</script> never tests Fix: add a test job' \
+  '- P1 ci: run the tests in "CI"' > "$state3/repos/ecs/onboarding.md"
+printf -- '---\nrepo: claude-factory\nstatus: running\nat: 2026-09-25T12:30:00Z\n---\n# Onboarding of claude-factory\n' \
+  > "$state3/repos/claude-factory/onboarding.md"
+git -C "$state3" add repos/ecs/onboarding.md repos/claude-factory/onboarding.md && git -C "$state3" commit -qm 'fixture: onboarding reports' \
+  || bad 'the onboarding reports are committed'
 leases_before=$(find "$state3/.capacity" -type f | sort)
 up --state "$state3"; rc=$?
 is 'ui-up.sh over the org state exits 0'                      "$rc" 0
@@ -432,8 +449,21 @@ is 'reading the org leaves every lease in place'              "$(find "$state3/.
 is 'the org counts what capacity.sh counts'                   "$(j 'b.capacity.roles[0].used+"/"+b.capacity.roles[0].cap')" "$(sh "$bin/capacity.sh" count repo-lead --state "$state3")"
 
 is 'GET /api/setup over the org state is 200'                 "$(api /api/setup)" 200
-is 'setup keeps its fields and adds the contract'"'"'s'           "$(j 'Object.keys(b).join(",")')" 'root,reposYml,toolsets,doctorNotice,steps,doctorAt,capacity,passes'
-is 'setup carries the doctor steps'                           "$(j 'b.steps.map(s=>s.id+":"+s.state).join(" ")')" 'git:done herdr:missing repo:ecs:alias:failing'
+is 'setup keeps its fields and adds the contract'"'"'s'           "$(j 'Object.keys(b).join(",")')" 'root,reposYml,toolsets,doctorNotice,steps,doctorAt,capacity,passes,addRepos,onboarding'
+is 'an add-repo entry has the fields of C6, in order'         "$(j 'Object.keys(b.addRepos[0]).join(",")')" 'key,url,path,state,detail,at'
+is 'addRepos come newest first, a broken file skipped'        "$(j 'b.addRepos.map(a=>a.key+":"+a.state).join(" ")')" 'fresh:pending gone:failed half:cloning'
+is 'an add-repo entry reads its file'                         "$(j 'b.addRepos[1]')" \
+  '{"key":"gone","url":"https://example.test/g/gone.git","path":"/c/gone","state":"failed","detail":"cannot reach https://example.test/g/gone.git: 404","at":"2026-09-25T09:00:00Z"}'
+is 'a missing field of an add-repo file reads empty'          "$(j 'b.addRepos[2]')" '{"key":"half","url":"","path":"","state":"cloning","detail":"","at":""}'
+is 'an onboarding report has the fields of C6, in order'      "$(j 'Object.keys(b.onboarding[0]).join(",")')" 'repo,status,at,stack,summaryHtml,checks,proposals'
+is 'the reports come in repo key order'                       "$(j 'b.onboarding.map(o=>o.repo+":"+o.status).join(" ")')" 'claude-factory:running ecs:done'
+is 'a report reads its frontmatter'                           "$(j 'const o=b.onboarding[1];[o.at,o.stack].join(" ")')" '2026-09-25T12:00:00Z dotnet'
+is 'the summary is rendered markdown'                         "$(j 'b.onboarding[1].summaryHtml.trim()')" '<p>A <strong>dotnet</strong> service.</p>'
+is 'the checks are the lines the C5 regex matches, the fix split off, as text' "$(j 'b.onboarding[1].checks')" \
+  '[{"state":"done","id":"registration","detail":"ecs is in repos.yml","fix":""},{"state":"failing","id":"ci","detail":"<script>x</script> never tests","fix":"add a test job"}]'
+is 'the proposals are the lines the C5 regex matches'         "$(j 'b.onboarding[1].proposals')" '[{"id":"P1","area":"ci","text":"run the tests in \"CI\""}]'
+is 'a report without sections has empty lists and no summary' "$(j 'const o=b.onboarding[0];[o.summaryHtml,o.checks.length,o.proposals.length,o.stack].join("|")')" '|0|0|'
+is 'setup carries the doctor steps'                          "$(j 'b.steps.map(s=>s.id+":"+s.state).join(" ")')" 'git:done herdr:missing repo:ecs:alias:failing'
 is 'a step has id, state, detail and fix'                     "$(j 'b.steps[1]')" '{"id":"herdr","state":"missing","detail":"herdr is not on PATH","fix":"install herdr"}'
 is 'setup carries the doctor date'                            "$(j 'b.doctorAt')" '2026-09-25T10:00:00Z'
 is 'setup carries the capacity of the org'                    "$(j 'b.capacity.sessions.used+"/"+b.capacity.roles.length')" 1/4

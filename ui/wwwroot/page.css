@@ -89,6 +89,24 @@ ul { margin: 0; padding-left: 18px; }
 .steps .dt, .steps .fix { display: block; font-size: 12px; color: var(--muted); }
 .startbox { padding: 8px 12px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent-soft); }
 .startbox p { margin: 4px 0; }
+.repos { margin-bottom: 16px; }
+.repos-head { display: flex; align-items: center; gap: 10px; }
+.repos-head h3 { margin: 0; }
+.repo-form { display: flex; flex-wrap: wrap; align-items: end; gap: 6px 10px; margin: 8px 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.repo-form label { display: grid; gap: 2px; font-size: 12px; color: var(--muted); }
+.repo-form input { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--bg); color: inherit; font: 13px var(--mono); }
+.repo-form input[data-k="url"] { width: min(46ch, 100%); }
+.repo-form input[data-k="alias"] { width: 8ch; }
+.repo-form p { flex-basis: 100%; margin: 0; }
+.repo-form p:empty { display: none; }
+.repo-rows { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.repo-row { padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow-wrap: anywhere; }
+.repo-row > p { margin: 0 0 6px; }
+.repo-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.repo-row details { margin-top: 6px; }
+.repo-row summary { cursor: pointer; }
+.proposals h4 { margin: 8px 0 4px; }
+.proposals ul { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
 
 .grid-wrap { overflow-x: auto; max-width: 100%; }
 table { border-collapse: collapse; min-width: 1100px; width: 100%; background: var(--panel); }

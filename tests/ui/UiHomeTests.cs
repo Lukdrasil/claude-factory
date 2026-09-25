@@ -1,5 +1,7 @@
+using System.Runtime.Versioning;
 using Xunit;
 
+[SupportedOSPlatform("linux")]
 public sealed class UiHomeTests : IDisposable
 {
     readonly string _ui = Directory.CreateTempSubdirectory("ui-home-").FullName;
@@ -104,5 +106,63 @@ public sealed class UiHomeTests : IDisposable
         Assert.Equal("shut", Frontmatter.Read(path)["status"]);
     }
 
-    public void Dispose() => Directory.Delete(_ui, recursive: true);
+    void AddRepo(string name, string json)
+    {
+        var dir = Directory.CreateDirectory(Path.Combine(_ui, "setup", "add-repo")).FullName;
+        File.WriteAllText(Path.Combine(dir, name), json);
+    }
+
+    [Fact]
+    public void Add_repo_files_read_every_field_newest_first()
+    {
+        AddRepo("old.json", "{\"at\":\"2026-09-24T09:00:00Z\",\"key\":\"old\",\"url\":\"https://example.test/g/old.git\",\"path\":\"/c/old\",\"state\":\"failed\",\"detail\":\"cannot reach https://example.test/g/old.git: 404\"}");
+        AddRepo("demo.json", "{\"at\":\"2026-09-25T10:00:00Z\",\"key\":\"demo\",\"url\":\"https://example.test/g/demo.git\",\"path\":\"/c/demo\",\"state\":\"cloning\",\"detail\":\"/c/demo\"}\n");
+        AddRepo("mid.json", "{\"key\":\"mid\",\"state\":\"pending\",\"at\":\"2026-09-25T08:00:00Z\",\"detail\":\"/c/mid\",\"path\":\"/c/mid\",\"url\":\"ssh://git@example.test/g/mid.git\"}");
+
+        Assert.Equal(
+            [
+                new AddRepoInfo("demo", "https://example.test/g/demo.git", "/c/demo", "cloning", "/c/demo", "2026-09-25T10:00:00Z"),
+                new AddRepoInfo("mid", "ssh://git@example.test/g/mid.git", "/c/mid", "pending", "/c/mid", "2026-09-25T08:00:00Z"),
+                new AddRepoInfo("old", "https://example.test/g/old.git", "/c/old", "failed", "cannot reach https://example.test/g/old.git: 404", "2026-09-24T09:00:00Z"),
+            ],
+            new UiHome(_ui).AddRepos());
+    }
+
+    [Fact]
+    public void An_add_repo_file_with_missing_fields_reads_them_as_empty_strings()
+    {
+        AddRepo("demo.json", "{\"key\":\"demo\",\"state\":\"pending\"}");
+
+        Assert.Equal([new AddRepoInfo("demo", "", "", "pending", "", "")], new UiHome(_ui).AddRepos());
+    }
+
+    [Fact]
+    public void An_unreadable_or_broken_add_repo_file_a_temp_file_and_another_extension_are_skipped()
+    {
+        AddRepo("good.json", "{\"at\":\"2026-09-25T10:00:00Z\",\"key\":\"good\",\"url\":\"u\",\"path\":\"p\",\"state\":\"registered\",\"detail\":\"\"}");
+        AddRepo("locked.json", "{\"key\":\"locked\",\"state\":\"pending\"}");
+        File.SetUnixFileMode(Path.Combine(_ui, "setup", "add-repo", "locked.json"), UnixFileMode.None);
+        AddRepo("broken.json", "{\"key\":\"broken\",");
+        AddRepo("number.json", "{\"key\":5}");
+        AddRepo("null.json", "null");
+        AddRepo(".half.json", "{\"key\":\"half\",\"state\":\"cloning\"}");
+        AddRepo("notes.txt", "{\"key\":\"notes\",\"state\":\"cloning\"}");
+
+        Assert.Equal(["good"], new UiHome(_ui).AddRepos().Select(a => a.Key));
+    }
+
+    [Fact]
+    public void Without_an_add_repo_folder_the_list_is_empty()
+    {
+        Assert.Empty(new UiHome(_ui).AddRepos());
+    }
+
+    public void Dispose()
+    {
+        foreach (var file in Directory.EnumerateFiles(_ui, "*", SearchOption.AllDirectories))
+        {
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        Directory.Delete(_ui, recursive: true);
+    }
 }

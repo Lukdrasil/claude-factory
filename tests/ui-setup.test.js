@@ -155,6 +155,328 @@ async function fixture(page) {
   });
 
   await tabs(page);
+  await repos(page);
+}
+
+// --- the Repositories section of the Setup tab over fixture addRepos, onboarding reports and sessions --------------
+const REPOS_YML = ['demo', 'busy', 'dead', 'plain', 'bad', 'slow']
+  .map((k) => `${k}: {url: "https://example.test/g/${k}.git", default_branch: main, path: "/c/${k}"}`).join('\n') + '\n';
+const ADD_REPOS = [
+  { key: 'waits', url: 'https://example.test/g/waits.git', path: '/c/waits', state: 'pending', detail: '/c/waits', at: '2026-09-25T10:10:00Z' },
+  { key: 'nope', url: 'https://example.test/g/nope.git', path: '/c/nope', state: 'pending', detail: '/c/nope', at: '2026-09-25T10:08:00Z' },
+  { key: 'copy', url: 'https://example.test/g/copy.git', path: '/c/copy', state: 'cloning', detail: '/c/copy', at: '2026-09-25T10:05:00Z' },
+  { key: 'demo', url: 'https://example.test/g/demo.git', path: '/c/demo', state: 'failed', detail: 'alias DEM is taken by <i>other</i>', at: '2026-09-25T10:00:00Z' },
+];
+const DEMO_REPORT = {
+  repo: 'demo', status: 'done', at: '2026-09-25T09:00:00Z', stack: 'dotnet', summaryHtml: '<p>A <strong>dotnet</strong> service.</p>',
+  checks: [
+    { state: 'done', id: 'registration', detail: 'demo is in repos.yml', fix: '' },
+    { state: 'done', id: 'alias', detail: 'alias DEM', fix: '' },
+    { state: 'missing', id: 'analyzers', detail: 'no AnalysisLevel', fix: 'run setup-guardrails' },
+    { state: 'failing', id: 'ci', detail: '<script>window.pwned = 1</script><img src=x onerror="window.pwned = 2"> never tests', fix: '<b>add</b> a test job' },
+  ],
+  proposals: [
+    { id: 'P1', area: 'analyzers', text: 'set up the analyzers with "warnings as errors"' },
+    { id: 'P2', area: 'ci', text: 'run the tests in CI' },
+  ],
+};
+const ONBOARDING = [
+  { repo: 'bad', status: 'failed', at: '2026-09-25T08:00:00Z', stack: 'unknown', summaryHtml: '<p>The clone cannot be read.</p>', checks: [], proposals: [] },
+  { repo: 'dead', status: 'running', at: '2026-09-25T08:30:00Z', stack: '', summaryHtml: '', checks: [], proposals: [] },
+  DEMO_REPORT,
+];
+const confirmAsk = (id, status, body = 'Clone it?') => ({
+  ask: id, task: 'none', flow: 'add-repo', step: 'add-repo: confirm the clone', status, modified: '2026-09-25T10:10:00Z',
+  body, sent: false, answer: status === 'open' ? null : 'Q1 B', held: null,
+  view: { kind: 'notice', preamble: '<p>Clone it?</p>', questions: [] },
+});
+const fakeSession = (sid, fields, asks = []) => ({ sid, pane: 'w1:p7', flow: '', task: 'none', step: '', agent: 'idle', asks, visual: null, ...fields });
+const SESSIONS = [
+  fakeSession('s-ceo', { flow: 'ceo', task: 'ceo', pane: 'w1:p3' }, [confirmAsk('add-repo-waits', 'open'), confirmAsk('add-repo-nope', 'answered'),
+    confirmAsk('add-repo-slow-wait', 'open', 'onboarding of slow waits for a free session: press Start onboarding again')]),
+  fakeSession('s-busy', { flow: 'onboard', step: 'Onboarding busy', agent: 'working' }),
+  fakeSession('s-dead', { flow: 'onboard', step: 'Onboarding dead', agent: 'gone' }),
+];
+const REPOS_SETUP = () => ({ steps: STEPS, doctorAt: '2026-09-24T21:40:00Z', reposYml: REPOS_YML, addRepos: ADD_REPOS, onboarding: ONBOARDING });
+
+/** A page on the Setup tab with `setup` merged into /api/setup (its `tick` bumped by `poke`, a field given as undefined
+ * dropped), the sessions and the CEO given, every post to /api/answers caught. */
+async function withRepos(context, setup, ceo, sessions = SESSIONS) {
+  const p = await context.newPage();
+  const posted = [];
+  const live = { ...setup, tick: 0 };
+  await p.route('**/api/setup', async (r) => {
+    const res = await r.fetch();
+    const json = { ...(await res.json()), ...live };
+    for (const [k, v] of Object.entries(live)) if (v === undefined) delete json[k];
+    await r.fulfill({ response: res, json });
+  });
+  await p.route('**/api/sessions', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sessions) }));
+  await p.route('**/api/org', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ capacity: { sessions: { used: 0, cap: 10 }, roles: [] }, leases: [], leads: [], ceo }) }));
+  await p.route('**/api/answers/**', (r) => {
+    const q = r.request();
+    posted.push({ path: new URL(q.url()).pathname, body: q.postDataJSON() });
+    return r.fulfill({ status: 201, contentType: 'application/json', body: '{"file":"1-msg.txt"}' });
+  });
+  await fresh(p);
+  await until('the Setup tab', () => p.getByRole('tab', { name: 'Setup' }).isVisible());
+  await p.getByRole('tab', { name: 'Setup' }).click();
+  await until('the Repositories section', () => p.locator('[data-repos]').isVisible());
+  const poke = () => { // why: a changed /api/setup and a file under /ui make the page fetch and render again
+    live.tick += 1;
+    fs.writeFileSync(path.join(UI, 'poke'), String(live.tick));
+  };
+  return { p, posted, poke };
+}
+
+const repoSection = (p) => p.locator('[data-repos]');
+const row = (p, key) => p.locator(`[data-repo-row="${key}"]`);
+const lastPost = async (posted, n = 1) => (await until('the post', () => posted.length >= n && posted))[n - 1];
+
+async function openForm(p) {
+  await repoSection(p).getByRole('button', { name: 'Add repository' }).click();
+  await until('the form', () => p.locator('[data-repos] input[data-k="url"]').isVisible());
+}
+
+async function repos(page) {
+  const context = page.context();
+
+  await check('the Repositories section sits above the doctor steps, with Add repository in its header', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    const order = await p.evaluate(() => {
+      const r = document.querySelector('[data-repos]');
+      const s = document.querySelector('[data-steps]');
+      return !!(r && s && r.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    const head = await repoSection(p).locator('header').getByRole('button', { name: 'Add repository' }).count();
+    const title = await repoSection(p).locator('header').innerText();
+    await p.close();
+    ok(order, 'the doctor steps come before the Repositories section');
+    ok(head === 1, `${head} Add repository buttons in the header`);
+    ok(/Repositories/.test(title), `header: ${title}`);
+  });
+
+  await check('the section has one row per repos.yml key, then the keys only an add-repo file names', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    const keys = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => e.dataset.repoRow)).finally(() => p.close());
+    ok(keys.join(' ') === 'demo busy dead plain bad slow waits nope copy', `rows: ${keys.join(' ')}`);
+  });
+
+  await check('without a CEO session every button of the section is disabled and it names the command that starts the CEO', async () => {
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), null);
+    await row(p, 'demo').locator('summary').click();
+    const buttons = await repoSection(p).locator('button').evaluateAll((bs) => bs.map((b) => `${b.textContent.trim()}=${b.disabled}`));
+    const selects = await repoSection(p).locator('select').evaluateAll((ss) => ss.map((s) => s.disabled));
+    const text = await repoSection(p).innerText();
+    await p.close();
+    for (const name of ['Add repository', 'Start onboarding', 'Start again', 'Run again', 'Make it a request']) {
+      ok(buttons.some((b) => b.startsWith(`${name}=`)), `no ${name} in: ${buttons.join(' | ')}`);
+    }
+    ok(buttons.every((b) => b.endsWith('=true')), `enabled: ${buttons.filter((b) => b.endsWith('=false')).join(' | ')}`);
+    ok(selects.length && selects.every(Boolean), `selects: ${selects.join(' ')}`);
+    ok(text.includes("claude '/claude-factory:factory ceo'"), `section: ${text.slice(0, 300)}`);
+    ok(!posted.length, 'something was posted');
+  });
+
+  await check('with a CEO session Add repository opens the form with Send disabled until a URL is there', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    await openForm(p);
+    const send = repoSection(p).getByRole('button', { name: 'Send' });
+    const before = await send.isDisabled();
+    await p.locator('[data-repos] input[data-k="url"]').fill('https://example.test/g/demo.git');
+    const after = await send.isDisabled();
+    const line = await repoSection(p).innerText();
+    await p.close();
+    ok(before, 'Send is enabled with no URL');
+    ok(!after, 'Send is disabled with a good URL');
+    ok(/key: demo\b/.test(line), `no key line in: ${line.slice(0, 400)}`);
+  });
+
+  const problems = [
+    ['https://me:glpat-x@example.test/g/demo.git', '', /Remove the user or token: the factory clones with your own git login, and the URL is stored in the state repo\./],
+    ['https://example.test/g/de mo.git', '', /only letters, digits and \. _ ~ : \/ @ \+ -/],
+    ["https://example.test/g/demo.git'; rm -rf ~; '", '', /only letters, digits and \. _ ~ : \/ @ \+ -/],
+    ['-uhttps://example.test/g/demo.git', '', /must not start with -/],
+    ['ftp://example.test/g/demo.git', '', /Use an https:\/\/, http:\/\/, ssh:\/\/ or user@host:path URL/],
+    ['https://example.test/g/my.repo.git', '', /must end in the repository name/],
+    ['https://example.test/g/demo.git', 'dem', /The alias is 2 to 4 capital letters/],
+    ['https://example.test/g/demo.git', 'DEMOS', /The alias is 2 to 4 capital letters/],
+  ];
+  for (const [url, alias, want] of problems) {
+    await check(`the form refuses ${JSON.stringify(url)}${alias ? ` with alias ${alias}` : ''}: ${want.source.slice(0, 60)}`, async () => {
+      const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+      await openForm(p);
+      await p.locator('[data-repos] input[data-k="url"]').fill(url);
+      await p.locator('[data-repos] input[data-k="alias"]').fill(alias);
+      const problem = await repoSection(p).locator('[data-problem]').innerText();
+      const send = repoSection(p).getByRole('button', { name: 'Send' });
+      const off = await send.isDisabled();
+      await send.click({ force: true }).catch(() => {});
+      await p.waitForTimeout(100);
+      await p.close();
+      ok(want.test(problem), `problem: ${problem}`);
+      ok(off, 'Send is enabled');
+      ok(!posted.length, `posted: ${JSON.stringify(posted)}`);
+    });
+  }
+
+  await check('the form takes ssh://, http:// and user@host:path URLs and names their key', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    await openForm(p);
+    const got = [];
+    for (const url of ['ssh://git@example.test/g/one.git', 'http://example.test/g/two', 'git@example.test:g/three.git']) {
+      await p.locator('[data-repos] input[data-k="url"]').fill(url);
+      got.push(`${await repoSection(p).locator('[data-problem]').innerText()}|${await repoSection(p).getByRole('button', { name: 'Send' }).isDisabled()}`);
+    }
+    const text = await repoSection(p).innerText();
+    await p.close();
+    ok(got.join(' ') === '|false |false |false', `problems: ${got.join(' ')}`);
+    ok(/key: three\b/.test(text), `no key line: ${text.slice(0, 300)}`);
+  });
+
+  await check('Send posts add repo https://example.test/g/demo.git alias DEM as a free message to the CEO sid', async () => {
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+    await openForm(p);
+    await p.locator('[data-repos] input[data-k="url"]').fill('https://example.test/g/demo.git');
+    await p.locator('[data-repos] input[data-k="alias"]').fill('DEM');
+    await repoSection(p).getByRole('button', { name: 'Send' }).click();
+    const got = await lastPost(posted);
+    const note = await until('the sent note', async () => {
+      const t = await repoSection(p).innerText();
+      return /Sent to the CEO/.test(t) && t;
+    }).finally(() => p.close());
+    ok(got.path === '/api/answers/s-ceo', `path: ${got.path}`);
+    ok(JSON.stringify(got.body) === JSON.stringify({ ask: '', text: 'add repo https://example.test/g/demo.git alias DEM' }), `body: ${JSON.stringify(got.body)}`);
+    ok(note.includes('It picks it up when it is idle'), `note: ${note.slice(0, 300)}`);
+  });
+
+  await check('Send without an alias posts add repo <url> alone', async () => {
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+    await openForm(p);
+    await p.locator('[data-repos] input[data-k="url"]').fill('git@example.test:g/three.git');
+    await repoSection(p).getByRole('button', { name: 'Send' }).click();
+    const got = await lastPost(posted).finally(() => p.close());
+    ok(got.body.text === 'add repo git@example.test:g/three.git', `text: ${got.body.text}`);
+  });
+
+  await check('the URL box keeps the focus, its text and its caret across a re-render', async () => {
+    const { p, poke } = await withRepos(context, REPOS_SETUP(), CEO);
+    await openForm(p);
+    const input = p.locator('[data-repos] input[data-k="url"]');
+    await input.click();
+    await input.pressSequentially('https://example.test/g/de');
+    await input.press('ArrowLeft');
+    await input.press('ArrowLeft');
+    await input.evaluate((el) => { el.dataset.old = ''; });
+    poke();
+    await until('a re-render', () => p.evaluate(() => !document.querySelector('[data-repos] input[data-old]')));
+    const got = await p.evaluate(() => {
+      const a = document.activeElement;
+      return { k: a.dataset.k, v: a.value, c: a.selectionStart };
+    }).finally(() => p.close());
+    ok(got.k === 'url' && got.v === 'https://example.test/g/de' && got.c === 23, `focus: ${JSON.stringify(got)}`);
+  });
+
+  await check('every row reads its state: confirm, not confirmed, cloning, onboarding runs, waits for a session, ended without a report, report, not onboarded', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    const got = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => `${e.dataset.repoRow}=${e.dataset.state}`));
+    const text = {};
+    for (const k of ['waits', 'nope', 'copy', 'busy', 'dead', 'plain', 'bad', 'slow']) text[k] = await row(p, k).innerText();
+    await p.close();
+    ok(got.join(' ') === 'demo=report busy=running dead=ended plain=none bad=report slow=waits waits=confirm nope=unconfirmed copy=cloning', `states: ${got.join(' ')}`);
+    ok(/Waiting for your confirm/.test(text.waits), `waits: ${text.waits}`);
+    ok(/Not confirmed\. Send again\./.test(text.nope), `nope: ${text.nope}`);
+    ok(/Cloning since 2026-09-25 10:05 UTC/.test(text.copy), `copy: ${text.copy}`);
+    ok(/Onboarding runs/.test(text.busy) && !/Start/.test(text.busy), `busy: ${text.busy}`);
+    ok(/Onboarding ended without a report/.test(text.dead) && /Start again/.test(text.dead), `dead: ${text.dead}`);
+    ok(/Not onboarded/.test(text.plain) && /Start onboarding/.test(text.plain), `plain: ${text.plain}`);
+    ok(/failed/i.test(text.bad) && /The clone cannot be read\./.test(text.bad), `bad: ${text.bad}`);
+    ok(/Onboarding waits for a free session/.test(text.slow) && /Start onboarding/.test(text.slow), `slow: ${text.slow}`);
+  });
+
+  await check('a pending add-repo file with no ask at all reads Not confirmed. Send again.', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO, [SESSIONS[1]]);
+    const got = await row(p, 'waits').getAttribute('data-state');
+    const text = await row(p, 'waits').innerText().finally(() => p.close());
+    ok(got === 'unconfirmed' && /Not confirmed\. Send again\./.test(text), `waits: ${got} ${text}`);
+  });
+
+  await check('Waiting for your confirm opens the setup drawer on the confirm ask', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    await row(p, 'waits').getByRole('button', { name: /confirm/i }).click();
+    await until('the setup drawer', async () => /setup/i.test(await drawer(p).getAttribute('aria-label')));
+    const shown = await card(p, 's-ceo/add-repo-waits').isVisible().finally(() => p.close());
+    ok(shown, 'the confirm ask is not in the drawer');
+  });
+
+  await check('a failed add-repo file is a banner above the report of its row, its detail as text', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    const r = row(p, 'demo');
+    const banner = await r.locator('[data-failed]').innerText();
+    const first = await r.evaluate((el) => el.firstElementChild && el.firstElementChild.hasAttribute('data-failed'));
+    const italic = await r.locator('[data-failed] i').count();
+    const state = await r.getAttribute('data-state');
+    const report = await r.locator('[data-report]').count();
+    await p.close();
+    ok(banner.includes('alias DEM is taken by <i>other</i>'), `banner: ${banner}`);
+    ok(first, 'the banner is not the first thing in the row');
+    ok(!italic, 'the detail was rendered as markup');
+    ok(state === 'report' && report === 1, `state ${state}, ${report} reports`);
+  });
+
+  await check('the report shows its counts, summary, checks and proposals, a check line with <script> as text', async () => {
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
+    const r = row(p, 'demo');
+    const head = await r.innerText();
+    await r.locator('summary').click();
+    const checks = await r.locator('[data-check-id]').evaluateAll((li) => li.map((l) => `${l.dataset.checkId}=${l.dataset.state}`));
+    const ci = await r.locator('[data-check-id="ci"]').innerText();
+    const summary = await r.locator('strong').allInnerTexts();
+    const proposals = await r.locator('[data-proposal]').allInnerTexts();
+    const report = await r.locator('[data-report]').innerText();
+    const injected = await p.evaluate(() => ({ pwned: window.pwned, scripts: document.querySelectorAll('[data-repos] script, [data-repos] img, [data-repos] b').length }));
+    await p.close();
+    for (const s of ['2 done', '1 missing', '1 failing']) ok(head.includes(s), `no ${s} in: ${head}`);
+    ok(checks.join(' ') === 'registration=done alias=done analyzers=missing ci=failing', `checks: ${checks.join(' ')}`);
+    ok(ci.includes('<script>window.pwned = 1</script><img src=x onerror="window.pwned = 2"> never tests') && ci.includes('<b>add</b> a test job'), `ci: ${ci}`);
+    ok(injected.pwned === undefined && injected.scripts === 0, `injected: ${JSON.stringify(injected)}`);
+    ok(summary.includes('dotnet'), `summary: ${summary.join(' | ')}`);
+    ok(proposals.length === 2 && proposals[0].includes('set up the analyzers with "warnings as errors"'), `proposals: ${proposals.join(' | ')}`);
+    ok(report.includes('An onboarding session reports and proposes; it changes nothing.'), `report: ${report.slice(0, 300)}`);
+  });
+
+  await check('Make it a request posts the intake line at P3, then at the priority picked, and the report stays open', async () => {
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+    const r = row(p, 'demo');
+    await r.locator('summary').click();
+    await r.locator('[data-proposal="P1"]').getByRole('button', { name: 'Make it a request' }).click();
+    const first = await lastPost(posted);
+    await r.locator('select').selectOption('P1');
+    await r.locator('[data-proposal="P2"]').getByRole('button', { name: 'Make it a request' }).click();
+    const second = await lastPost(posted, 2).finally(() => p.close());
+    ok(first.path === '/api/answers/s-ceo' && first.body.ask === '', `post: ${JSON.stringify(first)}`);
+    ok(first.body.text === 'request: demo: set up the analyzers with "warnings as errors" (onboarding P1), priority P3', `text: ${first.body.text}`);
+    ok(second.body.text === 'request: demo: run the tests in CI (onboarding P2), priority P1', `text: ${second.body.text}`);
+  });
+
+  for (const [key, name] of [['plain', 'Start onboarding'], ['slow', 'Start onboarding'], ['dead', 'Start again'], ['demo', 'Run again']]) {
+    await check(`${name} of ${key} posts onboard repo ${key}`, async () => {
+      const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
+      await row(p, key).getByRole('button', { name }).click();
+      const got = await lastPost(posted).finally(() => p.close());
+      ok(JSON.stringify(got.body) === JSON.stringify({ ask: '', text: `onboard repo ${key}` }), `body: ${JSON.stringify(got.body)}`);
+    });
+  }
+
+  await check('with /api/setup of a server before addRepos and onboarding every repos.yml key reads Not onboarded', async () => {
+    const { steps, doctorAt, reposYml } = REPOS_SETUP();
+    const { p } = await withRepos(context, { steps, doctorAt, reposYml, addRepos: undefined, onboarding: undefined }, CEO);
+    const got = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => `${e.dataset.repoRow}=${e.dataset.state}`));
+    const errors = await p.locator('.error').allInnerTexts().finally(() => p.close());
+    ok(got.join(' ') === 'demo=none busy=running dead=none plain=none bad=none slow=waits', `states: ${got.join(' ')}`);
+    ok(!errors.length, `errors: ${errors.join(' | ')}`);
+  });
 }
 
 // --- the Setup and Memory tabs against the wave-2 shapes of /api/setup and /api/org, answered by the browser ------
@@ -385,6 +707,60 @@ async function state(page) {
       'late: {url: "https://example.invalid/acme/late.git", default_branch: main, path: "/late"}\n');
     await until('the row of late', () => repoRow(page, 'late').isVisible(), 3000);
     ok((await repoRow(page, 'late').getAttribute('data-toolset')) === 'false', 'late has a toolset');
+  });
+
+  // the Repositories section over the real server: repos/demo/onboarding.md and setup/add-repo/fresh.json as the
+  // shell wrote them, and every button writing the CEO's next msg file
+  const msgs = () => {
+    const dir = path.join(UI, 'sessions', 's-ceo', 'answers');
+    return fs.existsSync(dir)
+      ? fs.readdirSync(dir).filter((f) => /^\d+-msg\.txt$/.test(f)).sort((a, b) => parseInt(a, 10) - parseInt(b, 10)).map((f) => fs.readFileSync(path.join(dir, f), 'utf8'))
+      : [];
+  };
+  const sent = async (n) => (await until(`msg file ${n}`, () => msgs().length >= n && msgs()))[n - 1];
+  await fresh(page);
+  await until('the Setup tab', () => page.getByRole('tab', { name: 'Setup' }).isVisible());
+  await page.getByRole('tab', { name: 'Setup' }).click();
+
+  await check('over the real server the demo row shows the report of repos/demo/onboarding.md, its check lines as text', async () => {
+    const r = row(page, 'demo');
+    await until('the demo report', async () => (await r.getAttribute('data-state')) === 'report');
+    await r.locator('summary').click();
+    const ci = await r.locator('[data-check-id="ci"]').innerText();
+    const injected = await page.evaluate(() => ({ pwned: window.pwned, scripts: document.querySelectorAll('[data-repos] script').length }));
+    ok(ci.includes('<script>window.pwned = 1</script> never runs dotnet test') && ci.includes('add a test job'), `ci: ${ci}`);
+    ok(injected.pwned === undefined && injected.scripts === 0, `injected: ${JSON.stringify(injected)}`);
+    ok(/1 done/.test(await r.innerText()), `demo: ${await r.innerText()}`);
+  });
+
+  await check('over the real server a pending add-repo file with no confirm ask reads Not confirmed. Send again.', async () => {
+    const r = row(page, 'fresh');
+    await until('the fresh row', () => r.isVisible());
+    ok((await r.getAttribute('data-state')) === 'unconfirmed' && /Not confirmed\. Send again\./.test(await r.innerText()), `fresh: ${await r.innerText()}`);
+  });
+
+  await check('Make it a request writes the intake line as the CEO\'s next msg file', async () => {
+    const n = msgs().length;
+    await row(page, 'demo').locator('[data-proposal="P1"]').getByRole('button', { name: 'Make it a request' }).click();
+    const got = await sent(n + 1);
+    ok(got === 'request: demo: add a CI job that runs "dotnet test" (onboarding P1), priority P3', `msg: ${got}`);
+  });
+
+  await check('Run again writes onboard repo demo as the CEO\'s next msg file', async () => {
+    const n = msgs().length;
+    await row(page, 'demo').getByRole('button', { name: 'Run again' }).click();
+    const got = await sent(n + 1);
+    ok(got === 'onboard repo demo', `msg: ${got}`);
+  });
+
+  await check('Send of the form writes add repo https://example.test/g/demo.git alias DEM as the CEO\'s next msg file', async () => {
+    const n = msgs().length;
+    await openForm(page);
+    await page.locator('[data-repos] input[data-k="url"]').fill('https://example.test/g/demo.git');
+    await page.locator('[data-repos] input[data-k="alias"]').fill('DEM');
+    await repoSection(page).getByRole('button', { name: 'Send' }).click();
+    const got = await sent(n + 1);
+    ok(got === 'add repo https://example.test/g/demo.git alias DEM', `msg: ${got}`);
   });
 }
 
