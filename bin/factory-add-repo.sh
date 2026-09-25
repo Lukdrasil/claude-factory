@@ -99,8 +99,11 @@ on_exit() { # <exit status>
   esac
 }
 git_net() { GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" git "$@"; }
-unreachable() { # <git's output>: exit 4 with its last line
-  why=$(redact_urls "cannot reach $url: $(printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | tail -n1)")
+# why: the cause is in the lines up to git's fatal: (ssh: connect to host ..., remote: Access denied); the lines
+# after it are advice, so a last line would read "and the repository exists."
+unreachable() { # <git's output>: exit 4 with its lines up to fatal:, at most three, on one line
+  why=$(redact_urls "cannot reach $url: $(printf '%s\n' "$1" \
+    | awk '{ sub(/\r$/, "") } NF { s = s (n++ ? " / " : "") $0 } /^fatal:/ || n == 3 { exit } END { print s }')")
   printf 'factory-add-repo: %s\n' "$why" >&2
   printf 'factory-add-repo: fix: check the URL and that git ls-remote %s works in your terminal (gh or glab auth login, or your ssh key)\n' "$url" >&2
   exit 4
