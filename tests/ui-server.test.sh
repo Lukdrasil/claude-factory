@@ -335,7 +335,7 @@ ready "$port3" || bad "the server over the org state never answered on $port3"
 api() { http "$port3" "$1" -H "X-Factory-Token: $token"; }
 
 is 'GET /api/board over the org state is 200'                 "$(api /api/board)" 200
-is 'a board row has the fields of the contract, in order'     "$(j 'Object.keys(b[0]).join(",")')" 'id,status,archetype,tier,repo,owner,goal,request,priority'
+is 'a board row has the fields of the contract, in order'     "$(j 'Object.keys(b[0]).join(",")')" 'id,status,archetype,tier,repo,owner,goal,request,priority,steps'
 is 'the board lists the live tasks only'                      "$(j 'b.map(r=>r.id).sort().join(" ")')" 'T-CF-1 T-ECS-1 T-ECS-1-01 T-ECS-1-02'
 is 'a parent row carries its request, priority and repo'      "$(j 'const r=b.find(r=>r.id==="T-ECS-1");[r.request,r.priority,r.repo].join(" ")')" 'R-20260925-1 P1 ecs'
 is 'a block without a priority shows its parent'"'"'s'            "$(j 'b.find(r=>r.id==="T-ECS-1-01").priority')" P1
