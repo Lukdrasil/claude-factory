@@ -5,7 +5,7 @@ herdr tabs instead of by subagents in your context. You are the monitor. You dis
 the gates, and you never write a line of the change yourself.
 
 In the org the CEO (`references/ceo.md`) dispatches the steps before the approval and starts a lead per approved
-parent; a session started as `lead_<unit>` (`FACTORY_ROLE=lead`) runs this file inside `references/lead.md`,
+parent; a session started as `lead_<unit>` (`FACTORY_ROLE=repo-lead`) runs this file inside `references/lead.md`,
 which adds the claim, the block MR merges and the end.
 
 ## You are the monitor
