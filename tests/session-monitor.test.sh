@@ -734,6 +734,99 @@ for bad in '--step pass' '--scope ecs-core/implementer' '--task T-ECS-12 --step 
   else printf 'PASS %s is refused\n' "$bad"; fi
 done
 
+# --step onboard --scope <key>: the onboarding session of one registered repo, in its registered clone, with one
+# sessions lease, no tab record and no claim
+{ printf 'a-very-long-repository-key-name: { path: %s }\n' "$tmp/eclone"
+  printf 'gone: { path: %s }\nnopath: { url: "https://forge.test/nopath.git" }\n' "$tmp/nowhere"
+} >> "$ostate/repos.yml"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step onboard --scope ecs-core --dry-run 2>/dev/null)
+check 'a dry onboarding prints its unit in the registered clone' "^onboard-ecs-core printed $tmp/eclone\$"
+check 'a dry onboarding prints the env, sonnet and the onboard prompt' \
+  "^  cd $tmp/eclone && FACTORY_ROLE=onboard FACTORY_UNIT=onboard-ecs-core CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model sonnet --name \"onboard-ecs-core\" \"/claude-factory:factory onboard ecs-core\"\$"
+absent 'a dry onboarding leases nothing'            "$lease/sessions/onboard-ecs-core"
+out=$(cat "$HERDR_STUB_LOG")
+nocheck 'a dry onboarding opens and closes no tab'  '^tab '
+: > "$HERDR_STUB_LOG"
+out=$(sm --step onboard --scope ecs-core --workspace ws-7 2>/dev/null)
+check 'the onboarding goes out in the registered clone' "^onboard-ecs-core spawned $tmp/eclone\$"
+out=$(cat "$HERDR_STUB_LOG")
+check 'the onboarding tab is labelled by its unit, in --workspace' \
+  "^tab create --cwd $tmp/eclone --label onboard-ecs-core --no-focus --workspace ws-7 "
+check 'the onboarding agent is onboard_<key> on sonnet' \
+  '^agent start onboard_ecs-core --kind claude --pane pane-1 --timeout 120000 -- --model sonnet --name onboard-ecs-core $'
+check 'the onboarding prompts the onboard skill'   '^agent prompt onboard_ecs-core "/claude-factory:factory onboard ecs-core" --wait '
+out=$(envof)
+check 'the onboarding role is onboard'              '^FACTORY_ROLE=onboard$'
+check 'the onboarding unit is onboard-<key>'        '^FACTORY_UNIT=onboard-ecs-core$'
+check 'the onboarding turns the auto memory off'    '^CLAUDE_CODE_DISABLE_AUTO_MEMORY=1$'
+check 'the onboarding has no task'                  '^FACTORY_TASK=none$'
+check 'the onboarding flow is onboard'              '^FACTORY_FLOW=onboard$'
+check 'the onboarding step is Onboarding <key>'     '^FACTORY_STEP=Onboarding ecs-core$'
+out=$(envof | sed -n 's/^FACTORY_STEP=//p' | grep -E '^Onboarding ([A-Za-z0-9_-]+)$' | sed -E 's/^Onboarding //')
+check 'the UI reads the key off the step'           '^ecs-core$'
+exists 'the onboarding leases a sessions slot'      "$lease/sessions/onboard-ecs-core"
+absent 'the onboarding leases no role slot'         "$lease/onboard"
+out=$(grep -rs onboard "$oroot"/*/.harness)
+nocheck 'the onboarding writes no tab record'       'onboard'
+out=$(git -C "$ostate" log --format=%s)
+nocheck 'the onboarding claims nothing'             'onboard'
+rm -rf "$lease"
+: > "$HERDR_STUB_LOG"
+sm --step onboard --scope a-very-long-repository-key-name >/dev/null 2>&1
+out=$(cat "$HERDR_STUB_LOG")
+check 'the onboarding name stops at 31 characters'  '^agent start onboard_a-very-long-repository- '
+rm -rf "$lease"
+
+# a live onboard_<key> that is idle or done has its tab closed and is replaced, and its slot is free again; one
+# at work or blocked keeps the onboarding from starting twice
+for st in working blocked; do
+  herdr_tab tab-31 "$st" false onboard_ecs-core
+  : > "$HERDR_STUB_LOG"
+  out=$(sm --step onboard --scope ecs-core 2>&1)
+  check "an onboarding whose agent is $st is skipped" "^onboard-ecs-core skipped $tmp/eclone\$"
+  check "the $st skip says it runs already"          'onboard-ecs-core runs already'
+  out=$(cat "$HERDR_STUB_LOG")
+  nocheck "the $st onboarding tab stays open"        '^tab close tab-31'
+  nocheck "a $st onboarding starts no second agent"  '^agent start '
+  herdr tab close tab-31 >/dev/null
+done
+ocaps 1 3
+for st in idle done; do
+  rm -rf "$lease"
+  sh "$bin/capacity.sh" acquire sessions onboard-ecs-core --state "$ostate"
+  herdr_tab tab-32 "$st" false onboard_ecs-core
+  : > "$HERDR_STUB_LOG"
+  out=$(sm --step onboard --scope ecs-core 2>/dev/null)
+  check "an onboarding whose agent is $st goes out again" '^onboard-ecs-core spawned '
+  before "the $st onboarding tab closes before the new one opens" '^tab close tab-32' '^tab create '
+  exists "the new onboarding holds the sessions lease" "$lease/sessions/onboard-ecs-core"
+done
+
+# capacity full is a skip with the reason; a create that gives no pane releases the lease
+rm -rf "$lease"
+sh "$bin/capacity.sh" acquire sessions T-X-1 --state "$ostate"
+: > "$HERDR_STUB_LOG"
+out=$(sm --step onboard --scope ecs-core 2>&1)
+check 'an onboarding with no slot is skipped'       "^onboard-ecs-core skipped $tmp/eclone\$"
+check 'the onboarding skip says the sessions cap is full' 'capacity: sessions full'
+out=$(cat "$HERDR_STUB_LOG")
+nocheck 'an onboarding with no slot opens no tab'   '^tab create '
+rm -rf "$lease"
+ocaps 10 3
+out=$(HERDR_STUB_CREATE='' sm --step onboard --scope ecs-core 2>/dev/null); rc=$?
+if [ "$rc" -eq 2 ]; then printf 'PASS a failed onboarding tab create exits 2\n'; else printf 'FAIL a failed onboarding tab create exited %s\n' "$rc"; fail=1; fi
+absent 'a failed onboarding tab create releases the lease' "$lease/sessions/onboard-ecs-core"
+
+# an unknown key, a key with no path: and one whose path is not on disk exit 1; --scope takes <key> for onboard
+for bad in '--step onboard --scope nosuch' '--step onboard --scope gone' '--step onboard --scope nopath' \
+  '--step onboard' '--step onboard --scope ecs-core/implementer' '--step onboard --scope ecs.core' \
+  '--step onboard --scope -x' '--task T-ECS-12 --step onboard --scope ecs-core' '--step pass --scope ecs-core'; do
+  # shellcheck disable=SC2086
+  sm $bad --dry-run >/dev/null 2>&1; rc=$?
+  if [ "$rc" -eq 1 ]; then printf 'PASS %s exits 1\n' "$bad"; else printf 'FAIL %s exited %s\n' "$bad" "$rc"; fail=1; fi
+done
+
 # a lead with no parent worktree has worktree-add.sh make it first; one it cannot make is skipped
 out=$(sm --task T-ECS-50 --step lead --dry-run 2>/dev/null)
 check 'a lead with no worktree makes it first'      "worktree-add.sh T-ECS-50 "
