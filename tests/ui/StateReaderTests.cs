@@ -232,6 +232,37 @@ public sealed class StateReaderTests : IDisposable
     }
 
     [Fact]
+    public void Setup_lists_every_scope_with_work_for_a_pass_and_no_passes_file_as_never_with_what_is_due()
+    {
+        static string Ago(TimeSpan age) => (DateTimeOffset.UtcNow - age).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        Write(_state, "memory/global/passes.yml", $"daily: {Ago(TimeSpan.FromHours(1))}\nweekly: never\n");
+        Write(_state, "repos/cf/memory/passes.yml", $"daily: {Ago(TimeSpan.FromHours(25))}\nweekly: {Ago(TimeSpan.FromDays(1))}\n");
+        Write(_state, "repos/cf/memory/drafts/1-cursor.md", "A draft.\n");
+        Write(_state, "repos/cf/agents/implementer/memory/proposals/1-tests.md", "A proposal.\n");
+        Write(_state, "repos/cf/agents/scout/memory/proposals/1-grep.md", "A proposal.\nReplaces: the old grep note\n");
+        Write(_state, "repos/cf/agents/tester/drafts/1-draft.md", "A draft.\n");
+        Write(_state, "repos/cf/agents/idle/memory/proposals/notes.txt", "Not a proposal.\n");
+        Write(_state, "repos/cf/agents/hidden/memory/proposals/.1-tmp.md", "Not a proposal yet.\n");
+        Write(_state, "agents/scout/memory/passes.yml", $"daily: {Ago(TimeSpan.FromHours(1))}\nweekly: {Ago(TimeSpan.FromDays(8))}\n");
+        Write(_state, "agents/scout/memory/proposals/1-any.md", "A proposal of a legacy tier.\n");
+        Write(_state, "agents/writer/memory/proposals/1-any.md", "A proposal of a legacy tier.\n");
+
+        var passes = State.Setup(Home).Passes.Select(p => (p.Scope, p.Daily == "never" ? "never" : "stamped", p.Weekly == "never" ? "never" : "stamped", p.Due));
+
+        Assert.Equal(
+            [
+                ("global", "stamped", "never", "none"),
+                ("repo:cf", "stamped", "stamped", "daily"),
+                ("agent:scout", "stamped", "stamped", "weekly"),
+                ("agent:writer", "never", "never", "both"),
+                ("repo-agent:cf/implementer", "never", "never", "daily"),
+                ("repo-agent:cf/scout", "never", "never", "both"),
+                ("repo-agent:cf/tester", "never", "never", "both"),
+            ],
+            passes);
+    }
+
+    [Fact]
     public void Setup_without_a_state_or_a_doctor_file_is_empty_not_an_error()
     {
         var setup = new StateReader(Path.Combine(_state, "nowhere")).Setup(Home);

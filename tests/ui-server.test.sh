@@ -157,6 +157,7 @@ ask q1 open
 is 'q1 rewritten after its answer files reads open again'     "$(sent q1)" false
 has 'an answer to the rewritten q1 succeeds'                  '^20[01]$' "$(post "$port1" s1 '{"ask":"q1","text":"Q1 B"}')"
 is 'q1 with an answer newer than the rewrite reads sent'      "$(sent q1)" true
+is 'the sent q1 carries the text of that answer'              "$(grep -o '"ask":"q1"[^}]*' "$tmp/body" | sed -n 's/.*"answer":"\([^"]*\)".*/\1/p' | head -n1)" 'Q1 B'
 printf -- '---\nask: q5\ntask: T-001\nflow: grill\nstep: round 3\nstatus: open\n---\n\nThe visual row of q5.\n' > "$ui/sessions/s1/asks/q5.md"
 sleep 1
 has 'a redraw of q5 succeeds'                                 '^20[01]$' "$(post "$port1" s1 '{"ask":"q5","text":"Q1 redraw"}')"
@@ -417,6 +418,23 @@ is 'setup lists every passes.yml by scope'                    "$(j 'b.passes.map
 has 'a stamped pass reads its stamp, the other never'         '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z never$' "$(j 'b.passes[0].daily+" "+b.passes[0].weekly')"
 has 'a weekly stamp reads as written'                         '^never [0-9]{4}-[0-9]{2}-[0-9]{2}T' "$(j 'b.passes[1].daily+" "+b.passes[1].weekly')"
 is 'the stamp is the one passes.yml holds'                    "$(j 'b.passes[0].daily')" "$(sed -n 's/^daily: //p' "$state3/memory/global/passes.yml")"
+is 'a scope with nothing to judge is due for no pass'          "$(j 'b.passes.map(p=>p.due).join(" ")')" 'none none none'
+
+# --- a scope whose first pass is due has a row before it has a passes.yml, due as pass-stamp.sh --due says ---------
+mkdir -p "$state3/repos/ecs/memory/drafts" "$state3/repos/ecs/agents/scout/memory/proposals" "$state3/agents/writer/memory/proposals"
+printf 'A draft.\n' > "$state3/repos/ecs/memory/drafts/1-cursor.md"
+printf 'A proposal.\nReplaces: the old grep note\n' > "$state3/repos/ecs/agents/scout/memory/proposals/1-grep.md"
+printf 'A proposal.\n' > "$state3/agents/writer/memory/proposals/1-voice.md"
+api /api/setup >/dev/null
+is 'the scopes with work join the scopes with a passes.yml'   "$(j 'b.passes.map(p=>p.scope).join(" ")')" \
+  'global repo:ecs agent:writer repo-agent:ecs/implementer repo-agent:ecs/scout'
+is 'a scope without a passes.yml reads never twice'           "$(j 'b.passes.filter(p=>/writer|scout/.test(p.scope)).map(p=>p.daily+"/"+p.weekly).join(" ")')" 'never/never never/never'
+due_rows=$(j 'b.passes.flatMap(p=>(p.due==="both"?["daily","weekly"]:p.due==="none"?[]:[p.due]).map(k=>p.scope+" "+k)).sort().join("\n")')
+due_script=$({ sh "$bin/pass-stamp.sh" --due daily --state "$state3"; sh "$bin/pass-stamp.sh" --due weekly --state "$state3"; } | cut -d' ' -f1,2 | LC_ALL=C sort)
+is 'every row due is a pass pass-stamp.sh --due lists'        "$(printf '%s\n' "$due_rows" | LC_ALL=C sort)" "$due_script"
+is 'the due of each scope'                                    "$(j 'b.passes.map(p=>p.scope+"="+p.due).join(" ")')" \
+  'global=none repo:ecs=daily agent:writer=both repo-agent:ecs/implementer=none repo-agent:ecs/scout=both'
+rm -rf "$state3/repos/ecs/memory/drafts" "$state3/repos/ecs/agents/scout" "$state3/agents/writer"
 
 # --- the Memory tab's start button: an empty ask is a free message to the CEO, typed by the relay like an answer ----
 cmsg() { ls -A "$ui/sessions/s-ceo/answers" 2>/dev/null | tr '\n' ' '; }

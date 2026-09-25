@@ -549,6 +549,19 @@ async function stage(q, button, text) {
     await until('sent on r1', async () => /Sent, waiting for the session/.test(await card(page, 's2/r1').innerText()), 1500);
   });
 
+  const sentWords = ['Q1 B Postgres', 'Q2 Explain more', 'Q3 Compare options', 'Q4 cf-ui-fixture, on port 7171',
+    'Q5 Question: why not both, SQLite and files', 'Q6 Decide later'];
+  const sentAnswer = async (c) => (await c.locator('[data-sent] li').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+
+  await check('the sent r1 shows what was sent, read-only: every item in words and B of Q1 pressed but disabled', async () => {
+    const c = card(page, 's2/r1');
+    const got = await until('the sent answer', async () => (await c.locator('[data-sent]').count()) && sentAnswer(c), 1500);
+    ok(JSON.stringify(got) === JSON.stringify(sentWords), `sent: ${JSON.stringify(got)}`);
+    const b = question(c, 'Q1').locator('[data-act="pick"][data-k="B"]');
+    ok(await b.getAttribute('aria-pressed') === 'true' && await b.isDisabled(), 'B of Q1 is not pressed and disabled');
+    ok(!(await c.getByRole('textbox').count()), 'a text box on the sent card');
+  });
+
   await check('r1 shows answered and offers no Send once its session closed it', async () => {
     const file = path.join(UI, 'sessions/s2/asks/r1.md');
     writeAtomic(file, fs.readFileSync(file, 'utf8').replace(/^status: open$/m, 'status: answered'));
@@ -556,6 +569,11 @@ async function stage(q, button, text) {
     const live = await card(page, 's2/r1').getByRole('button', { name: /send/i })
       .evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 0, `${live} enabled Send buttons`);
+  });
+
+  await check('the answered r1 still shows what was sent', async () => {
+    const got = await sentAnswer(card(page, 's2/r1'));
+    ok(JSON.stringify(got) === JSON.stringify(sentWords), `sent: ${JSON.stringify(got)}`);
   });
 
   for (const [width, height] of [[1440, 900], [390, 844]]) {
@@ -699,6 +717,17 @@ async function stage(q, button, text) {
     for (const o of opts) ok(o.lines === 1, `option ${o.key} spans ${o.lines} line boxes: ${JSON.stringify(o.text)}`);
     const b = opts[1].text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim());
     ok(b.some((l) => /\brun ui-up\.sh then ui-down\.sh\b/.test(l)), `option B reads ${JSON.stringify(opts[1].text)}`);
+  });
+
+  await check('the accessible name of each option of m1 is its whole label, inline code included, in Chrome and in its aria-label', async () => {
+    const want = ['A the script alone', 'B run ui-up.sh then ui-down.sh, recommended'];
+    const labels = await card(page, 's3/m1').locator('[data-act="pick"]').evaluateAll((bs) => bs.map((b) => b.getAttribute('aria-label')));
+    ok(JSON.stringify(labels) === JSON.stringify(want), `aria-label: ${JSON.stringify(labels)}`);
+    const cdp = await page.context().newCDPSession(page);
+    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
+    await cdp.detach();
+    const names = nodes.filter((n) => n.role?.value === 'button').map((n) => n.name?.value || '').filter((n) => /the script alone|ui-down\.sh/.test(n));
+    ok(JSON.stringify(names) === JSON.stringify(want), `Chrome names: ${JSON.stringify(names)}`);
   });
 
   // --- the org: tabs, requests, priority, capacity, Map and Plan, against the shapes of the wave-2 API -------------

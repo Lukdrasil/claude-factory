@@ -59,6 +59,36 @@ public sealed class UiHomeTests : IDisposable
     }
 
     [Fact]
+    public void A_sent_ask_carries_its_last_answer_a_closed_one_keeps_it_and_an_unanswered_one_has_none()
+    {
+        var dir = Session("s7");
+        var asks = Directory.CreateDirectory(Path.Combine(dir, "asks")).FullName;
+        var answers = Directory.CreateDirectory(Path.Combine(dir, "answers")).FullName;
+        var t = DateTime.UtcNow.AddMinutes(-10);
+        void At(string path, string text, int minute)
+        {
+            File.WriteAllText(path, text);
+            File.SetLastWriteTimeUtc(path, t.AddMinutes(minute));
+        }
+        At(Path.Combine(answers, "1-a1.txt"), "Q1 A", 0);
+        At(Path.Combine(asks, "a1.md"), "---\nask: a1\nstatus: open\n---\n\nRewritten.\n", 1);
+        At(Path.Combine(answers, "2-a1.txt"), "Q1 B\nQ2 more", 2);
+        At(Path.Combine(answers, "3-a1.txt"), "Q1 more", 3);
+        At(Path.Combine(answers, "4-a2.txt"), "Q1 A", 0);
+        At(Path.Combine(asks, "a2.md"), "---\nask: a2\nstatus: answered\n---\n\nClosed.\n", 1);
+        At(Path.Combine(asks, "a3.md"), "---\nask: a3\nstatus: open\n---\n\nOpen.\n", 1);
+        At(Path.Combine(answers, "5-a4.txt"), "Q1 A", 0);
+        At(Path.Combine(asks, "a4.md"), "---\nask: a4\nstatus: open\n---\n\nRedrawn.\n", 1);
+
+        var got = new UiHome(_ui).Sessions().Single(s => s.Sid == "s7").Asks.ToDictionary(a => a.Ask, a => a.Answer);
+
+        Assert.Equal("Q1 B\nQ2 more", got["a1"]);
+        Assert.Equal("Q1 A", got["a2"]);
+        Assert.Null(got["a3"]);
+        Assert.Null(got["a4"]);
+    }
+
+    [Fact]
     public void Frontmatter_is_cached_by_path_and_mtime_and_read_anew_once_the_mtime_moves()
     {
         var path = Path.Combine(_ui, "cached.md");

@@ -167,8 +167,8 @@ const STEPS = [
   { id: 'ceo', state: 'missing', detail: 'the CEO is not running', fix: "open a herdr tab in /home/me/factory/state and run: claude '/claude-factory:factory ceo'" },
 ];
 const PASSES = [
-  { scope: 'global', daily: '2026-09-24T06:00:00Z', weekly: 'never' },
-  { scope: 'repo-agent:ecs/implementer', daily: 'never', weekly: '2026-09-19T07:30:00Z' },
+  { scope: 'global', daily: '2026-09-24T06:00:00Z', weekly: 'never', due: 'none' },
+  { scope: 'repo-agent:ecs/implementer', daily: 'never', weekly: '2026-09-19T07:30:00Z', due: 'both' },
 ];
 const CEO = { sid: 's-ceo', pane: 'w1:p3' };
 
@@ -255,6 +255,28 @@ async function tabs(page) {
     ok(rows.length === 2, `rows: ${rows.join(' | ')}`);
     ok(/^global\b/.test(rows[0]) && rows[0].includes('2026-09-24') && rows[0].includes('never'), `global: ${rows[0]}`);
     ok(rows[1].includes('repo-agent:ecs/implementer') && rows[1].includes('never') && rows[1].includes('2026-09-19'), `row 2: ${rows[1]}`);
+  });
+
+  await check('the Memory tab shows next to the dates which pass is due: daily and weekly for implementer, none for global', async () => {
+    const { p } = await withTab(context, 'Memory', full, CEO);
+    const got = await until('the pass rows', async () => {
+      const r = await p.locator('[data-passes]').evaluate((t) => [...t.rows].map((tr) => [...tr.cells].slice(0, 4).map((c) => c.textContent.trim()).join(' | ')));
+      return r.length === 3 && r;
+    }).finally(() => p.close());
+    ok(got[0] === 'Scope | Last daily | Last weekly | Due', `head: ${got[0]}`);
+    ok(got[1].endsWith('| -'), `global: ${got[1]}`);
+    ok(got[2].endsWith('| daily and weekly'), `implementer: ${got[2]}`);
+  });
+
+  await check('a scope whose first daily pass is due, with no passes.yml yet, reads never twice, due daily, and starts from its row', async () => {
+    const { p, posted } = await withTab(context, 'Memory', { ...full, passes: [...PASSES, { scope: 'repo-agent:ecs/scout', daily: 'never', weekly: 'never', due: 'daily' }] }, CEO);
+    const row = p.locator('[data-passes] tbody tr', { hasText: 'repo-agent:ecs/scout' });
+    await until('the row', () => row.isVisible());
+    const cells = await row.locator('td').allInnerTexts();
+    await row.getByRole('button', { name: /start daily/i }).click();
+    const got = await until('the post', () => posted.length && posted).finally(() => p.close());
+    ok(cells.slice(1, 4).map((c) => c.trim()).join(' | ') === 'never | never | daily', `cells: ${cells.join(' | ')}`);
+    ok(got[0].body.text === 'start the daily pass for repo-agent:ecs/scout', `post: ${JSON.stringify(got[0])}`);
   });
 
   await check('Start daily of repo-agent:ecs/implementer posts an empty ask and start the daily pass for repo-agent:ecs/implementer to the CEO sid', async () => {

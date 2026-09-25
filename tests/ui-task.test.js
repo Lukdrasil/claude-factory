@@ -436,6 +436,13 @@ async function confirmYes(page, name, key) {
     });
   }
 
+  await check('the sent x2 shows its answer Q1 A in words, read-only, and the gone x1 does not', async () => {
+    const got = (await card('s29/x2').locator('[data-sent] li').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+    ok(JSON.stringify(got) === '["Q1 A yes"]', `sent: ${JSON.stringify(got)}`);
+    ok(await opt('s29/x2', 'Q1', 'A').getAttribute('aria-pressed') === 'true', 'A of the sent x2 is not pressed');
+    ok(!(await card('s29/x1').locator('[data-sent]').count()), 'the gone x1 shows a sent answer');
+  });
+
   await check('the open c1 keeps its enabled options and its Send', async () => {
     const live = await card('s29/c1').locator('[data-act="pick"]').evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 2, `${live} enabled options`);

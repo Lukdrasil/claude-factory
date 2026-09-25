@@ -21,8 +21,8 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 |---|---|
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh`, with its `request`, `priority` and `steps` (the solve steps its state records as done, read the way `bin/solve-next.sh` decides them) |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
-| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
-| `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes` of every `passes.yml` |
+| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, `answer` (the text of its last answer that closes it, null without one), the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
+| `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes`: every scope with a `passes.yml`, or with work for a pass and none yet (`daily` and `weekly` read `never`), and the pass it is `due` for, `daily`, `weekly`, `both` or `none`, by the rule of `pass-stamp.sh --due` |
 | `GET /api/org` | the `capacity` of sessions and of every role, `used` and `cap`, the `leases` under `.capacity/`, one of the `leads` per `repo-lead` lease, and the `ceo` session or null |
 | `GET /api/requests` | every request map, live and archived, newest first: `id`, `status`, `destination`, `priority`, `parents`, `archived` |
 | `GET /api/requests/{id}` | one map: its destination, notes, terms, decisions, out of scope, fog, tickets and frontier, its parents with their blocks, status and acceptance, and `html`: the destination, notes, terms and fog rendered, and the `title` and `gist` of every line of decisions and out of scope rendered inline |
@@ -76,7 +76,7 @@ date; it clears once the stream is back.
 | `pipeline.js` | `renderTop(sessions, tab)`: the tabs, the to-answer counter and the setup strip; `renderPipeline(board, sessions, requests, capacity)`: the capacity strip and the grid of tasks across the solve steps, grouped by request, blocks in sub-rows under their parent, the step a session reports marked `aria-current="step"` |
 | `requests.js` | `renderMap(list, id, detail)` and `renderPlan(list, id, detail)`: the request list and the map, or the final plan with its read-only checklist, of the request shown |
 | `org.js` | `renderOrg(org)`: the CEO, capacity, leads and leases of `/api/org`; `capacityStrip(capacity)`, `prio(p)` and `when(stamp)` |
-| `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope and their start buttons |
+| `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope, the pass it is due for and their start buttons |
 | `setup.js` | `renderSetupStrip(setup)`: the machine checklist in the strip; `renderSetupTab(setup)`: the doctor steps and Start the CEO |
 | `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, open ones first, its sessions' visuals and its context, in decision mode with an open ask |
 | `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view; `stateOf(ask)`, its one state; and `compose(view, items)`, the answer Send posts |
@@ -92,8 +92,9 @@ drawer keeps an ask it opened with even after its session closes it, so the card
 The card renders the ask view of `/api/sessions`, the server's reading of the ask, and parses no markdown. An ask
 with no `❓ **Qn**` is a notice. One question with the options yes and no is a confirm. Anything else is a round.
 The header shows the ask's step and its question count, the session id sits in a small line at the bottom. Each
-option is a full-width button holding its rendered label, `aria-pressed` and a check mark once picked, and the
-recommendation reads `Why B: ...`. A card
+option is a full-width button holding its rendered label, `aria-pressed` and a check mark once picked, and an
+`aria-label` of its key and whole label as text, inline code included, so no reader of its text nodes alone drops a
+code span; the recommendation reads `Why B: ...`. A card
 stages one item per question until Send: an option (`Q1 B`), Explain more (`Q2 more`), Compare options
 (`explore Q3`), Write my answer (`Q4 <text>`), Ask a question (`Q5 ? <text>`) or Decide later (`Q6 defer`).
 Every card, a notice included, has Write my answer: a notice posts that text verbatim, or `ok` without one.
@@ -104,7 +105,8 @@ exactly as the answer file will. Staged answers and drafts stay in the tab's `se
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
 the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is
-read-only, its options disabled, with no answer box and no Send. The relay's other held reasons show as a note
+read-only, its options disabled, with no answer box and no Send. A sent or answered card shows under Sent: the
+`answer` it was sent, in words like Will be sent:, its picked options pressed. The relay's other held reasons show as a note
 under the header of an open or sent card. The card of a session outside herdr shows no answer box.
 
 A drawer with an open ask opens in decision mode: at least 60% of the viewport wide, the asks first with the
@@ -131,7 +133,8 @@ The header holds six tabs, and every tab keeps the counter, the setup strip and 
   parents per repo with their blocks, status and acceptance. The checklist is read-only; the human approves the
   plan in the CEO's confirm ask, never on the page.
 - Org: the CEO session, the capacity, one row per lead and every lease.
-- Memory: the last daily and weekly pass of every scope. With a CEO session each scope offers Start daily and
+- Memory: the last daily and weekly pass of every scope and the pass it is due for; a scope whose first pass is
+  due, work in its `drafts/` or `proposals/` and no `passes.yml` yet, reads never twice. With a CEO session each scope offers Start daily and
   Start weekly, which post `{"ask": "", "text": "start the <daily|weekly> pass for <scope>"}` to
   `/api/answers/<ceo sid>`, a free message the relay types into the CEO's pane. The page runs no pass itself.
 - Setup: the steps of `doctor.json` in order, each done, missing or failing with its detail and fix, then Start
