@@ -343,5 +343,9 @@ check 'a registered path missing on disk exits 1 with the fix of the doctor' $?
 out=$(cadd --clone "file://$tmp/origin/demo2.git" --alias DEM); rc=$?
 [ "$rc" = 1 ] && grep -qF 'alias DEM is taken by demo' "$tmp/cerr"; check 'a taken alias exits 1' $?
 has "$(aj demo2)" '"detail":"alias DEM is taken by demo"' && [ ! -e "$clones/demo2" ]; check 'it is a failed json and nothing is cloned' $?
+rm -f "$tmp/ui/setup/add-repo/demo2.json"
+out=$(cadd --clone "file://$tmp/origin/demo2.git" --alias dm); rc=$?
+[ "$rc" = 1 ] && has "$(aj demo2)" "\"detail\":\"--alias takes 2 to 4 uppercase letters, not 'dm'\""
+check 'a malformed alias exits 1 with a failed json, the key being known' $?
 
 exit "$fail"
