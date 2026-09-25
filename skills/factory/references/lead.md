@@ -72,7 +72,8 @@ When every block is merged:
 4. The human reviews and merges it. Tell them (a notice ask) and the CEO (`herdr agent prompt ceo "<T-id>
    task MR open <url>"`), and keep the watcher armed: a red pipeline or a review thread is a fix block you
    dispatch.
-5. Once the human says it is merged: the done gate of `references/done.md`, `sh
+5. Once herd-watch prints `<T-id> mr <any> -> merged` (mr-watch reads the task MR too) or the human says it is
+   merged: the done gate of `references/done.md`, `sh
    <plugin-root>/bin/task-done.sh <T-id> --state "$WORK_DIR/state"` (it resolves no state from the parent
    worktree on its own; it archives the parent), knowledge review once for the parent
    (lessons as proposals under `repos/<key>/agents/<agent>/memory/proposals/` through

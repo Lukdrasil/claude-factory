@@ -110,7 +110,7 @@ forge without reading an MR:
 
 | line | what it is | what you do |
 |---|---|---|
-| `<id> mr <any> -> merged` | the MR is in | mr-watch has set the block `done` (and retargeted a legacy stack); rerun `solve-next.sh` |
+| `<id> mr <any> -> merged` | the MR is in | mr-watch has set the block `done` (and retargeted a legacy stack); rerun `solve-next.sh`. For the parent's own task MR, the lead runs its done gate (`references/lead.md`) |
 | `<id> mr <any> -> ci-failed` | the pipeline is red | dispatch the fix as a session, never fix it here |
 | `<id> mr <any> -> changes-requested` | a reviewer wants work | `mr-watch.sh <T-NNN> --comments <block-id>`, then dispatch |
 | `<id> mr <any> -> approved` | it waits on a human merge | say so, and keep watching |

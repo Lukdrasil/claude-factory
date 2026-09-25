@@ -1,7 +1,8 @@
 #!/bin/sh
 # The watcher of the stacked block MRs (T-164, ADR-0057): it reads every block MR of one parent through gh or
 # glab and prints one line per state change since its last run, so the coordinator learns what the developer
-# did on the forge without reading any MR itself.
+# did on the forge without reading any MR itself. The parent's own task MR is watched the same way (F31), so its
+# merge by the human is a `<T-id> merged` line; the parent is set done by task-done.sh, not here.
 #
 #   mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]
 #
@@ -169,7 +170,7 @@ pass() {
   mkdir -p "$harness"
   new="$harness/mr-watch.state.new"
   : > "$new"
-  for b in $blocks; do
+  for b in $blocks $id; do
     btask=$(task_of "$b" || :)
     [ -n "$btask" ] || continue
     url=$(nullable "$(fm "$btask" mr_url)")
@@ -183,7 +184,7 @@ pass() {
     case "$wasn" in ''|*[!0-9]*) wasn=0 ;; esac
     if [ "$w" != "$was" ] && [ "$w" != open ]; then
       printf '%s %s\n' "$b" "$w"
-      if [ "$w" = merged ]; then
+      if [ "$w" = merged ] && [ "$b" != "$id" ]; then
         branch=$(nullable "$(fm "$btask" branch)")
         [ -z "$branch" ] || retarget "$b" "$branch"
         ( cd "$report_dir" && "$bin/state-report.sh" --task "$b" --set-status done \
