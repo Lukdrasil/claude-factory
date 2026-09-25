@@ -934,6 +934,133 @@ gate_role_check() { # <the command segments>
   set +f
 }
 
+# C7 (add-repo F4): an onboarding session reads a repository cloned from a URL minutes ago, prompt injection
+# material, so FACTORY_ROLE=onboard works from an allowlist and not a deny list. It writes only
+# <state>/repos/<key>/onboarding.md, <key> from its FACTORY_UNIT onboard-<key>; of the scripts (any `*.sh`) it runs
+# only factory-doctor.sh, doc-cites.sh, ui-ask.sh, ui-session.sh and state-commit.sh of that one file; herdr only as
+# `agent prompt ceo` and `tab close` of its own tab; and never `git push`. The command words are read the way
+# gate_role_check reads them, quote characters dropped and split at a bracket, `;`, `&`, `|` and a backtick, so
+# `bash -c '...'` and `$(...)` count; a `(` right after a word (`chore(<key>):` in a commit message) splits nothing.
+# The rules for everyone else still run after these.
+ONBOARD_KEY='' ONBOARD_FILE=''
+if [ "${FACTORY_ROLE:-}" = onboard ]; then
+  case "${FACTORY_UNIT:-}" in onboard-?*) ONBOARD_KEY=${FACTORY_UNIT#onboard-} ;; esac
+  case "$ONBOARD_KEY" in *[!A-Za-z0-9_-]*) ONBOARD_KEY='' ;; esac
+  [ -z "$ONBOARD_KEY" ] || ONBOARD_FILE="$WORK_DIR/state/repos/$ONBOARD_KEY/onboarding.md"
+fi
+ob_cd=''
+onboard_deny() { # <what>
+  deny "$1 is not for an onboarding session: it only reports, writing repos/${ONBOARD_KEY:-<key>}/onboarding.md through state-commit.sh (references/onboard.md), and this session runs as FACTORY_ROLE=onboard."
+}
+onboard_target() { # <a write target as written>
+  case "$1" in ''|\$*|*..*) onboard_deny "a write to $1" ;; esac
+  ot=$(tilde_path "$1")
+  [ -n "$ot" ] || onboard_deny "a write to $1"
+  case "$ot" in /*|[A-Za-z]:/*) ;; *) [ -z "$ob_cd" ] || onboard_deny "a write to $1 after a cd" ;; esac
+  ot=$(abs_norm "$ot")
+  case "$ot" in /dev/null|/dev/stdout|/dev/stderr) return 0 ;; esac
+  [ -n "$ONBOARD_FILE" ] && [ "$ot" = "$ONBOARD_FILE" ] || onboard_deny "a write to $1"
+}
+# state-commit.sh named in a segment: the script itself, run directly, with -m, --state of this state clone at
+# most, and after `--` only the report
+onboard_commit() { # <one command segment>
+  ob_words=$(printf '%s\n' "$1" | awk '{
+    n = length($0); w = ""; q = ""; qd = 0
+    for (i = 1; i <= n + 1; i++) {
+      ch = i <= n ? substr($0, i, 1) : " "
+      if (q != "") { if (ch == q) q = ""; else w = w ch; continue }
+      if (ch == "\"" || ch == "\047") { q = ch; qd = 1; continue }
+      if (ch == " " || ch == "\t") { if (w != "" || qd) print w; w = ""; qd = 0; continue }
+      w = w ch
+    }
+  }')
+  set -f
+  oc_ifs=$IFS; IFS=$NL
+  # shellcheck disable=SC2086
+  set -- $ob_words
+  IFS=$oc_ifs
+  set +f
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      *=*|-*|[0-9]*|!|.|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+      *) break ;;
+    esac
+  done
+  [ "${1##*/}" = state-commit.sh ] || onboard_deny "state-commit.sh inside another command"
+  shift
+  oc_paths=0 oc_dd=''
+  while [ $# -gt 0 ]; do
+    if [ -n "$oc_dd" ]; then
+      case "$1" in
+        *..*) onboard_deny "state-commit.sh of $1" ;;
+        /*|[A-Za-z]:/*) oc_p=$(abs_norm "$1") ;;
+        *) [ -z "$ob_cd" ] || onboard_deny "state-commit.sh of $1 after a cd"; oc_p=$(norm_path "$WORK_DIR/state/$1") ;;
+      esac
+      [ -n "$ONBOARD_FILE" ] && [ "$oc_p" = "$ONBOARD_FILE" ] || onboard_deny "state-commit.sh of $1"
+      oc_paths=$((oc_paths + 1)); shift; continue
+    fi
+    case "$1" in
+      -m) [ $# -ge 2 ] || onboard_deny "state-commit.sh with no message"; shift 2 ;;
+      --state)
+        [ $# -ge 2 ] || onboard_deny "state-commit.sh --state with no directory"
+        case "$2" in
+          '$WORK_DIR/state'|'${WORK_DIR}/state') ;;
+          *) [ "$(abs_norm "$2")" = "$WORK_DIR/state" ] || onboard_deny "state-commit.sh --state $2" ;;
+        esac
+        shift 2 ;;
+      --) oc_dd=1; shift ;;
+      *) onboard_deny "state-commit.sh $1" ;;
+    esac
+  done
+  [ "$oc_paths" -gt 0 ] || onboard_deny "state-commit.sh with no path"
+}
+onboard_bash() { # <the command segments>
+  ob_segs=$1
+  ob_lines=$(printf '%s\n' "$ob_segs" | tr -d '\042\047' | sed 's/\([A-Za-z0-9_]\)(/\1 /g' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  ob_cd='' ob_sc=''
+  set -f
+  ob_ifs=$IFS; IFS=$NL
+  for ob_line in $ob_lines; do
+    IFS=$ob_ifs
+    # shellcheck disable=SC2086
+    set -- $ob_line
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *) break ;;
+      esac
+    done
+    [ $# -gt 0 ] || continue
+    ob_cmd=${1##*/}; shift
+    case "$ob_cmd" in
+      cd|pushd|popd) ob_cd=1 ;;
+      state-commit.sh) ob_sc=1 ;;
+      factory-doctor.sh|doc-cites.sh|ui-ask.sh|ui-session.sh) ;;
+      *.sh) onboard_deny "$ob_cmd" ;;
+      herdr)
+        case "${1:-} ${2:-}" in
+          'agent prompt') [ "${3:-}" = ceo ] || onboard_deny "herdr agent prompt ${3:-}" ;;
+          'tab close')
+            case "${3:-}" in
+              '$HERDR_TAB_ID') ;;
+              *) [ -n "${HERDR_TAB_ID:-}" ] && [ "${3:-}" = "$HERDR_TAB_ID" ] || onboard_deny "herdr tab close ${3:-}" ;;
+            esac ;;
+          *) onboard_deny "herdr ${1:-} ${2:-}" ;;
+        esac ;;
+      git) for ob_a; do [ "$ob_a" != push ] || onboard_deny 'git push'; done ;;
+      rm|rmdir|unlink|mv|cp|dd|tee|truncate|chmod|chown|ln|shred|mkfs*|install|rsync|touch|mkdir|patch)
+        onboard_deny "$ob_cmd" ;;
+      sed|perl) for ob_a; do case "$ob_a" in --in-place*|-i*|-[!-]*i*) onboard_deny "$ob_cmd -i" ;; esac; done ;;
+    esac
+  done
+  IFS=$ob_ifs
+  printf '%s\n' "$ob_segs" | while IFS= read -r ob_seg; do
+    for ob_t in $(redirect_targets "$ob_seg"); do onboard_target "$ob_t"; done
+    if [ -n "$ob_sc" ]; then case "$ob_seg" in *state-commit.sh*) onboard_commit "$ob_seg" ;; esac; fi
+  done || exit 2
+  set +f
+}
+
 guard_bash() {
   c=$1
   [ -n "$c" ] || deny "empty command"
@@ -1017,6 +1144,7 @@ guard_bash() {
   sc=$(heredoc_stripped "$c")
   segs=$(split_segs "$sc")
   gate_role_check "$segs"
+  [ -z "${FACTORY_ROLE:-}" ] || [ "$FACTORY_ROLE" != onboard ] || onboard_bash "$segs"
   # T-254: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, quoted or
   # bare. bin/issue-create.sh adds it; a direct create is held to the same rule, segment by segment. The create is
   # read with the quoted spans removed, so a mention in a message is none; the label is read as written.
@@ -1240,7 +1368,9 @@ case "$tool" in
     guard_bash "$cmd"
     ;;
   Write|Edit|MultiEdit|NotebookEdit)
-    un p "$f_path"; check_path "$p"
+    un p "$f_path"
+    [ -z "${FACTORY_ROLE:-}" ] || [ "$FACTORY_ROLE" != onboard ] || onboard_target "$p"
+    check_path "$p"
     abs=$(abs_norm "$p")
     check_test_lock "$tool" "$abs"
     case "$abs" in */tasks/*)
