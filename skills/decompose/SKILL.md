@@ -7,7 +7,8 @@ description: Turns a grilled plan-ready.md into draft block tasks, one per propo
 
 Trigger: a `plan-ready.md` the grill finished. The grill cut the work into proposals; this step writes them
 as blocks in `status: draft`, one block per proposal, nothing remade. Approval and `plan_hash` are a
-human's job.
+human's job. Every question to the human, a refusal to resolve included, goes through
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`, so with the UI on it reaches the browser and the CEO's watcher.
 
 ## Input
 
