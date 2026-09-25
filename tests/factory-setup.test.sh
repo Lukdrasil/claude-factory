@@ -99,10 +99,14 @@ code "a rerun exits 0" 0 "$rc"
 has "a rerun has nothing to do" '^nothing to do' "$out"
 plug=$(dirname -- "$bin")
 allow=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).permissions.allow.join("\n"))' "$settings" 2>&1)
-for r in "Read(/$tmp/f/**)" "Read(/$plug/**)" "Edit(/$tmp/f/state/**)" "Write(/$tmp/f/state/**)" "Bash(sh $plug/bin/*)" "Bash($plug/bin/*)"; do
+for r in "Read(/$tmp/f/**)" "Read(/$plug/**)" "Edit(/$tmp/f/state/**)" "Bash(sh $plug/bin/*)" "Bash($plug/bin/*)"; do
   if printf '%s\n' "$allow" | grep -qxF -- "$r"; then printf 'PASS init --yes allows %s\n' "$r"
   else printf 'FAIL init --yes allows %s\n' "$r"; fail=1; fi
 done
+# sim F40: Claude Code matches file writes only against Edit(path) rules and warns about a Write(path) rule at
+# every session start
+if printf '%s\n' "$allow" | grep -q '^Write('; then printf 'FAIL init --yes writes no Write(path) rule\n'; fail=1
+else printf 'PASS init --yes writes no Write(path) rule\n'; fi
 node -e 'const f=process.argv[1],fs=require("fs"),o=JSON.parse(fs.readFileSync(f,"utf8"));o.permissions.allow=["Bash(ls)",o.permissions.allow[0]];fs.writeFileSync(f,JSON.stringify(o,null,2))' "$settings"
 out=$(sh "$bin/factory-init.sh" --root "$tmp/f" --settings "$settings" --spawn manual 2>&1); rc=$?
 code "a missing allow rule is pending" 3 "$rc"
@@ -306,17 +310,17 @@ HSTUB_CEO=1 djson
 has "a live ceo agent is done" '^done ' "$(step ceo)"
 dplug=$(dirname -- "$bin")
 cp "$dhome/.claude/settings.json" "$tmp/dsettings.bak"
-printf '{\n  "env": {"WORK_DIR": "%s"},\n  "promptSuggestionEnabled": false,\n  "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)", "Bash(%s/bin/*)"]}\n}\n' \
-  "$w" "$w" "$dplug" "$w" "$w" "$dplug" "$dplug" > "$dhome/.claude/settings.json"
+printf '{\n  "env": {"WORK_DIR": "%s"},\n  "promptSuggestionEnabled": false,\n  "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Bash(sh %s/bin/*)", "Bash(%s/bin/*)"]}\n}\n' \
+  "$w" "$w" "$dplug" "$w" "$dplug" "$dplug" > "$dhome/.claude/settings.json"
 djson
-has "the six allow rules are done" '^done ' "$(step permissions)"
+has "the five allow rules are done" '^done ' "$(step permissions)"
 cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
 # a factory run with `claude --settings <file>`: WORK_DIR comes from the environment and the rest from the file
 # FACTORY_CLAUDE_ARGS names, so the user settings of this machine say nothing about it
 node -e 'const f=process.argv[1],fs=require("fs"),o=JSON.parse(fs.readFileSync(f,"utf8"));delete o.env.WORK_DIR;delete o.promptSuggestionEnabled;o.permissions={allow:["Bash(ls)"]};fs.writeFileSync(f,JSON.stringify(o))' "$dhome/.claude/settings.json"
-printf '{"env": {"WORK_DIR": "%s"}, "promptSuggestionEnabled": false, "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)", "Bash(%s/bin/*)"]}}\n' \
-  "$w" "$w" "$dplug" "$w" "$w" "$dplug" "$dplug" > "$tmp/fsettings.json"
+printf '{"env": {"WORK_DIR": "%s"}, "promptSuggestionEnabled": false, "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Bash(sh %s/bin/*)", "Bash(%s/bin/*)"]}}\n' \
+  "$w" "$w" "$dplug" "$w" "$dplug" "$dplug" > "$tmp/fsettings.json"
 WORK_DIR=$w FACTORY_CLAUDE_ARGS="--plugin-dir $dplug --settings $tmp/fsettings.json" djson
 has "WORK_DIR from the environment is done" '^done ' "$(step work-dir)"
 has "promptSuggestionEnabled from the --settings file is done" '^done ' "$(step prompt-suggestion)"
