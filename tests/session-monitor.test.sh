@@ -571,6 +571,8 @@ check 'the chart step goes out'                     "^T-ECS-12-chart spawned $or
 out=$(envof)
 check 'a spawn passes FACTORY_ROLE'                 '^FACTORY_ROLE=chart$'
 check 'a spawn passes FACTORY_UNIT'                 '^FACTORY_UNIT=T-ECS-12-chart$'
+check 'a step passes its task'                      '^FACTORY_TASK=T-ECS-12$'
+check 'a step passes its solve step line'           '^FACTORY_STEP=Step 3b of 16: chart R-20260925-1$'
 check 'a spawn turns the auto memory off'           '^CLAUDE_CODE_DISABLE_AUTO_MEMORY=1$'
 out=$(cat "$HERDR_STUB_LOG")
 check 'a step agent is <step>_<id less t->'         '^agent start chart_ecs-12 --kind claude '
@@ -597,6 +599,7 @@ check 'the lead prompt herds its task'              '^agent prompt lead_ecs-12 "
 out=$(envof)
 check 'the lead role is repo-lead'                  '^FACTORY_ROLE=repo-lead$'
 check 'the lead unit is <T-id>-lead'                '^FACTORY_UNIT=T-ECS-12-lead$'
+nocheck 'a lead is no solve step'                   '^FACTORY_STEP='
 exists 'a lead leases a sessions slot'              "$lease/sessions/T-ECS-12-lead"
 exists 'a lead leases a repo-lead slot'             "$lease/repo-lead/T-ECS-12"
 out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-12.md")

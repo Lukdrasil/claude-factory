@@ -61,7 +61,8 @@
 # Every unit has a role: the step for a step, `repo-lead` for a lead, `pass` for a pass, and the agent of
 # model-for.sh --agent for a block or a leaf. A herdr spawn passes `--env FACTORY_ROLE=<role> --env
 # FACTORY_UNIT=<unit> --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` on its create, and a printed line carries the same
-# three as a prefix of its `claude` command. FACTORY_CLAUDE_ARGS, when set, is appended word by word to every
+# three as a prefix of its `claude` command. A herdr spawn of a step also passes FACTORY_TASK=<T-id> and
+# FACTORY_STEP=<its solve-next heading>, which session-start.sh registers in the Factory UI. FACTORY_CLAUDE_ARGS, when set, is appended word by word to every
 # `claude` command line, spawned or printed (a test factory loads the plugin under test with `--plugin-dir` and its
 # own WORK_DIR with `--settings`). The herdr agent name is plan 3.6's `<role>_<task id lowercased>`,
 # `lead` for a lead, the leading `t-` dropped for an alias id and kept for a legacy one (`lead_ecs-12`,
@@ -291,6 +292,18 @@ step_unit() { # <T-id> <step>
       [ ! -f "$su_pb" ] || su_prompt="Read $su_pb first. $su_prompt" ;;
   esac
   unit "$1-$2" "$su_cwd" "$su_model" - "$su_role" "$(agent_name "$2" "$1")" "$su_prompt"
+}
+
+# the solve-next heading of a parent-level step, which the step session registers in the Factory UI through
+# session-start.sh, so the UI places the session and its asks on the task row
+step_line() { # <step> <T-id>
+  case "$1" in
+    triage) printf 'Step 3 of 16: triage %s' "$2" ;;
+    chart) printf 'Step 3b of 16: chart %s' "$(field "$(task_of "$2")" request)" ;;
+    grill) printf 'Step 4 of 16: grill %s' "$2" ;;
+    plan-check) printf 'Step 5 of 16: architect plan-check of %s' "$2" ;;
+    decompose) printf 'Step 6 of 16: decompose %s into blocks' "$2" ;;
+  esac
 }
 
 # the daily memory pass of one repo agent (plan 3.8): it reads and writes the state clone, so it runs there
@@ -555,6 +568,10 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     [ -z "$workspace" ] || set -- "$@" --workspace "$workspace"
   fi
   set -- "$@" --env "FACTORY_ROLE=$role" --env "FACTORY_UNIT=$id" --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1
+  case "$role" in
+    triage|chart|grill|plan-check|decompose)
+      set -- "$@" --env "FACTORY_TASK=${id%-"$role"}" --env "FACTORY_STEP=$(step_line "$role" "${id%-"$role"}")" ;;
+  esac
   created=$(herdr "$@" || :)
   pane=$(printf '%s' "$created" | json result.root_pane.pane_id)
   if [ -z "$pane" ]; then

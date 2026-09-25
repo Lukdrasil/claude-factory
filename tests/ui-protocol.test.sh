@@ -312,6 +312,11 @@ start s-reg "$tmp/prod" HERDR_ENV=1 HERDR_PANE_ID=pane-7
 s=$(cat "$ui/sessions/s-reg/session.md" 2>/dev/null)
 has "ui: docker in herdr registers the session" '^sid: "?s-reg"?$' "$s"
 has "the registration carries the herdr pane" '^pane: "?pane-7"?$' "$s"
+start s-step "$tmp/prod" HERDR_ENV=1 HERDR_PANE_ID=pane-11 FACTORY_TASK=T-PRD-1 'FACTORY_STEP=Step 3 of 16: triage T-PRD-1'
+s=$(cat "$ui/sessions/s-step/session.md" 2>/dev/null)
+has "a step session registers its task" '^task: T-PRD-1$' "$s"
+has "a step session registers its step line" '^step: Step 3 of 16: triage T-PRD-1$' "$s"
+has "a step session registers the solve flow" '^flow: solve$' "$s"
 start s-noherdr "$tmp/prod" HERDR_PANE_ID=pane-8
 [ ! -e "$ui/sessions/s-noherdr" ] && pass "no HERDR_ENV, no registration" || flunk "no HERDR_ENV, no registration"
 start s-stranger "$tmp/stranger" HERDR_ENV=1 HERDR_PANE_ID=pane-9
