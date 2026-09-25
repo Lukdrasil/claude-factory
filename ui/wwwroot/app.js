@@ -1,4 +1,4 @@
-import { groupOf, renderPipeline, renderTop, waiting } from './pipeline.js';
+import { groupOf, intake, renderPipeline, renderTop, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
 import { compose } from './ask-card.js';
 import { renderSetupStrip, renderSetupTab } from './setup.js';
@@ -10,7 +10,7 @@ const token = location.hash.slice(1).replace(/^token=/, '');
 const app = document.getElementById('app');
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: {}, cursor: null, detail: null,
-  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -122,7 +122,7 @@ function renderTab() {
     Org: () => renderOrg(S.org),
     Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
     Setup: () => renderSetupTab(S.setup),
-  }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity);
+  }[S.tab]?.() || renderPipeline(S.board, S.sessions, S.requests, S.org?.capacity || S.setup.capacity, S.org?.ceo, S.intakeNote);
   el.setAttribute('role', 'tabpanel');
   el.setAttribute('aria-label', S.tab);
   return el;
@@ -130,7 +130,7 @@ function renderTab() {
 
 function render() {
   const typing = document.activeElement?.tagName === 'TEXTAREA' ? document.activeElement : null;
-  const at = typing && [typing.closest('[data-ask]').dataset.ask, typing.closest('[data-q]').dataset.q, typing.selectionStart];
+  const at = typing && [typing.closest('[data-ask]')?.dataset.ask, typing.closest('[data-q]')?.dataset.q, typing.selectionStart];
   const left = app.querySelector('.grid-wrap')?.scrollLeft ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
@@ -145,7 +145,7 @@ function render() {
     if (details) app.querySelector('aside .details')?.setAttribute('open', '');
     app.querySelector('aside').scrollTop = top;
   }
-  const box = at && app.querySelector(`[data-ask="${at[0]}"] [data-q="${at[1]}"] textarea`);
+  const box = at && app.querySelector(at[0] ? `[data-ask="${at[0]}"] [data-q="${at[1]}"] textarea` : '[data-intake] textarea');
   box?.focus();
   box?.setSelectionRange(at[2], at[2]);
 }
@@ -201,6 +201,24 @@ async function redraw(visual) {
   }
 }
 
+/** A new request from the Pipeline tab's box: a free message to the CEO, as the Memory tab's start buttons send. */
+async function sendRequest() {
+  if (!intake.text.trim()) return;
+  const text = `request: ${intake.text.trim()}, priority ${intake.priority}`;
+  try {
+    await api(`/api/answers/${S.org.ceo.sid}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ask: '', text }),
+    });
+    intake.text = '';
+    S.intakeNote = { text: `Sent to the CEO: ${text}` };
+  } catch (err) {
+    S.intakeNote = { text: `Couldn't send "${text}": ${err.message}. Your request is kept, try Send again.`, error: true };
+  }
+  render();
+}
+
 /** A memory pass the human starts: a free message, no ask, typed into the CEO's pane by the relay. */
 async function startPass(b) {
   const text = `start the ${b.dataset.kind} pass for ${b.dataset.scope}`;
@@ -236,6 +254,7 @@ app.addEventListener('click', (e) => {
   const act = b.dataset.act;
   if (act === 'next') return next();
   if (act === 'pass') return startPass(b);
+  if (act === 'intake') return sendRequest();
   if (act === 'redraw') return redraw(b.closest('[data-visual]'));
   if (act === 'close') {
     S.drawer = null;
@@ -260,7 +279,7 @@ app.addEventListener('click', (e) => {
 });
 
 app.addEventListener('input', (e) => {
-  const box = e.target.closest('textarea');
+  const box = e.target.closest('[data-ask] textarea');
   if (box) stagedFor(box.closest('[data-ask]').dataset.ask).drafts[box.closest('[data-q]').dataset.q] = box.value;
 });
 

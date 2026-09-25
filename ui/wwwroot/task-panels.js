@@ -36,9 +36,9 @@ function rail(task) {
   const id = task.task.id;
   const now = currentStep(task.sessions, id);
   const done = new Set(task.task.steps || []);
-  const li = (text, tick, current) => `<li${tick ? ' class="done"' : ''}${current ? ' aria-current="step"' : ''}>${text}${tick ? TICK : ''}</li>`;
-  return `<nav aria-label="Solve steps of ${esc(id)}"><ol class="rail">${STEPS.map(([n, label], i) => li(`${n} ${label}`, done.has(n), i === now)).join('')}`
-    + `${li('done', task.task.status === 'done', false)}</ol></nav>`;
+  const li = (text, title, tick, current) => `<li title="${title}"${tick ? ' class="done"' : ''}${current ? ' aria-current="step"' : ''}>${text}${tick ? TICK : ''}</li>`;
+  return `<nav aria-label="Solve steps of ${esc(id)}"><ol class="rail">${STEPS.map(([n, label, title], i) => li(`${n} ${label}`, title, done.has(n), i === now)).join('')}`
+    + `${li('done', 'The human merged the task MR', task.task.status === 'done', false)}</ol></nav>`;
 }
 
 /** Triage's result: the tier, archetype and complexity it set, or Not triaged yet while the draft's placeholders stand. */

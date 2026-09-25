@@ -1,11 +1,28 @@
 import { esc } from './ask-card.js';
 import { capacityStrip, prio } from './org.js';
 
-/** The solve steps of bin/solve-next.sh: the grid's columns and the task drawer's rail, number and label. */
-export const STEPS = [['3', 'triage'], ['3b', 'chart'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut'], ['9', 'approve'],
-  ['10', 'worktree'], ['11', 'blocks'], ['12', 'acceptance'], ['13', 'review'], ['14', 'MR'], ['15', 'report'], ['16', 'knowledge']];
+/** The solve steps of bin/solve-next.sh: the grid's columns and the task drawer's rail, number, label and title. */
+export const STEPS = [
+  ['3', 'triage', 'Tier, archetype and related issues of the task'],
+  ['3b', 'chart', 'The request map charted until map.sh clear passes'],
+  ['4', 'grill', 'The grill with the human until the plan is ready'],
+  ['5', 'plan-check', 'The architect checks the plan against docs/architecture'],
+  ['6', 'decompose', 'The plan cut into blocks'],
+  ['8', 'cut', 'The cut checked by dag-check.sh, its wave plan in the progress file'],
+  ['9', 'approve', 'The human approves the plan and the task is claimed'],
+  ['10', 'worktree', 'The session worktree and branch of the task'],
+  ['11', 'blocks', 'Every block implemented, verified and merged, wave by wave'],
+  ['12', 'acceptance', 'The acceptance, quality gates and duplication check (12b) over the whole diff'],
+  ['13', 'review', 'The code-reviewer over the whole diff'],
+  ['14', 'MR', 'The task MR, for the human to review and merge'],
+  ['15', 'report', 'The self-report: the task set to review'],
+  ['16', 'knowledge', 'The knowledge review: lessons and decisions proposed'],
+];
 const TABS = ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup'];
 const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
+
+/** The New request box's draft, kept across the page's re-renders; app.js empties `text` once the CEO has it. */
+export const intake = { text: '', priority: 'P2' };
 
 /** The drawer a task id or an ask's task belongs to: the parent task (`T-<n>` or `T-<ALIAS>-<n>`) of a block or
  * step, or setup for none. */
@@ -74,9 +91,13 @@ function byRequest(roots, requests) {
     .map((k) => [k, groups.get(k).sort((a, b) => rank(a.priority) - rank(b.priority))]);
 }
 
-/** The top of every tab: the tabs, the to-answer counter and the setup strip that opens the setup drawer. */
+/** A setup session's label: its flow, task and step, each once. */
+const setupLabel = (s) => [...new Set([s.flow, s.task, s.step].filter((v) => v && v !== 'none'))].join(' · ') || s.sid;
+
+/** The top of every tab: the tabs, the to-answer counter and the setup strip, with its live sessions, that opens the
+ * setup drawer. */
 export function renderTop(sessions, tab) {
-  const setup = sessions.filter((s) => groupOf(s.task) === 'setup');
+  const setup = sessions.filter((s) => groupOf(s.task) === 'setup' && s.agent !== 'gone');
   const list = waiting(sessions);
   const all = list.length;
   const gone = list.filter((a) => a.gone).length;
@@ -86,17 +107,32 @@ export function renderTop(sessions, tab) {
   el.innerHTML = '<header class="top"><h1>Factory</h1><div class="tabs" role="tablist" aria-label="Views">'
     + `${TABS.map((t) => `<button role="tab" data-tab="${t}" aria-selected="${t === tab}">${t}</button>`).join('')}</div>`
     + `<button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}${gone ? `<small>, ${gone} whose session ended</small>` : ''}</button></header>`
-    + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip">${esc(s.flow || s.sid)}</span>`).join('')}`
+    + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip" data-session="${esc(s.sid)}" title="session ${esc(s.sid)}">${esc(setupLabel(s))}</span>`).join('')}`
     + `${setupWaiting ? `<span class="chip warn">${setupWaiting} to answer</span>` : ''}</button>`;
   return el;
 }
 
+/** The New request box: the request and its priority, P2 unless picked, that Send (`data-act="intake"`) posts to the CEO
+ * as a free message; without a CEO session it names the command that starts one and takes nothing. `note` is the
+ * outcome of the last send. */
+function intakeBox(ceo, note) {
+  const off = ceo ? '' : ' disabled';
+  return '<section class="tab-body" data-intake aria-label="New request"><h3>New request</h3>'
+    + (ceo ? '' : '<p class="muted">No CEO session runs, so no request goes out from here. Start one in the state directory: '
+      + '<code>claude \'/claude-factory:factory ceo\'</code></p>')
+    + `<div class="edit"><textarea rows="2" aria-label="The request"${off}>${esc(intake.text)}</textarea>`
+    + `<select aria-label="Priority"${off}>${['P0', 'P1', 'P2', 'P3'].map((p) => `<option${p === intake.priority ? ' selected' : ''}>${p}</option>`).join('')}</select>`
+    + `<button class="btn primary" data-act="intake"${off}>Send</button></div>`
+    + (note ? `<p class="${note.error ? 'bad' : 'muted'}">${esc(note.text)}</p>` : '')
+    + '</section>';
+}
+
 /**
- * The Pipeline tab: the capacity strip and the grid of tasks across the solve steps, the tasks of each request of
+ * The Pipeline tab: the capacity strip, the New request box and the grid of tasks across the solve steps, the tasks of each request of
  * `/api/requests` under one header row with its priority, status and destination, each task with its repo chip and
  * priority, its blocks in sub-rows under it and the step its session reports marked `aria-current="step"`.
  */
-export function renderPipeline(board, sessions, requests = [], capacity = null) {
+export function renderPipeline(board, sessions, requests = [], capacity = null, ceo = null, note = null) {
   const ids = new Set(board.map((t) => t.id));
   const roots = board.filter((t) => groupOf(t.id) === t.id || !ids.has(groupOf(t.id)));
   const groups = byRequest(roots, requests);
@@ -105,8 +141,12 @@ export function renderPipeline(board, sessions, requests = [], capacity = null) 
     + board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id)).map((b) => blockRow(b, t.id, sessions)).join('')).join('')}</tbody>`);
   const el = document.createElement('div');
   el.className = 'pipeline';
-  el.innerHTML = (capacity ? capacityStrip(capacity) : '')
-    + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th><th>Prio</th>${STEPS.map(([n, label]) => `<th>${n} <small>${label}</small></th>`).join('')}</tr></thead>`
-    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">No tasks yet. Start one with <code>/claude-factory:factory new</code>.</td></tr></tbody>`}</table></div>`;
+  el.innerHTML = (capacity ? capacityStrip(capacity) : '') + intakeBox(ceo, note)
+    + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th><th>Prio</th>${STEPS.map(([n, label, title]) => `<th title="${title}">${n} <small>${label}</small></th>`).join('')}</tr></thead>`
+    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">No tasks yet. Start one with New request above.</td></tr></tbody>`}</table></div>`;
+  el.addEventListener('input', (e) => {
+    if (e.target.matches('[data-intake] textarea')) intake.text = e.target.value;
+    if (e.target.matches('[data-intake] select')) intake.priority = e.target.value;
+  });
   return el;
 }
