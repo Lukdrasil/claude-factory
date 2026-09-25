@@ -55,13 +55,19 @@ export function renderMap(list, id, detail) {
     + `</div>${d.terms ? `<h3>Terms</h3>${md(d, 'terms', 'fog')}` : ''}`);
 }
 
+/** Spec-critic's verdict line of a red block, from its `## Spec critic`, or a hint that the block has none yet; '' for any other. */
+const critic = (t) => (t.tier !== 'red' ? ''
+  : t.specCritic ? `<span class="acc" data-spec-critic>spec-critic: ${esc(t.specCritic)}</span>`
+    : '<span class="acc warn" data-spec-critic title="A red block gets spec-critic before its approval, and its line under ## Spec critic">spec-critic missing</span>');
+
 const item = (t, parent) => `<li class="${parent ? 'par' : 'blk'}" data-item="${esc(t.id)}"><span class="mark${t.status === 'done' ? ' on' : ''}" title="${esc(t.status)}" aria-hidden="true">${t.status === 'done' ? '✓' : '·'}</span>`
-  + `<span><span class="id">${esc(t.id)}</span> ${esc(t.goal)}${t.acceptance ? `<span class="acc">${esc(t.acceptance)}</span>` : ''}</span>`
+  + `<span><span class="id">${esc(t.id)}</span> ${esc(t.goal)}${t.acceptance ? `<span class="acc">${esc(t.acceptance)}</span>` : ''}${critic(t)}</span>`
   + `<span>${parent ? prio(t.priority) : ''}<span class="chip">${esc(t.status)}</span></span></li>`;
 
 /**
  * The Plan tab: the final plan of the request shown, its destination, decisions and out of scope, and a read-only
- * checklist of its parents per repo with their blocks, status and acceptance. The approval is the CEO's confirm ask.
+ * checklist of its parents per repo with their blocks, status and acceptance, and spec-critic's line of each red block.
+ * The approval is the CEO's confirm ask.
  */
 export function renderPlan(list, id, detail) {
   return tab('plan', list, id, detail, (d) => {
