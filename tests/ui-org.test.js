@@ -166,6 +166,13 @@ async function real(context) {
     ok(got.block.includes('The cursor test passes.'), `block: ${got.block}`);
   });
 
+  await check('real: the red block T-ECS-1-02 shows the line under its ## Spec critic, the green T-ECS-1-01 no spec-critic', async () => {
+    const got = await p.locator('[data-checklist]').evaluate((ck) => ['T-ECS-1-01', 'T-ECS-1-02']
+      .map((id) => ck.querySelector(`[data-item="${id}"] [data-spec-critic]`)?.textContent || ''));
+    ok(got[0] === '', `green: ${got[0]}`);
+    ok(got[1].includes('OK - 0 blocking, 0 suggestions (2026-09-25)'), `red: ${got[1]}`);
+  });
+
   await check('real: Start daily of global posts an empty ask the server writes as the message 1-msg.txt of s-ceo', async () => {
     await tab(p, 'Memory');
     const row = p.locator('[data-passes] tbody tr', { has: p.locator('td:first-child', { hasText: /^\s*global\s*$/ }) });
@@ -321,7 +328,9 @@ async function real(context) {
     tickets: [{ nn: '02', title: 'Pick the store', type: 'grilling', status: 'open', blockedBy: [], repo: 'nexusapi', claimedBy: '', question: '', answer: '' }],
     frontier: ['02'],
     parents: [{ id: 'T-NEX-7', repo: 'nexusapi', priority: 'P2', status: 'in_progress', goal: 'feat: export', acceptance: '', blocks: [
-      { id: 'T-NEX-7-01', status: 'done', goal: 'feat: cursor', acceptance: '' }, { id: 'T-NEX-7-02', status: 'ready', goal: 'feat: job', acceptance: '' }] }] };
+      { id: 'T-NEX-7-01', status: 'done', tier: 'green', goal: 'feat: cursor', acceptance: '', specCritic: '' },
+      { id: 'T-NEX-7-02', status: 'ready', tier: 'red', goal: 'feat: job', acceptance: '', specCritic: 'needs additions before approve - 1 blocking, 0 suggestions (2026-09-25)' },
+      { id: 'T-NEX-7-03', status: 'draft', tier: 'red', goal: 'feat: purge', acceptance: '', specCritic: '' }] }] };
   const m = await context.newPage();
   await m.route('**/api/requests', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([REQ]) }));
   await m.route('**/api/requests/R-20260925-1', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(DETAIL) }));
@@ -352,6 +361,15 @@ async function real(context) {
     ok(marks.every((x) => x.border === 'none'), `bordered marks: ${JSON.stringify(marks)}`);
     ok(marks.find((x) => x.id === 'T-NEX-7-01').text === '✓', `done: ${JSON.stringify(marks)}`);
     ok(marks.every((x) => x.title), `a mark without its status as title: ${JSON.stringify(marks)}`);
+  });
+
+  await check('the Plan checklist shows spec-critic\'s line on a red block, "spec-critic missing" on a red block without one, nothing on a green one', async () => {
+    const got = await m.locator('[data-checklist]').evaluate((ck) => ['T-NEX-7-01', 'T-NEX-7-02', 'T-NEX-7-03', 'T-NEX-7']
+      .map((id) => ck.querySelector(`[data-item="${id}"] [data-spec-critic]`)?.textContent || ''));
+    ok(got[0] === '', `green: ${got[0]}`);
+    ok(got[1].includes('needs additions before approve - 1 blocking, 0 suggestions (2026-09-25)'), `red with the line: ${got[1]}`);
+    ok(/spec-critic missing/.test(got[2]), `red without the line: ${got[2]}`);
+    ok(got[3] === '', `parent: ${got[3]}`);
   });
   await m.close();
 
