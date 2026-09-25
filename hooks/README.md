@@ -92,3 +92,4 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
 - **Issue label.** A segment with `gh issue create` or `glab issue create` is denied unless `--label` or `-l`
   carries `ai-drafted` as one comma-separated value, quoted or bare, after a space or `=`. The deny names
   `bin/issue-create.sh`, which adds the label.
+- **Human gates.** A session with a `FACTORY_ROLE` is denied `task-approve.sh`, `task-done.sh --close` and `curate-apply.sh approve` unless it is `ceo`, `task-done.sh` unless it is `ceo` or `repo-lead`, and `block-mr-merge.sh --confirmed` unless it is `repo-lead`, however the script is spelled or chained; no `FACTORY_ROLE` is a human's own session.

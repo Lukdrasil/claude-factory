@@ -872,6 +872,60 @@ inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; ba
 inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
 lost_inplace() { deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$1'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."; }
 
+# R3: the human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
+# dialog in front of them. A session a monitor dispatched carries FACTORY_ROLE (session-monitor.sh); of those only
+# the CEO and the lead run a gate, each its own and after the human's yes (references/ceo.md, lead.md, done.md,
+# curate.md). No FACTORY_ROLE is a human's own session. The segments are read with the quote characters removed
+# and split once more at `;`, `&`, `|`, a bracket and a backtick, so `bash -c '... && sh task-approve.sh'` and
+# `$(...)` count too; the script is the first word after assignments, options and wrappers (sh, bash, env, ...).
+gate_role_check() { # <the command segments>
+  gr_role=${FACTORY_ROLE:-}
+  [ -n "$gr_role" ] || return 0
+  case "$1" in *task-approve.sh*|*task-done.sh*|*block-mr-merge.sh*|*curate-apply.sh*) ;; *) return 0 ;; esac
+  gr_lines=$(printf '%s\n' "$1" | tr -d '\042\047' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  set -f
+  gr_ifs=$IFS; IFS='
+'
+  for gr_line in $gr_lines; do
+    IFS=$gr_ifs
+    # shellcheck disable=SC2086
+    set -- $gr_line
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *) break ;;
+      esac
+    done
+    [ $# -gt 0 ] || continue
+    gr_cmd=${1##*/}; shift
+    gr_owner=''
+    case "$gr_cmd" in
+      task-approve.sh)
+        gr_owner=ceo gr_msg="task-approve.sh is the CEO's, after the human's yes in the approval ask (references/ceo.md)" ;;
+      task-done.sh)
+        case " $* " in
+          *" --close "*)
+            gr_owner=ceo gr_msg="task-done.sh --close is the CEO's, after the human's yes in the done ask (references/done.md)" ;;
+          *)
+            gr_owner='ceo repo-lead' gr_msg="task-done.sh is the lead's or the CEO's, after the human says the task MR is merged (references/lead.md, done.md)" ;;
+        esac ;;
+      block-mr-merge.sh)
+        case " $* " in *" --confirmed "*)
+          gr_owner=repo-lead gr_msg="block-mr-merge.sh --confirmed is the lead's, after the human's yes in the high-risk confirm ask (references/lead.md)" ;;
+        esac ;;
+      curate-apply.sh)
+        if [ "${1:-}" = approve ]; then
+          gr_owner=ceo gr_msg="curate-apply.sh approve is the CEO's, after the human's yes in the curate round (references/curate.md)"
+        fi ;;
+    esac
+    [ -n "$gr_owner" ] || continue
+    case " $gr_owner " in *" $gr_role "*) continue ;; esac
+    deny "$gr_msg, and this session runs as FACTORY_ROLE=$gr_role. Report what is ready and let the owner ask the human."
+  done
+  IFS=$gr_ifs
+  set +f
+}
+
 guard_bash() {
   c=$1
   [ -n "$c" ] || deny "empty command"
@@ -954,6 +1008,7 @@ guard_bash() {
   # split into segments is split_segs, which ends a segment only outside quotes.
   sc=$(heredoc_stripped "$c")
   segs=$(split_segs "$sc")
+  gate_role_check "$segs"
   # T-254: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, quoted or
   # bare. bin/issue-create.sh adds it; a direct create is held to the same rule, segment by segment. The create is
   # read with the quoted spans removed, so a mention in a message is none; the label is read as written.
