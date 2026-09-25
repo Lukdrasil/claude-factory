@@ -137,8 +137,9 @@ public sealed partial class UiHome(string root)
 
     /// <summary>
     /// One pass of auto answer while it is on: every open, unsent and unheld round of a session in herdr whose agent is
-    /// not gone, outside the gate flows, whose every question has a recommended option, is answered with those options,
-    /// one <c>Q&lt;n&gt; &lt;key&gt;</c> per line, through <see cref="WriteAnswer"/>. A confirm, a notice and a round with
+    /// not gone, outside the gate flows and the <c>dialog-</c> asks of a permission dialog, whose every question has a
+    /// recommended option, is answered with those options, one <c>Q&lt;n&gt; &lt;key&gt;</c> per line, through
+    /// <see cref="WriteAnswer"/>. A confirm, a notice and a round with
     /// any question lacking a recommended option are left to the human. Returns <c>&lt;sid&gt;/&lt;ask&gt;</c> of each
     /// ask it answered.
     /// </summary>
@@ -152,6 +153,7 @@ public sealed partial class UiHome(string root)
         foreach (var s in Sessions().Where(s => s.Pane != "" && s.Agent != "gone"))
         {
             foreach (var a in s.Asks.Where(a => a.Status == "open" && !a.Sent && a.Held is null && !Gates.Contains(a.Flow)
+                && !a.Ask.StartsWith("dialog-", StringComparison.Ordinal)
                 && a.View.Kind == "round" && a.View.Questions.Count > 0
                 && a.View.Questions.All(q => q.RecKey is { } k && q.Options.Any(o => o.Key == k))))
             {

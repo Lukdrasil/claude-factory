@@ -118,7 +118,9 @@ Auto answer, the switch in the top bar (hidden when the server has no `/api/auto
 kept in `/ui/auto-answer`. While it is on the server itself, once a second and with no page open, answers every open,
 unsent round of a session in herdr whose agent is not gone and whose every question has a recommended option, one
 `Q<n> <key>` per line through the same answer files. A confirm, a notice, an ask of the `approve`, `done` or
-`add-repo` flow, and a round with any question lacking a recommended option are always left to the human.
+`add-repo` flow, a permission dialog (an ask id starting `dialog-`), and a round with any question lacking a
+recommended option are always left to the human. A question's recommended option is its `➡️ **X**` line, else a
+`Recommendation: **X**` line, else the one option whose label says `(recommended`.
 
 Mute sound, the switch next to it (hidden when the server has no `/api/mute-sound`), is kept in `/ui/mute-sound`.
 While it is on and the UI container runs, `bin/notify.sh` shows a waiting ask with `--sound none`, and the relay

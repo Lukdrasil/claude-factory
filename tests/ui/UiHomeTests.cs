@@ -102,6 +102,17 @@ public sealed class UiHomeTests : IDisposable
     }
 
     [Fact]
+    public void Auto_answer_leaves_a_permission_dialog_to_the_human()
+    {
+        Ask("s1", "dialog-t-001-triage-1", "solve", "❓ **Q1** - **Allow the command?**\n  **A** allow\n  **B** deny\n\n➡️ **A**: read-only.\n");
+        var home = new UiHome(_ui);
+        home.SetAutoAnswer(true);
+
+        Assert.Empty(home.AutoAnswerPass());
+        Assert.Empty(Answers("s1"));
+    }
+
+    [Fact]
     public void Auto_answer_leaves_a_session_outside_herdr_and_one_whose_agent_is_gone()
     {
         Ask("s1", "r1", "grill", Round, pane: "");

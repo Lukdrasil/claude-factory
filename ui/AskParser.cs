@@ -10,7 +10,8 @@ public sealed record AskView(string Kind, string Preamble, List<QuestionView> Qu
 /// The one reader of the canonical ask format of <c>skills/grill/SKILL.md</c>: a notice has no question, a confirm is
 /// one question with the options yes and no. Options inside a fenced block are never read. A <c>❓</c> segment without a
 /// question header is rendered after the previous question's own text and adds no option, or joins the preamble when no
-/// question precedes it.
+/// question precedes it. A question's recommendation is its <c>➡️</c> line, else a <c>Recommendation: **X**</c> line, and
+/// without either the one option whose label says <c>(recommended</c> is its recommended key.
 /// </summary>
 public static partial class AskParser
 {
@@ -68,17 +69,26 @@ public static partial class AskParser
                 rec ??= line["➡️ ".Length..].TrimEnd('\r');
                 continue;
             }
+            if (!inFence && RecLine().Match(line) is { Success: true } r)
+            {
+                rec ??= line[r.Length..].TrimEnd('\r');
+                continue;
+            }
             lines.Add(line);
         }
         var after = header.Groups[3].Success ? header.Groups[3].Value : null;
+        var options = Options(rest);
+        var inline = options.Where(o => InlineRec().IsMatch(o.Label)).ToList();
+        var recKey = rec is not null && RecKey().Match(rec) is { Success: true } k ? k.Groups[1].Value
+            : inline.Count == 1 ? inline[0].Key : null;
         return new QuestionView(
             header.Groups[1].Value,
             Md.Inline(header.Groups[2].Value),
             after,
             Md.ToHtml(string.Join('\n', lines)) + Md.ToHtml(tail),
-            Options(rest).Select(o => new OptionView(o.Key, Md.Inline(o.Label))).ToList(),
+            options.Select(o => new OptionView(o.Key, Md.Inline(o.Label))).ToList(),
             rec is null ? null : Md.Inline(rec),
-            rec is not null && RecKey().Match(rec) is { Success: true } k ? k.Groups[1].Value : null);
+            recKey);
     }
 
     [GeneratedRegex(@"^❓ ", RegexOptions.Multiline)]
@@ -95,4 +105,10 @@ public static partial class AskParser
 
     [GeneratedRegex(@"^\*\*([A-Z])\*\*")]
     private static partial Regex RecKey();
+
+    [GeneratedRegex(@"^Recommendation:[ \t]*(?=\*\*[A-Z]\*\*)")]
+    private static partial Regex RecLine();
+
+    [GeneratedRegex(@"\(recommended\b", RegexOptions.IgnoreCase)]
+    private static partial Regex InlineRec();
 }

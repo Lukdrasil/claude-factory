@@ -36,6 +36,30 @@ public sealed class AskParserTests
     }
 
     [Fact]
+    public void A_recommendation_line_or_one_option_marked_recommended_gives_the_recommended_key()
+    {
+        var view = AskParser.Parse("""
+            ❓ **Q1** - **How are debts tracked?**
+              **A** kit as is
+              **B** per-rule lists
+
+            Recommendation: **B**. It keeps every other rule active.
+
+            ❓ **Q2** - **How to fix the dropped line?**
+              **A** copy the sentence (recommended: the plan stays unchanged)
+              **B** move the sentence
+
+            ❓ **Q3** - **Which one?**
+              **A** this (recommended)
+              **B** that (Recommended)
+            """);
+
+        Assert.Equal(["B", "A", null], view.Questions.Select(q => q.RecKey));
+        Assert.Equal("<strong>B</strong>. It keeps every other rule active.", view.Questions[0].Rec);
+        Assert.DoesNotContain("It keeps every other rule", view.Questions[0].Html);
+    }
+
+    [Fact]
     public void The_text_before_the_first_question_is_the_rendered_preamble()
     {
         var view = AskParser.Parse(Round);
