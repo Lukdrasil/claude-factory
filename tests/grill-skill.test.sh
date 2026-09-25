@@ -33,4 +33,9 @@ section=$(awk '/^## / { on = ($0 == "## The grill file"); next } on { print }' "
 printf '%s' "$section" | grep -q 'resume'; check 'the grill file section keeps the resume rule' $?
 printf '%s' "$section" | grep -q 'references/output\.md'; check 'the grill file section points the slug to references/output.md' $?
 
+# F33 (sim, 2026-09-25): a grill in its own step session printed its rounds only in the terminal, so the UI
+# never showed them; the interview loop routes every round through the shared ask rule
+iloop=$(awk '/^## / { on = ($0 == "## Interview loop"); next } on { print }' "$skill")
+printf '%s' "$iloop" | grep -q '_shared/ask\.md'; check 'the interview loop sends each round through _shared/ask.md' $?
+
 exit "$fail"
