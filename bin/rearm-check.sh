@@ -13,9 +13,9 @@
 #                                          block in_progress, tests_ready, review, changes_requested or blocked
 #   anywhere else                          nothing
 #
-# It reads and never writes the state clone: the only file it writes is its counter `.harness-rearm-<sid>` in the
-# stamp directory of self-report-check.sh (`.harness-stop-rounds`, once `.harness-stats-sent` too): the task's
-# `.harness/<T-id>/` for a worktree, the directory above the state clone for the CEO. Never when
+# It reads and never writes the state clone's files: the only file it writes is its counter
+# `.harness-rearm-<sid>`, for a worktree in the task's `.harness/<T-id>/` beside self-report-check.sh's
+# `.harness-stop-rounds`, for the CEO in the state clone's git dir (`git rev-parse --absolute-git-dir`). Never when
 # `stop_hook_active` is true, at most twice per session, and any error of its own lets the Stop through: a
 # reminder, not a gate.
 set -u
@@ -51,7 +51,8 @@ if resolve_cwd_layout "$PWD" && [ "$LO_POSTURE" = standalone ] && is_parent_id "
   case "$files" in */archive/*) exit 0 ;; esac
 elif [ -f "$top/repos.yml" ] && [ -d "$top/repos" ]; then
   state=$top
-  stamp=$(dirname -- "$top")
+  # inside the clone's git dir: no commit or status sees it, and nothing lands in the factory root
+  stamp=$(git -C "$top" rev-parse --absolute-git-dir 2>/dev/null) || exit 0
   # one grep for the tasks of a request (task-new.sh --parent copies `request:` into every block), the awk only
   # over those
   requested=$(grep -l '^request:[[:space:]]*R-' $(task_files) /dev/null 2>/dev/null)
