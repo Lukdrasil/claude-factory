@@ -19,7 +19,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 
 | route | what |
 |---|---|
-| `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh`, with its `request` and `priority` |
+| `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh`, with its `request`, `priority` and `steps` (the solve steps its state records as done, read the way `bin/solve-next.sh` decides them) |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
 | `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes` of every `passes.yml` |
@@ -83,8 +83,9 @@ date; it clears once the stream is back.
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
 | `app.js` | state, the calls, the stream, the clicks and Esc, the focus kept across renders and the staged answers in `sessionStorage` |
 
-The counter counts the open asks nobody has sent an answer for, of sessions in herdr whose `agent` is not
-`gone`; a gone session's asks still show in their drawer, read-only. Each click opens the next one, oldest first
+The counter counts the open asks nobody has sent an answer for, of sessions in herdr, and names apart the ones
+whose session has ended (`7 to answer, 1 whose session ended`); such an ask still shows in its drawer, read-only.
+An ask without a `task:` counts under its session's task, so the counter, the grid and the drawer use one key. Each click opens the next one, oldest first
 by mtime, in its drawer, and marks its card current with `aria-current="true"` and an outline, as `?ask=` does. A
 drawer keeps an ask it opened with even after its session closes it, so the card shows answered.
 
@@ -116,7 +117,10 @@ shows all of it in one column. The panels render the task's markdown from its `h
 `<pre>` of markdown.
 
 The header holds six tabs, and every tab keeps the counter, the setup strip and the drawer:
-- Pipeline: the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid. The tasks of one
+- Pipeline: the New request box (a text, a priority P0 to P3, P2 by default), which posts `request: <text>,
+  priority <P>` as a free message to the CEO's session and is disabled with the command that starts the CEO when
+  there is none; the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid. A step is
+  ticked from the `steps` the state records, the step a session reports is only marked current. The tasks of one
   request sit under its header row (id, priority, status, destination), the request with the best priority first,
   then the newest, the tasks without a request last; without any request there is no header row. Each task shows
   its repo as a chip next to its id and its priority in the Prio column. Step `3b`, the chart of the request map,
