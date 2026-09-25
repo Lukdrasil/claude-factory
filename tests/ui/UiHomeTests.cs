@@ -1,5 +1,7 @@
+using System.Runtime.Versioning;
 using Xunit;
 
+[SupportedOSPlatform("linux")]
 public sealed class UiHomeTests : IDisposable
 {
     readonly string _ui = Directory.CreateTempSubdirectory("ui-home-").FullName;

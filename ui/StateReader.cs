@@ -32,7 +32,19 @@ public sealed record SetupInfo(
     List<DoctorStep> Steps,
     string DoctorAt,
     CapacityInfo Capacity,
-    List<PassInfo> Passes);
+    List<PassInfo> Passes,
+    List<AddRepoInfo> AddRepos,
+    List<OnboardingInfo> Onboarding);
+
+/// <summary>One check line of an onboarding report: <c>- &lt;state&gt; &lt;id&gt;: &lt;detail&gt;[ Fix: &lt;fix&gt;]</c>, as text.</summary>
+public sealed record OnboardingCheck(string State, string Id, string Detail, string Fix);
+
+/// <summary>One proposal line of an onboarding report: <c>- P&lt;n&gt; &lt;area&gt;: &lt;text&gt;</c>.</summary>
+public sealed record OnboardingProposal(string Id, string Area, string Text);
+
+/// <summary><c>repos/&lt;key&gt;/onboarding.md</c> (contract C5): its frontmatter, the rendered summary, the checks and the proposals.</summary>
+public sealed record OnboardingInfo(
+    string Repo, string Status, string At, string Stack, string SummaryHtml, List<OnboardingCheck> Checks, List<OnboardingProposal> Proposals);
 
 /// <summary>
 /// The state repo mounted read-only at /state: task frontmatter, plans, grill files, verdicts, progress and the
@@ -105,7 +117,9 @@ public sealed partial class StateReader(string root)
             steps,
             at,
             CapacityInUse(Leases()),
-            Passes());
+            Passes(),
+            home.AddRepos(),
+            Onboarding());
     }
 
     /// <summary>Live task files in path order, then with <paramref name="archive"/> the archived ones in path order.</summary>
@@ -454,4 +468,88 @@ public static class Frontmatter
         var end = text.IndexOf('\n', close + 4);
         return end < 0 ? "" : text[(end + 1)..];
     }
+}
+
+/// <summary>The onboarding reports, read only; their check lines stay text for the page to escape, only the summary is markdown.</summary>
+public sealed partial class StateReader
+{
+    /// <summary>
+    /// Every readable <c>repos/&lt;key&gt;/onboarding.md</c> in key order, the key its folder. <c>## Summary</c> goes through
+    /// <see cref="Md.ToHtml"/>; of <c>## Checks</c> and <c>## Proposals</c> only the lines the C5 regexes match count, and a
+    /// check's fix is split off at its last <c> Fix: </c>. A missing section reads empty.
+    /// </summary>
+    public List<OnboardingInfo> Onboarding()
+    {
+        var repos = Path.Combine(root, "repos");
+        if (!Directory.Exists(repos))
+        {
+            return [];
+        }
+        var list = new List<OnboardingInfo>();
+        foreach (var dir in Directory.EnumerateDirectories(repos).Order(StringComparer.Ordinal))
+        {
+            var file = Path.Combine(dir, "onboarding.md");
+            if (!File.Exists(file))
+            {
+                continue;
+            }
+            try
+            {
+                var (text, fields) = Frontmatter.Load(file);
+                list.Add(ParseOnboarding(Path.GetFileName(dir), text, fields));
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+        return list;
+    }
+
+    static OnboardingInfo ParseOnboarding(string repo, string text, Dictionary<string, string> fields)
+    {
+        var summary = new List<string>();
+        var checks = new List<OnboardingCheck>();
+        var proposals = new List<OnboardingProposal>();
+        var section = "";
+        foreach (var raw in Frontmatter.Body(text).Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            if (line.StartsWith("# ", StringComparison.Ordinal) || line.StartsWith("## ", StringComparison.Ordinal))
+            {
+                section = line.StartsWith("## ", StringComparison.Ordinal) ? line[3..].Trim() : "";
+                continue;
+            }
+            switch (section)
+            {
+                case "Summary":
+                    summary.Add(line);
+                    break;
+                case "Checks" when CheckLine().Match(line) is { Success: true } m:
+                    var detail = m.Groups[3].Value;
+                    var fix = detail.LastIndexOf(" Fix: ", StringComparison.Ordinal);
+                    checks.Add(fix < 0
+                        ? new OnboardingCheck(m.Groups[1].Value, m.Groups[2].Value, detail, "")
+                        : new OnboardingCheck(m.Groups[1].Value, m.Groups[2].Value, detail[..fix], detail[(fix + " Fix: ".Length)..]));
+                    break;
+                case "Proposals" when ProposalLine().Match(line) is { Success: true } m:
+                    proposals.Add(new OnboardingProposal(m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value));
+                    break;
+            }
+        }
+        var md = string.Join('\n', summary).Trim();
+        return new OnboardingInfo(
+            repo,
+            fields.GetValueOrDefault("status", ""),
+            fields.GetValueOrDefault("at", ""),
+            fields.GetValueOrDefault("stack", ""),
+            md == "" ? "" : Md.ToHtml(md),
+            checks,
+            proposals);
+    }
+
+    [GeneratedRegex(@"^- (done|missing|failing) ([a-z][a-z0-9-]*): (.+)$")]
+    private static partial Regex CheckLine();
+
+    [GeneratedRegex(@"^- (P[0-9]+) ([a-z][a-z0-9-]*): (.+)$")]
+    private static partial Regex ProposalLine();
 }

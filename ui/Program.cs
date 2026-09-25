@@ -163,5 +163,6 @@ static class Api
 [JsonSerializable(typeof(RequestDetail))]
 [JsonSerializable(typeof(OrgInfo))]
 [JsonSerializable(typeof(DoctorFile))]
+[JsonSerializable(typeof(AddRepoFile))]
 [JsonSourceGenerationOptions(JsonSerializerDefaults.Web)]
 partial class UiJson : JsonSerializerContext;

@@ -1,6 +1,8 @@
+using System.Runtime.Versioning;
 using Xunit;
 
 /// <summary>StateReader over a throwaway state layout and UI home, without git: the board, the archive, requests, the org and setup.</summary>
+[SupportedOSPlatform("linux")]
 public sealed class StateReaderTests : IDisposable
 {
     readonly string _state = Directory.CreateTempSubdirectory("state-reader-").FullName;
