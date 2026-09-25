@@ -7,15 +7,19 @@
 # One line per parent, `<T-id> <key> <priority> <request>`, for a parent that is `ready`, has a `request:`, has
 # `owner: null` (the lead claims it, the queue claims nothing), has no open `<T-id>-lead` tab record
 # (herdr-tabs.sh state), and whose every depends_on is done: `done` or `closed`, or archived. An id with no task
-# file at all is not done. A parent with open blocks also needs one block whose own depends_on are all done
-# (PLAN 3.2 [XR] 4): a lead that ended because every remaining block waited on another parent comes back once
-# that parent is done.
+# file at all is not done. A parent with open blocks also needs one block whose own depends_on are all done.
+#
+# PLAN 3.2 [XR] 4 (DECISIONS D20): a lead that ended because every remaining block waited on another parent
+# leaves its parent `in_progress` (setting it back to `ready` is a human gate) and those blocks `blocked`. Such a
+# parent is in the queue too, whatever its owner (the new lead reclaims it with `state-report.sh --owner`), when
+# it has a `request:`, no open `<T-id>-lead` tab record, and one runnable block again: a block that is neither
+# done nor closed and whose every depends_on is done or archived. Same line, same order.
 #
 # The priority printed is the effective one: the best of the parent's own (`P2` when it has none) and that of
 # every open task depending on it, directly or through another open task, so a P0 request waiting on a P3 parent
 # lifts it. The id order of sort_ids (legacy ids, then alias ids) breaks a tie. --max N prints the first N.
 #
-# Exit 0 with the lines, or nothing when no parent is ready; 1 on bad usage.
+# Exit 0 with the lines, or nothing when no parent is dispatchable; 1 on bad usage.
 set -eu
 
 max='' state=''
@@ -99,7 +103,9 @@ awk -v prefix="$state/repos/" '
     for (x = 1; x <= n; x++) {
       t = ids[x]
       if (!live[t] || fin[t] || t !~ /^T-([A-Z]+-)?[0-9]+$/) continue
-      if (st[t] != "ready" || nul(req[t]) || !nul(own[t]) || !done_all(t)) continue
+      if (nul(req[t])) continue
+      if (st[t] == "ready") { if (!nul(own[t]) || !done_all(t)) continue }
+      else if (st[t] != "in_progress") continue
       open = 0; runnable = 0
       for (y = 1; y <= n; y++) {
         b = ids[y]
@@ -107,6 +113,7 @@ awk -v prefix="$state/repos/" '
         open = 1; if (done_all(b)) { runnable = 1; break }
       }
       if (open && !runnable) continue
+      if (st[t] == "in_progress" && !runnable) continue
       print t, key[t], "P" eff[t], req[t]
     }
   }' "$@" \
