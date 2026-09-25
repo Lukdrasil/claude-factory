@@ -39,8 +39,11 @@ one task instead.
    --interval 60`, description `herd-watch.sh <T-id>`, `timeout_ms` at its maximum. A Monitor expires; arm it
    again on every expiry notice. The Stop hook `rearm-check.sh` names every herd of a request that has no
    watcher (twice per session at most), so a restart of this session is caught too.
-6. `sh <plugin-root>/bin/pass-stamp.sh --due daily` and `--due weekly`: offer the due passes (Memory below).
-7. `sh <plugin-root>/bin/state-push.sh`, then one line per herd to the human: `<T-id> <status> <next step>`.
+6. Arm the org check through the Monitor tool, command `sh <plugin-root>/bin/org-check.sh --interval 300`,
+   description `org-check.sh`, `timeout_ms` at its maximum, and again on every expiry notice (Watch). The Stop hook
+   `rearm-check.sh` names it when it is not armed.
+7. `sh <plugin-root>/bin/pass-stamp.sh --due daily` and `--due weekly`: offer the due passes (Memory below).
+8. `sh <plugin-root>/bin/state-push.sh`, then one line per herd to the human: `<T-id> <status> <next step>`.
 
 ## The loop
 
@@ -65,6 +68,20 @@ for a step unit that reads `ready` with an open ask, then `<unit> answered <ask>
 | `-> gone` with no output in the state | dispatch the step again; two deaths in a row is `_shared/blocked-question.md` |
 | `<T-id>-lead agent <old> -> gone` or `-> closed` | the lead ended: its parent is done, or it waits on a cross-repo parent and stays `in_progress`; `--queue` starts a new lead for it once a block is runnable again |
 | `<T-id> status <old> -> done` | when it was the last parent of its request: `sh <plugin-root>/bin/map.sh status <R-id> done` |
+
+## Watch
+
+herd-watch.sh reports what changes; `org-check.sh` reports what stands still. Every 5 minutes it looks at every
+named session and the queue, and prints a line only for a finding, again every 30 minutes while it lasts:
+
+| line | what you do |
+|---|---|
+| `<name> blocked <m> min` | a dialog nobody answers: `herdr agent read <name> --source recent-unwrapped --lines 120`, ask the human (`_shared/ask.md`), answer with `herdr agent send-keys <name> <keys>`; with `ui: docker` name the pane, since the human may answer there |
+| `<name> idle <m> min, no open ask` | `herdr agent read <name> --source recent-unwrapped --lines 60` and the state of its unit. Its work is done and reported: act on the report you missed (the tables above and Hand-off), then `herdr tab close` its tab. It stopped mid-work: `herdr agent prompt <name> "Continue: <the next step the state asks for>."`. A second finding for the same session after a nudge is `_shared/blocked-question.md` |
+| `queue <n> parents wait with <free> sessions free` | `sh <plugin-root>/bin/session-monitor.sh --queue` |
+
+You never do the stalled session's work yourself: you nudge it, answer its dialog through the human, or start it
+again.
 
 ## Hand-off
 

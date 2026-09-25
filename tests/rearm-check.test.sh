@@ -62,6 +62,7 @@ done
 mon() { # <T-id>: a Monitor task running herd-watch.sh on that herd
   printf '{"id":"b%s","type":"monitor","status":"running","description":"herd %s","command":"sh /p/bin/herd-watch.sh %s --interval 60"}' "$1" "$1" "$1"
 }
+org='{"id":"borg","type":"monitor","status":"running","description":"org-check.sh","command":"sh /p/bin/org-check.sh --interval 300"}'
 stop() { # <cwd> <session id> <background_tasks JSON array> [<stop_hook_active>] -> rc on line 1, stderr after
   out=$( (cd "$1" && printf '{"session_id":"%s","hook_event_name":"Stop","stop_hook_active":%s,"background_tasks":%s}' \
     "$2" "${4:-false}" "$3" | WORK_DIR="$work" sh "$bin/rearm-check.sh" 2>&1 >/dev/null); printf '\n%s' $?)
@@ -98,11 +99,21 @@ is 'one herd watched, the others not: exit 2' 2 "$(rc "$r")"
 lacks 'the watched herd is not listed' 'T-CF-3 ' "$e"
 has 'an unwatched herd still is' "$req P2 T-CF-4 cf ready" "$e"
 
-r=$(stop "$state" s4 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8)]")
-is 'every herd watched exits 0' 0 "$(rc "$r")"
+r=$(stop "$state" s4 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8),$org]")
+is 'every herd watched and org-check.sh armed exits 0' 0 "$(rc "$r")"
 is 'and prints nothing' '' "$(err "$r")"
 
-r=$(stop "$state" s5 '[{"id":"b1","type":"monitor","status":"running","description":"herd-watch.sh T-CF-3"},{"id":"b2","type":"monitor","status":"running","description":"herd-watch.sh T-CF-4"},{"id":"b3","type":"monitor","status":"running","description":"sh herd-watch.sh T-CF-8 --interval 60"}]')
+# the CEO also keeps org-check.sh armed (references/ceo.md, Watch): without it the Stop is blocked too
+r=$(stop "$state" s13 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8)]")
+e=$(err "$r")
+is 'every herd watched but no org-check.sh exits 2' 2 "$(rc "$r")"
+has 'the message names org-check.sh and its Monitor' yes \
+  "$(printf '%s' "$e" | grep -q 'org-check.sh --interval 300' && printf '%s' "$e" | grep -q 'Monitor' && echo yes)"
+lacks 'and lists no herd' 'T-CF-' "$e"
+r=$(stop "$state" s14 '[{"id":"b1","type":"monitor","status":"completed","command":"sh /p/bin/org-check.sh --interval 300"}]')
+has 'a finished org-check.sh counts as none' yes "$(printf '%s' "$(err "$r")" | grep -q 'org-check.sh --interval 300' && echo yes)"
+
+r=$(stop "$state" s5 "[{\"id\":\"b1\",\"type\":\"monitor\",\"status\":\"running\",\"description\":\"herd-watch.sh T-CF-3\"},{\"id\":\"b2\",\"type\":\"monitor\",\"status\":\"running\",\"description\":\"herd-watch.sh T-CF-4\"},{\"id\":\"b3\",\"type\":\"monitor\",\"status\":\"running\",\"description\":\"sh herd-watch.sh T-CF-8 --interval 60\"},$org]")
 is 'a monitor naming herd-watch.sh in its description counts' 0 "$(rc "$r")"
 
 # the harness reports a task the Monitor tool started as `local_bash`: any type counts, a finished task does not
@@ -168,7 +179,7 @@ e=$(err "$r")
 is 'a parent with an open step record and no watcher exits 2' 2 "$(rc "$r")"
 has 'it is listed as a herd-list line' "$req P1 T-CF-9 cf draft" "$e"
 lacks 'a parent whose step records are closed is not listed' 'T-CF-2 ' "$e"
-is 'a watched chain parent exits 0' 0 "$(rc "$(stop "$state" c2 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8),$(mon T-CF-9)]")")"
+is 'a watched chain parent exits 0' 0 "$(rc "$(stop "$state" c2 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8),$(mon T-CF-9),$org]")")"
 
 # --- what the hook cannot read lets the Stop through ------------------------------------
 out=$( (cd "$state" && printf 'not json' | WORK_DIR="$work" sh "$bin/rearm-check.sh" >/dev/null 2>&1); echo $?)

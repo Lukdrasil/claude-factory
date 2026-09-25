@@ -24,7 +24,8 @@ that used to sit in that key lives here instead.
   one git index. `rearm-check.sh` is the second Stop hook and writes nothing there: in a parent worktree whose
   units run in herdr, and in the state clone for every parent of a request that is in flight, it exits 2 with
   one herd-list line per herd that no `monitor` entry of the hook's `background_tasks` watches with
-  `herd-watch.sh <T-id>`, so a CEO or lead whose Monitor expired, or that was restarted, arms it again. Never
+  `herd-watch.sh <T-id>`, so a CEO or lead whose Monitor expired, or that was restarted, arms it again; the CEO
+  is asked as well while no entry runs `org-check.sh`, its periodic check of every session. Never
   when `stop_hook_active` is true, at most twice per session: its counter `.harness-rearm-<sid>` sits in the
   task's `.harness/<T-id>/` for a lead, and in the state clone's git dir (`git rev-parse --absolute-git-dir`)
   for the CEO, where no commit and no status sees it.
