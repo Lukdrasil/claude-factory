@@ -92,8 +92,9 @@ drawer keeps an ask it opened with even after its session closes it, so the card
 The card renders the ask view of `/api/sessions`, the server's reading of the ask, and parses no markdown. An ask
 with no `❓ **Qn**` is a notice. One question with the options yes and no is a confirm. Anything else is a round.
 The header shows the ask's step and its question count, the session id sits in a small line at the bottom. Each
-option is a full-width button holding its rendered label, `aria-pressed` and a check mark once picked, and the
-recommendation reads `Why B: ...`. A card
+option is a full-width button holding its rendered label, `aria-pressed` and a check mark once picked, and an
+`aria-label` of its key and whole label as text, inline code included, so no reader of its text nodes alone drops a
+code span; the recommendation reads `Why B: ...`. A card
 stages one item per question until Send: an option (`Q1 B`), Explain more (`Q2 more`), Compare options
 (`explore Q3`), Write my answer (`Q4 <text>`), Ask a question (`Q5 ? <text>`) or Decide later (`Q6 defer`).
 Every card, a notice included, has Write my answer: a notice posts that text verbatim, or `ok` without one.

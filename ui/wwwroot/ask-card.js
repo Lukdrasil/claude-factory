@@ -27,6 +27,13 @@ const SHOWN = {
   defer: () => 'Decide later',
 };
 
+/** The text of rendered HTML with its whitespace collapsed. */
+function plain(html) {
+  const t = document.createElement('template');
+  t.innerHTML = html;
+  return t.content.textContent.replace(/\s+/g, ' ').trim();
+}
+
 /**
  * The one state of an ask: answered once its session closed it, gone once its session ended before it took the
  * answer, sent while an answer waits for the session, else open. Only an open ask takes an answer.
@@ -70,7 +77,8 @@ function question(q, kind, staged, live) {
   if (q.options.length) {
     h += `<div class="opts">${q.options.map((o) => {
       const on = item?.kind === 'pick' && item.text === o.key;
-      return `<button class="opt ${on ? 'on' : ''}" data-act="pick" data-k="${o.key}" aria-pressed="${on}" ${live ? '' : 'disabled'}>`
+      const name = `${o.key} ${plain(o.html)}${o.key === q.recKey ? ', recommended' : ''}`;
+      return `<button class="opt ${on ? 'on' : ''}" data-act="pick" data-k="${o.key}" aria-label="${esc(name)}" aria-pressed="${on}" ${live ? '' : 'disabled'}>`
         + `<b>${o.key}</b> ${o.html}${o.key === q.recKey ? ' <span class="chip accent">recommended</span>' : ''}`
         + `${on ? '<span class="tick" aria-hidden="true">✓</span>' : ''}</button>`;
     }).join('')}</div>`;
