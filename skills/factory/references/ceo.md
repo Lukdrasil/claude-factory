@@ -53,11 +53,11 @@ expiry, a message from a lead, the human's own message in the terminal or throug
 
 herd-watch.sh prints one line per change, `<id> status|phase|agent|mr <old> -> <new>`, with the agent
 `working`, `blocked`, `ready` (herdr's idle or done), `gone`, `closed` or `unknown`, and `<unit> waits <ask>`
-for a step unit that reads `ready` with an open ask:
+for a step unit that reads `ready` with an open ask, then `<unit> answered <ask>` once it is no longer open:
 
 | line | what you do |
 |---|---|
-| `<T-id>-<step> agent <old> -> ready` or `-> gone` | `sh <plugin-root>/bin/solve-next.sh <T-id>`; when the state shows the step's output (Chain), dispatch the next step |
+| `<T-id>-<step> agent <old> -> ready`, `-> gone` or `<T-id>-<step> answered <ask>` | `sh <plugin-root>/bin/solve-next.sh <T-id>`; when the state shows the step's output (Chain), dispatch the next step |
 | `<unit> waits <ask>` | a step waits on the human; herd-watch runs `notify.sh`, which shows it once and again after 15 minutes while the pane stays unseen. One terminal line: which tab, the UI url. Never answer for the human |
 | `<id> agent <old> -> blocked` | a dialog. `herdr agent read <name> --source recent-unwrapped --lines 120`, ask the human (`_shared/ask.md`), answer with `herdr agent send-keys <name> <keys>`, never `herdr agent prompt`. With `ui: docker` the human may answer in the pane instead: name it |
 | `-> gone` with no output in the state | dispatch the step again; two deaths in a row is `_shared/blocked-question.md` |

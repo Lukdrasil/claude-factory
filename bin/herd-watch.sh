@@ -6,8 +6,9 @@
 #   herd-watch.sh <T-NNN> [--once] [--interval <s>] [--no-mr] [--state <dir>]
 #
 # The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
-# `<id> mr <old> -> <new>`, with a first sighting written without the arrow, plus `<id> waits <ask>` below. The
-# agent states are `working`, `blocked` and `unknown` as herdr reads them, `ready` for herdr's idle and done
+# `<id> mr <old> -> <new>`, with a first sighting written without the arrow, plus `<id> waits <ask>` and
+# `<id> answered <ask>` below.
+# The agent states are `working`, `blocked` and `unknown` as herdr reads them, `ready` for herdr's idle and done
 # alike (done only means the human has not looked at the tab yet), `closed` for a unit whose recorded tab
 # herdr-tabs.sh closed, and `gone` for a unit no live agent carries, which is how a session that ended on its
 # own reads. What has already been reported is kept in
@@ -23,7 +24,8 @@
 # A step unit that reads `ready` with an open ask of the Factory UI (`<UI home>/sessions/<sid>/asks/*.md` with
 # `status: open`, the session being the agent's own, or with none reported the one whose session.md names the
 # pane) waits on the human: the first pass that sees that ask prints `<id> waits <ask>`, and every pass while
-# it waits runs `notify.sh`, which shows it once and again only while the tab stays unseen.
+# it waits runs `notify.sh`, which shows it once and again only while the tab stays unseen. The first pass that
+# no longer sees it open prints `<id> answered <ask>`.
 #
 # A unit whose agent turns `gone` or `closed`, or whose status turns `done`, has its capacity leases released
 # (`capacity.sh release <id>`, plan 3.3), so a slot frees in the pass that sees the session end. The parent's own
@@ -214,7 +216,10 @@ pass() {
         printf '%s %s %s -> %s\n' "$u" "$what" "$old" "$new"
       fi
     done
-    [ "${w:-none}" = none ] || [ "$w" = "$(prior "$u" 6)" ] || printf '%s waits %s\n' "$u" "$w"
+    ow=$(prior "$u" 6)
+    [ "${w:-none}" = none ] || [ "$w" = "$ow" ] || printf '%s waits %s\n' "$u" "$w"
+    # why: a step answered and back at the prompt inside one interval shows no agent change
+    [ "${w:-none}" != none ] || [ "${ow:-none}" = none ] || printf '%s answered %s\n' "$u" "$ow"
   done < "$now"
 
   mkdir -p "$harness"
