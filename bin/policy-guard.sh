@@ -78,7 +78,15 @@ abs_norm() { # <path>
   esac
 }
 
-if resolve_layout "$cwd" "$WORK_DIR"; then
+layout_ok() { resolve_layout "$cwd" "$WORK_DIR" && return 0
+  # why: a task session whose shell cd'ed into the state clone would otherwise be confined there, unable even to
+  # cd back; it keeps the layout of the task worktree it was launched in
+  case "$cwd" in "$WORK_DIR"/?*) ;; *) return 1 ;; esac
+  [ -n "${CLAUDE_PROJECT_DIR:-}" ] || return 1
+  norm_into proj "$CLAUDE_PROJECT_DIR"
+  resolve_layout "$proj" "$WORK_DIR"
+}
+if layout_ok; then
   task=$LO_TASK; own=$LO_OWN; state=$LO_STATE; stamp=$LO_STAMP; posture=$LO_POSTURE
 else
   case "$cwd" in
