@@ -1,7 +1,7 @@
 #!/bin/sh
 # rearm-check.sh, the Stop hook that re-arms a herd's watcher (agent-org plan 3.1, 3.7, R4): scoped by the cwd (a
 # parent worktree with herdr units is that herd; the state clone is every parent with a `request:` that is
-# in_progress or review, or has a block in flight; anywhere else nothing); exit 2 with one herd-list line
+# in_progress or review, has a block in flight, or has an open step record; anywhere else nothing); exit 2 with one herd-list line
 # `<request> <priority> <T-id> <repo> <status>` per herd that no `monitor` entry of `background_tasks` watches
 # with herd-watch.sh; never with stop_hook_active; at most twice per session through `.harness-rearm-<sid>`;
 # nothing written in the state clone.
@@ -136,6 +136,22 @@ is 'a parent worktree with no herdr unit is no herd' 0 "$(rc "$(stop "$work/cf/T
 is 'a done parent needs no watcher' 0 "$(rc "$(stop "$work/cf/T-CF-7" p4 '[]')")"
 is 'a block worktree is no herd' 0 "$(rc "$(stop "$work/cf/T-CF-4-01" p5 '[]')")"
 is 'the state clone stays clean after the worktree stops' '' "$(git -C "$state" status --porcelain)"
+
+# --- the state clone: a parent in the pre-approval chain (triage, chart, grill, decompose) ----
+# an open step record in `.harness/<T-id>/herdr-tabs` is a herd; a closed one, or a block's record, is not
+task T-CF-9 draft "$req" P1
+task T-CF-2 draft "$req"
+mkdir -p "$work/cf/.harness/T-CF-9" "$work/cf/.harness/T-CF-2"
+printf 'T-CF-9-triage tab-8 pane-8 sid-8\nT-CF-9-triage tab-8 closed\nT-CF-9-grill tab-9 pane-9\n' \
+  > "$work/cf/.harness/T-CF-9/herdr-tabs"
+printf 'T-CF-2-chart tab-7 pane-7\nT-CF-2-chart tab-7 closed\nT-CF-2-01 tab-6 pane-6\n' \
+  > "$work/cf/.harness/T-CF-2/herdr-tabs"
+r=$(stop "$state" c1 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8)]")
+e=$(err "$r")
+is 'a parent with an open step record and no watcher exits 2' 2 "$(rc "$r")"
+has 'it is listed as a herd-list line' "$req P1 T-CF-9 cf draft" "$e"
+lacks 'a parent whose step records are closed is not listed' 'T-CF-2 ' "$e"
+is 'a watched chain parent exits 0' 0 "$(rc "$(stop "$state" c2 "[$(mon T-CF-3),$(mon T-CF-4),$(mon T-CF-8),$(mon T-CF-9)]")")"
 
 # --- what the hook cannot read lets the Stop through ------------------------------------
 out=$( (cd "$state" && printf 'not json' | WORK_DIR="$work" sh "$bin/rearm-check.sh" >/dev/null 2>&1); echo $?)

@@ -229,6 +229,7 @@ ask() { # <sid> <ask> <status> <question title>
 }
 shows() { grep -c '^notification show' "$log"; }
 printf '7171\n' > "$tmp/port" && mkdir -p "$FACTORY_UI_HOME" && mv "$tmp/port" "$FACTORY_UI_HOME/port"
+printf 'secret-ui-token\n' > "$FACTORY_UI_HOME/token"
 task T-010 in_progress null
 recs T-010 T-010-grill tab-101 sid-g
 herdr_agent grill_t-010 working pane-101 sid-g
@@ -244,6 +245,7 @@ check 'a ready step with an open ask waits'       0 '^T-010-grill waits r1$' "$o
 check 'the wait is shown with its label'          0 '^notification show "[^"]*demo T-010-grill waits" ' "$all"
 check 'the body holds the question and the URL'   0 '^notification show .*--body "Q1 - Which way: the question\. http://127\.0\.0\.1:7171/?ask=sid-g/r1' "$all"
 check 'the notification asks with a sound'        0 '^notification show .*--sound request' "$all"
+check 'the notification carries no UI token'      1 'token' "$all"
 out=$(sh "$bin/herd-watch.sh" T-010 --once --no-mr --state "$state")
 check 'a wait already reported is not repeated'   1 'waits' "$out"
 if [ "$(shows)" -eq 1 ]; then printf 'PASS one notification per ask\n'
@@ -322,9 +324,12 @@ check 'a seen pane is not reminded'               0 '^2$' "$(shows)"
 HERDR_STUB_NOTIFY=disabled notify 'Q2 - Another?' "$url"; rc=$?
 check 'a notification not shown exits 0'          0 '^0$' "$rc"
 check 'a notification not shown leaves no stamp'  0 '^1$' "$(stamps)"
+notify 'Q4 - Pick again?' "$url#token=secret-ui-token"
+check 'notify.sh drops the token of the URL'      0 '^notification show "L T-012-grill waits" --body "Q4 - Pick again? http://127\.0\.0\.1:7171/?ask=sid-121/a1" ' "$(cat "$log")"
+check 'notify.sh passes no token to herdr'        1 'token' "$(cat "$log")"
 notify 'Q3 - No page?'
 check 'without a URL the body names the tab'      0 '^notification show "L T-012-grill waits" --body "Q3 - No page? tab L T-012-grill" ' "$(cat "$log")"
-check 'the ask without a URL is stamped too'      0 '^2$' "$(stamps)"
+check 'the ask without a URL is stamped too'      0 '^3$' "$(stamps)"
 
 # two watchers of one parent, the CEO's and the lead's, each keep their own state: both see every transition
 task T-013 in_progress null
@@ -339,5 +344,22 @@ check 'the CEO watcher sees the transition'       0 '^T-013-01 status in_progres
 check 'the lead watcher sees it too'              0 '^T-013-01 status in_progress -> review$' "$lead"
 check 'each watcher has its own state file'       0 '^herd-watch-T-013-lead.state herd-watch-ceo.state $' \
   "$(ls "$tmp/factory/demo/.harness/T-013" | grep '^herd-watch' | LC_ALL=C sort | tr '\n' ' ')"
+
+# a lead whose session ended has its record closed, so queue-next.sh hands its parent to a new lead; the record
+# of a lead dispatched again, whose agent is not up yet, is left alone
+task T-014 in_progress null
+lrec="$tmp/factory/demo/.harness/T-014/herdr-tabs"
+recs T-014 T-014-lead tab-141 sid-141
+herdr_agent lead_t-014 working pane-141 sid-141
+sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state" >/dev/null
+rm -f "$HERDR_STUB_DIR/panes/pane-141"
+out=$(sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state")
+check 'the ended lead reads gone'                 0 '^T-014-lead agent working -> gone$' "$out"
+check 'the ended lead has its record closed'      0 '^T-014-lead tab-141 closed$' "$(tail -n1 "$lrec")"
+out=$(sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state")
+check 'the next pass reads the lead closed'       0 '^T-014-lead agent gone -> closed$' "$out"
+recs T-014 T-014-lead tab-142 sid-142
+sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state" >/dev/null
+check 'a lead starting again keeps its record'    0 '^T-014-lead tab-142 pane-142 sid-142$' "$(tail -n1 "$lrec")"
 
 exit $fail

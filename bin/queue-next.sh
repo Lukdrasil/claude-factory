@@ -5,14 +5,17 @@
 #   queue-next.sh [--max N] [--state <dir>]
 #
 # One line per parent, `<T-id> <key> <priority> <request>`, for a parent that is `ready`, has a `request:`, has
-# `owner: null` (the lead claims it, the queue claims nothing), has no open `<T-id>-lead` tab record
-# (herdr-tabs.sh state), and whose every depends_on is done: `done` or `closed`, or archived. An id with no task
-# file at all is not done. A parent with open blocks also needs one block whose own depends_on are all done.
+# `owner: null` (the lead claims it, the queue claims nothing), has no live lead, and whose every depends_on is
+# done: `done` or `closed`, or archived. An id with no task file at all is not done. A parent with open blocks
+# also needs one block whose own depends_on are all done. A live lead is an open `<T-id>-lead` tab record
+# (herdr-tabs.sh state) that `herdr-tabs.sh agents <T-id>` reads neither `gone` nor `closed`: a lead that ended
+# (a crash, a herdr restart, a Claude exit) leaves its record open until herd-watch.sh closes it, and its parent
+# is back in the queue meanwhile.
 #
 # PLAN 3.2 [XR] 4 (DECISIONS D20): a lead that ended because every remaining block waited on another parent
 # leaves its parent `in_progress` (setting it back to `ready` is a human gate) and those blocks `blocked`. Such a
 # parent is in the queue too, whatever its owner (the new lead reclaims it with `state-report.sh --owner`), when
-# it has a `request:`, no open `<T-id>-lead` tab record, and one runnable block again: a block that is neither
+# it has a `request:`, no live lead, and one runnable block again: a block that is neither
 # done nor closed and whose every depends_on is done or archived. Same line, same order.
 #
 # The priority printed is the effective one: the best of the parent's own (`P2` when it has none) and that of
@@ -121,7 +124,14 @@ awk -v prefix="$state/repos/" '
   | awk '{ b[$3] = b[$3] $0 "\n" } END { printf "%s%s%s%s", b["P0"], b["P1"], b["P2"], b["P3"] }' \
   | { n=0
       while read -r id k prio req; do
-        [ "$(sh "$here/herdr-tabs.sh" state "$id-lead" --state "$state" 2>/dev/null || :)" != open ] || continue
+        if [ "$(sh "$here/herdr-tabs.sh" state "$id-lead" --state "$state" 2>/dev/null || :)" = open ]; then
+          # an agents read that fails is no proof the lead ended: the parent stays out
+          case "$(sh "$here/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null \
+            | awk -v u="$id-lead" '$1 == u { print $2; exit }')" in
+            gone|closed) ;;
+            *) continue ;;
+          esac
+        fi
         printf '%s %s %s %s\n' "$id" "$k" "$prio" "$req"
         n=$((n + 1))
         [ -z "$max" ] || [ "$n" -lt "$max" ] || break

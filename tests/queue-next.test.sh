@@ -4,11 +4,18 @@
 # open `<T-id>-lead` tab record, every depends_on done (an archived id counts as done), and, when it has open
 # blocks, at least one block whose own depends_on are done ([XR] 4: a task whose blocks waited on another
 # parent is dispatchable again once that parent is done). The effective priority is the best of its own and of
-# every open task that depends on it, directly or through another; the id order breaks a tie.
+# every open task that depends on it, directly or through another; the id order breaks a tie. A lead record is
+# open only while a live agent carries it: the herdr on PATH is the stub, and a lead that ended puts its parent
+# back in the queue.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(cd "$(mktemp -d)" && pwd -P)
 trap 'rm -rf "$tmp"' EXIT
+. "$(dirname -- "$0")/herdr-stub.sh"
+herdr_stub "$tmp/stub"
+FACTORY_UI_HOME="$tmp/ui"
+unset FACTORY_UNIT
+export FACTORY_UI_HOME
 
 WORK_DIR=''
 export WORK_DIR
@@ -48,6 +55,7 @@ task demo T-104 draft P2 R-20260925-1 null '[]'
 # an open lead record keeps it out, a closed one does not
 task demo T-105 ready P2 R-20260925-1 null '[]'
 lead T-105 demo 'T-105-lead tab-5 pane-5 sess-5'
+herdr_agent lead_t-105 working pane-5 sess-5
 task demo T-106 ready P2 R-20260925-1 null '[]'
 lead T-106 demo 'T-106-lead tab-6 pane-6'
 lead T-106 demo 'T-106-lead tab-6 closed'
@@ -129,6 +137,7 @@ esac
 task demo T-130 in_progress P2 R-20260925-5 'factory@host:old' '[]'
 task demo T-130-01 ready P2 R-20260925-5 null '[]'
 lead T-130 demo 'T-130-lead tab-30 pane-30'
+herdr_agent lead_t-130 working pane-30
 task demo T-131 in_progress P2 R-20260925-5 'factory@host:old' '[]'
 task demo T-131-01 blocked P2 R-20260925-5 null '[T-ECS-6]'
 task demo T-132 in_progress P2 R-20260925-5 'factory@host:old' '[]'
@@ -155,6 +164,18 @@ check 'in_progress with a closed lead record and an archived dependency is in th
 check 'in_progress without a block is not in the queue' no "$(has_id T-135)"
 check 'in_progress parents keep the priority order' 'T-110 T-114 T-134' \
   "$(printf '%s\n' "$out" | awk '$3 == "P1" { printf "%s%s", s, $1; s = " " }')"
+
+# a lead that ended (a crash, a herdr restart, a Claude exit) leaves its record open with no live agent: after
+# one herd-watch pass its parent is back in the queue
+task demo T-136 in_progress P2 R-20260925-5 'factory@host:old' '[]'
+task demo T-136-01 ready P2 R-20260925-5 null '[]'
+lead T-136 demo 'T-136-lead t1 p1'
+git -C "$st" add -A
+git -C "$st" commit -q -m 'fixture ended lead'
+sh "$bin/herd-watch.sh" T-136 --once --no-mr --state "$st" >/dev/null 2>&1
+out=$(sh "$bin/queue-next.sh" --state "$st" 2>&1)
+check 'a lead record no live agent carries puts its parent back' yes "$(has_line 'T-136 demo P2 R-20260925-5')"
+check 'a lead record a live agent carries still keeps it out' no "$(has_id T-130)"
 
 # an empty state prints nothing and exits 0
 mkdir -p "$tmp/empty/state/repos"

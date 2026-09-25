@@ -30,6 +30,11 @@
 # agent is the exception: its release would drop its lead's repo-lead lease too, so its session leases are left
 # to `capacity.sh sweep`, which drops a unit lease no live agent carries.
 #
+# The lead's unit `<T-id>-lead` that turns `gone` from a live state also has its tab record closed through
+# `herdr-tabs.sh close`, which appends `<T-id>-lead <tab_id> closed` once herdr no longer has the tab or it
+# closed it: queue-next.sh then offers the parent to a new lead. A lead that turns `gone` from `closed` is one
+# dispatched again whose agent is not up yet, and keeps its record.
+#
 # why: on 2026-09-22 the monitors that ran stopped at `review` and missed the merges and a `need_rebase`. A
 # task is not over at `review`, so every pass also runs `mr-watch.sh <T-NNN> --once` - which is what retargets
 # the stack and sets a merged block `done` - and turns its state file into the `<id> mr <old> -> <new>` lines
@@ -129,7 +134,8 @@ open_ask() { # <unit id>
   done
 }
 
-# notify.sh for one ask: its first question, and its page URL the way ui-ask.sh prints it
+# notify.sh for one ask: its first question, and its page URL the way ui-ask.sh prints it less the `#token=`
+# fragment, which would land in herdr's notification store and the desktop history
 notify_ask() { # <unit id> <ask file>
   question=$(awk 'NR == 1 && $0 == "---" { fm = 1; next } fm { if ($0 == "---") fm = 0; next }
     /^❓ / { q = $0; exit } f == "" && NF { f = $0 } END { print (q != "" ? q : f) }' "$2" \
@@ -137,8 +143,7 @@ notify_ask() { # <unit id> <ask file>
   sid=${2%/asks/*}; sid=${sid##*/}
   ask=${2##*/}; ask=${ask%.md}
   port=$(cat "$ui/port" 2>/dev/null || :)
-  token=$(cat "$ui/token" 2>/dev/null || :)
-  url="http://127.0.0.1:${port:-7171}/?ask=$sid/$ask${token:+#token=$token}"
+  url="http://127.0.0.1:${port:-7171}/?ask=$sid/$ask"
   label=$(sh "$bin/herdr-tabs.sh" name "$1" --state "$state" 2>/dev/null) || label=$1
   sh "$bin/notify.sh" "$1" "$label" "$question" "$url" --state "$state" >/dev/null 2>&1 || :
 }
@@ -199,6 +204,9 @@ pass() {
         'status done') release=1 ;;
       esac
       [ -z "$release" ] || sh "$bin/capacity.sh" release "$u" --state "$state" >/dev/null 2>&1 || :
+      if [ "$u $what $new" = "$id-lead agent gone" ] && [ "$old" != closed ]; then
+        sh "$bin/herdr-tabs.sh" close "$u" --state "$state" >/dev/null 2>&1 || :
+      fi
       [ "$what" = agent ] || [ "$new" != none ] || continue
       if [ -z "$old" ]; then
         printf '%s %s %s\n' "$u" "$what" "$new"

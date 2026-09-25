@@ -12,6 +12,8 @@
 # the stamp is older than 15 minutes; the reminder renews the stamp. A notification herdr does not show
 # (`disabled`, `rate_limited`, `no_foreground_client`, `busy`) leaves no stamp, so the next call tries again, and
 # its reason goes to stderr. herdr caps the body at 240 characters, so the question is cut to keep the URL whole.
+# A `#token=` fragment of the URL is dropped: herdr keeps the body in its notification store and the desktop
+# history, and the UI token does not belong there.
 #
 # Exit 0 whether or not herdr showed it, and without herdr on PATH. Exit 1 with the reason on stderr on bad
 # usage or a unit that resolves to no task file.
@@ -68,6 +70,7 @@ if [ -f "$stamp" ]; then
   herdr agent get "$pane" 2>/dev/null | grep -q '"agent_status":"done"' || exit 0
 fi
 
+url=${url%%#token=*}
 where=${url:-tab $label}
 room=$((239 - ${#where}))
 question=$(printf '%s\n' "$question" | awk -v n="$room" '{ print (length($0) > n ? substr($0, 1, n - 3) "..." : $0) }')
