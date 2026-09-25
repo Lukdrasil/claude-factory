@@ -200,6 +200,20 @@ cap count scout > /dev/null
 agents "- S1" "- S2"
 reset
 
+# an onboarding unit onboard-<key> is carried by the agent onboard_<key lowercased>, cut at 31 characters
+cap acquire sessions onboard-notes; age sessions/onboard-notes 600
+cap acquire sessions onboard-MyRepo; age sessions/onboard-MyRepo 600
+cap acquire sessions onboard-a-very-long-repository-key-name; age sessions/onboard-a-very-long-repository-key-name 600
+cap acquire sessions onboard-gone; age sessions/onboard-gone 600
+agents "onboard_notes S1" "onboard_myrepo S2" "onboard_a-very-long-repository- S3"
+cap sweep
+[ -f "$(lease sessions/onboard-notes)" ]; is 'an onboard unit whose agent is onboard_<key> stays' 0 $?
+[ -f "$(lease sessions/onboard-MyRepo)" ]; is 'an onboard unit is matched by its lowercased key' 0 $?
+[ -f "$(lease sessions/onboard-a-very-long-repository-key-name)" ]; is 'an onboard unit is matched by the name cut at 31' 0 $?
+[ ! -e "$(lease sessions/onboard-gone)" ]; is 'an onboard unit with no onboard_<key> agent is dropped' 0 $?
+agents "- S1" "- S2"
+reset
+
 # wait
 cap acquire implementer T-001-01
 t0=$(date +%s)
