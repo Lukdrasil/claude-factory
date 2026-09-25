@@ -98,6 +98,14 @@ on_exit() { # <exit status>
     *) status failed "${why:-exit $1}" ;;
   esac
 }
+git_net() { GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" git "$@"; }
+unreachable() { # <git's output>: exit 4 with its last line
+  why=$(redact_urls "cannot reach $url: $(printf '%s\n' "$1" | grep -v '^[[:space:]]*$' | tail -n1)")
+  printf 'factory-add-repo: %s\n' "$why" >&2
+  printf 'factory-add-repo: fix: check the URL and that git ls-remote %s works in your terminal (gh or glab auth login, or your ssh key)\n' "$url" >&2
+  exit 4
+}
+fresh=0
 if [ -n "$clone" ]; then
   trap 'on_exit $?' EXIT
   nodir="no clones directory: add clones: <absolute dir> to $state/factory.yml"
@@ -116,6 +124,12 @@ if [ -n "$clone" ]; then
   esac
   top="$clones/$key"
   jpath=$top
+  # proves reachability and auth, and names the default branch; no password prompt that would hang the caller
+  lr=$(git_net ls-remote --symref -- "$clone" HEAD 2>&1) || unreachable "$lr"
+  branch=$(printf '%s\n' "$lr" | sed -n 's#^ref: refs/heads/\(.*\)	HEAD$#\1#p' | head -n1)
+  [ -n "$branch" ] || branch=main
+  fresh=1
+  echo "+ git clone $url $top   (default branch $branch)"
 fi
 
 if [ -z "$branch" ]; then
@@ -183,6 +197,15 @@ if [ -z "$cur_alias" ]; then
       echo "note: $key is not on one {...} line in repos.yml - add alias: $alias to its entry by hand" >&2
     fi
   fi
+fi
+
+# --clone of a new key: the stack, the solution and the commitlint cap are only known once the clone exists
+if [ "$fresh" = 1 ] && [ "$yes" = 0 ]; then
+  echo "+ $key: {url: \"$url\", default_branch: $branch, path: \"$top\", alias: $alias}   in $state/repos.yml"
+  echo "+ $state/repos/$key/toolset.md   from the stack found after the clone"
+  echo "pending - rerun with --yes to apply"
+  refresh_doctor
+  exit 3
 fi
 
 files=$(git -C "$top" ls-files)
