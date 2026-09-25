@@ -61,7 +61,7 @@ for a step unit that reads `ready` with an open ask:
 | `<unit> waits <ask>` | a step waits on the human; herd-watch runs `notify.sh`, which shows it once and again after 15 minutes while the pane stays unseen. One terminal line: which tab, the UI url. Never answer for the human |
 | `<id> agent <old> -> blocked` | a dialog. `herdr agent read <name> --source recent-unwrapped --lines 120`, ask the human (`_shared/ask.md`), answer with `herdr agent send-keys <name> <keys>`, never `herdr agent prompt`. With `ui: docker` the human may answer in the pane instead: name it |
 | `-> gone` with no output in the state | dispatch the step again; two deaths in a row is `_shared/blocked-question.md` |
-| `<T-id>-lead agent <old> -> gone` or `-> closed` | the lead ended: its parent is done, or it waits on a cross-repo parent; `--queue` restarts it when it may |
+| `<T-id>-lead agent <old> -> gone` or `-> closed` | the lead ended: its parent is done, or it waits on a cross-repo parent and stays `in_progress`; `--queue` starts a new lead for it once a block is runnable again |
 | `<T-id> status <old> -> done` | when it was the last parent of its request: `sh <plugin-root>/bin/map.sh status <R-id> done` |
 
 ## Intake
@@ -118,7 +118,7 @@ approve`: the destination, the decisions, out of scope, then per repository the 
 acceptance, and spec-critic's line per red block; the UI's Plan checklist shows the same, read-only. The
 answer is the human's, never yours.
 
-On yes: one call `sh <plugin-root>/bin/task-approve.sh <ids...>`, the parents and their blocks in depends_on
+On yes: one call `sh <plugin-root>/bin/task-approve.sh <ids...> --state <state>`, the parents and their blocks in depends_on
 order, in one lock and one commit. Show the human every `<id> ready <plan_hash>` line and every warning it
 prints (one per unfinished depends_on). Exit 1 approved nothing: show the reason and stop there. On exit 0:
 `sh <plugin-root>/bin/map.sh status <R-id> queued`, then `session-monitor.sh --queue`. On no: the request
@@ -128,13 +128,15 @@ stays `planned` and the human says what changes.
 
 `sh <plugin-root>/bin/queue-next.sh [--max N]` prints `<T-id> <key> <effective priority> <request>` in
 dispatch order, nothing when no parent is ready: ready parents of a request, unowned, no open lead, every
-depends_on done; a parent inherits the best priority of its dependents. `session-monitor.sh --queue [--max N]`
+depends_on done, and also an `in_progress` parent of a request with no open `<T-id>-lead` record and a runnable
+block, whose lead ended on a cross-repo need; a parent inherits the best priority of its dependents. `session-monitor.sh --queue [--max N]`
 takes those lines from the top while `capacity.sh count sessions` leaves two slots free and `capacity.sh count
 repo-lead` one, cuts a missing parent worktree with `worktree-add.sh <T-id>` first, and starts each as `--step
 lead`: its own workspace `<T-id> <key>`, cwd the parent worktree, herdr name `lead_<unit>`, prompt `Read
 <state>/repos/<key>/agents/repo-lead/playbook.md first. /claude-factory:factory herd <T-id>`. A lead that gets
 no slot is printed `skipped` (`capacity: sessions full`) and goes out on a later `--queue`. The lead claims its
-parent itself (`references/lead.md`). The first lead of a request: `sh <plugin-root>/bin/map.sh status <R-id>
+parent itself (`references/lead.md`): a `ready` one with `--set-status in_progress --owner`, an `in_progress`
+one it restarts with `state-report.sh --task <T-id> --owner <owner> --no-status`. The first lead of a request: `sh <plugin-root>/bin/map.sh status <R-id>
 running`.
 
 Arm a herd-watch for every lead you start, like for any herd. Several leads may work in one repository at once.
@@ -171,10 +173,11 @@ stamp|never>` for the scopes that have work (daily: a proposal or a draft; weekl
 start button posts `start the <daily|weekly> pass for <scope>` into this session. Offer the due passes; nothing
 starts without the human's go, in the terminal or through that button.
 
-- Daily: an interactive step session in its own herdr workspace, `sh <plugin-root>/bin/session-monitor.sh
-  --step pass --scope <key>/<agent>` for the scope `repo-agent:<key>/<agent>` (unit `pass-<key>-<agent>`,
-  counted under `sessions`, prompt `/claude-factory:memory-daily repo-agent:<key>/<agent>`), which stamps the
-  pass itself. Watch it like a step.
+- Daily: an interactive step session, a tab in your own workspace `factory` with its cwd in the state clone,
+  `sh <plugin-root>/bin/session-monitor.sh --step pass --scope <key>/<agent>` for the scope
+  `repo-agent:<key>/<agent>` (unit `pass-<key>-<agent>`, herdr name `pass_<alias>-<agent>`, counted under
+  `sessions`, prompt `/claude-factory:memory-daily <key>/<agent>`), which stamps the pass itself. Watch it like
+  a step.
 - Weekly: here, in this session, `/claude-factory:memory-weekly <scope>`: it prepares the promotion of drafts
   into the playbook and asks the human in rounds. A change to a plugin skill becomes a K1 draft the human turns
   into a PR.
