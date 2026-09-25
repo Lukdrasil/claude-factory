@@ -134,18 +134,19 @@ public sealed partial class UiHome(string root)
         var held = File.Exists(relay) ? File.ReadAllText(relay).Trim().Split(' ', 2) : [];
         var agent = Path.Combine(dir, "agent");
         var asks = Path.Combine(dir, "asks");
+        var task = fields.GetValueOrDefault("task", "");
         return new SessionInfo(
             Path.GetFileName(dir),
             fields.GetValueOrDefault("pane", ""),
             fields.GetValueOrDefault("flow", ""),
-            fields.GetValueOrDefault("task", ""),
+            task,
             fields.GetValueOrDefault("step", ""),
             File.Exists(agent) ? File.ReadAllText(agent).Trim() : "",
             Directory.Exists(asks)
                 ? Directory.EnumerateFiles(asks, "*.md")
                     .Where(f => !Path.GetFileName(f).StartsWith('.'))
                     .Order(StringComparer.Ordinal)
-                    .Select(f => ReadAsk(f, answers, held))
+                    .Select(f => ReadAsk(f, answers, held, task))
                     .ToList()
                 : [],
             ReadVisual(dir));
@@ -187,7 +188,9 @@ public sealed partial class UiHome(string root)
                 .ToList()
             : [];
 
-    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> answers, string[] held)
+    /// <summary>One ask of a session; its <c>task</c> is its own, or its session's <paramref name="task"/> when it names none,
+    /// so the grid and the drawer count it under one task.</summary>
+    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> answers, string[] held, string task)
     {
         var text = File.ReadAllText(file);
         var fields = Frontmatter.Parse(text);
@@ -196,7 +199,7 @@ public sealed partial class UiHome(string root)
         var mine = answers.Where(a => a.Ask == id && a.Modified > modified).ToList();
         return new AskInfo(
             id,
-            fields.GetValueOrDefault("task", ""),
+            fields.GetValueOrDefault("task", "") is { Length: > 0 } own ? own : task,
             fields.GetValueOrDefault("flow", ""),
             fields.GetValueOrDefault("step", ""),
             fields.GetValueOrDefault("status", ""),

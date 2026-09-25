@@ -72,6 +72,19 @@ async function currentStep(page, id) {
   }, id);
 }
 
+async function ticked(page, id) {
+  return page.locator('table').first().evaluate((table, id) => {
+    const row = [...table.querySelectorAll('tr')].find(
+      (r) => (r.textContent.match(/T-\d{3}(?:-\d{2})?/) || [''])[0] === id);
+    if (!row) return `no row for ${id}`;
+    const head = [...table.querySelectorAll('tr')].find((r) => r.querySelector('th'));
+    return [...row.children].map((c, i) => (c.matches('.done') && /✓/.test(c.textContent) ? head.children[i].textContent.trim().split(/\s+/)[0] : ''))
+      .filter(Boolean).join(' ');
+  }, id);
+}
+
+const rowCount = async (page, id) => (await page.locator('table tr', { hasText: id }).first().locator('.chip.warn').allInnerTexts()).join(' ');
+
 async function inViewport(locator) {
   return locator.evaluate((el) => {
     const r = el.getBoundingClientRect();
@@ -164,7 +177,7 @@ async function stage(q, button, text) {
     ok(text === 'This page needs its access link. Run ui-up.sh and open the link it prints.', `page: ${JSON.stringify(text)}`);
   });
 
-  await check('with no task in the state repo the grid reads No tasks yet. Start one with /claude-factory:factory new.', async () => {
+  await check('with no task in the state repo the grid reads No tasks yet. Start one with New request above.', async () => {
     const p = await context.newPage();
     await p.route('**/api/board', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     await p.goto(`${BASE}/#${TOKEN}`);
@@ -173,7 +186,7 @@ async function stage(q, button, text) {
       return t && t;
     });
     await p.close();
-    ok(text === 'No tasks yet. Start one with /claude-factory:factory new.', `grid: ${JSON.stringify(text)}`);
+    ok(text === 'No tasks yet. Start one with New request above.', `grid: ${JSON.stringify(text)}`);
   });
 
   await check('with no state repo the setup chip reads No state repo: run factory init', async () => {
@@ -198,6 +211,15 @@ async function stage(q, button, text) {
     ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003', `rows: ${ids.join(' ')}`);
   });
 
+  await check('without a CEO session the New request box names the command that starts one, and its text, priority and Send are disabled', async () => {
+    const box = page.locator('[data-intake]');
+    await until('the New request box', () => box.isVisible());
+    const text = (await box.innerText()).replace(/\s+/g, ' ');
+    ok(text.includes("claude '/claude-factory:factory ceo'"), `box: ${text}`);
+    const controls = await box.locator('textarea, select, button').evaluateAll((els) => els.map((e) => `${e.tagName}${e.disabled ? '' : ' enabled'}`));
+    ok(controls.join(' ') === 'TEXTAREA SELECT BUTTON', `controls: ${controls.join(' ')}`);
+  });
+
   await check('every /api request carries the token from the fragment as X-Factory-Token', async () => {
     const api = requests.filter((r) => new URL(r.url).pathname.startsWith('/api/'));
     ok(api.length > 0, 'no /api request');
@@ -215,14 +237,24 @@ async function stage(q, button, text) {
     ok(step === '4', `current: ${step}`);
   });
 
-  await check('the row of T-003 counts no waiting ask: its one session in herdr is gone', async () => {
-    const text = await page.locator('table tr', { hasText: 'T-003' }).first().innerText();
-    ok(!/waiting|to answer/.test(text), `row: ${text}`);
+  await check('the row of T-003 reads 1 to answer: g1, whose session in herdr is gone, still counts', async () => {
+    const text = await rowCount(page, 'T-003');
+    ok(text === '1 to answer', `row: ${JSON.stringify(text)}`);
   });
 
-  await check('the current cell of T-002 reads 2 to answer, r1 and c1', async () => {
+  await check('the current cell of T-002 reads 3 to answer: r1, c1 and k1, the ask of s6 whose own task is T-002', async () => {
     const cell = page.locator('table tr', { hasText: 'T-002' }).first().locator('[aria-current="step"]');
-    ok(await cell.getByText('2 to answer', { exact: true }).count(), `cell: ${JSON.stringify(await cell.innerText())}`);
+    ok(await cell.getByText('3 to answer', { exact: true }).count(), `cell: ${JSON.stringify(await cell.innerText())}`);
+  });
+
+  await check('the row of T-001 reads 2 to answer: q3 and k2, which names no task and takes the T-001 of its session s6, not k1', async () => {
+    const text = await rowCount(page, 'T-001');
+    ok(text === '2 to answer', `row: ${JSON.stringify(text)}`);
+  });
+
+  await check('the row of T-002 ticks only what its state records, 3 triage and 9 approve, not the steps before the 11 its session reports', async () => {
+    const got = await ticked(page, 'T-002');
+    ok(got === '3 9', `ticked: ${JSON.stringify(got)}`);
   });
 
   await check('with the state repo found the setup chip reads State repo found', async () => {
@@ -235,18 +267,32 @@ async function stage(q, button, text) {
     ok(text === '1 to answer', `chip: ${JSON.stringify(text)}`);
   });
 
+  await check('the setup strip labels each live setup session by its flow, task and step, not its id, and leaves out the gone s7', async () => {
+    const chips = await page.locator('.strip [data-session]').evaluateAll((cs) => cs.map((c) => `${c.dataset.session}=${c.textContent.trim()}`));
+    ok(chips.join(' | ') === 's4=doctor | s8=init · Step 2 of 4: repos', `chips: ${chips.join(' | ')}`);
+  });
+
+  await check('every step header of the grid carries a short title, 8 cut the check of the cut and its wave plan', async () => {
+    const titles = await page.locator('table thead th').evaluateAll((ths) => ths.slice(2).map((th) => `${th.textContent.trim().split(/\s+/)[0]}=${th.title}`));
+    const bare = titles.filter((t) => /=$/.test(t));
+    ok(titles.length && !bare.length, `without a title: ${bare.join(' ')}`);
+    const cut = titles.find((t) => t.startsWith('8='));
+    ok(/dag-check/.test(cut) && /wave plan/.test(cut), `8 cut: ${cut}`);
+  });
+
   await check('the row of T-002 marks step 11 as current', async () => {
     const step = await currentStep(page, 'T-002');
     ok(step === '11', `current: ${step}`);
   });
 
-  await check('the counter reads 4 to answer: not the sent q1, not the answered q2, not outside herdr, not the gone g1', async () => {
+  await check('the counter reads 7 to answer, 1 whose session ended: the gone g1 counted and named, not the sent q1, the answered q2 or outside herdr', async () => {
     await until('the counter', () => counter(page).isVisible());
-    const text = (await counter(page).innerText()).trim();
-    ok(text === '4 to answer', `counter: ${JSON.stringify(text)}`);
+    const text = (await counter(page).innerText()).replace(/\s+/g, ' ').trim();
+    ok(text === '7 to answer, 1 whose session ended', `counter: ${JSON.stringify(text)}`);
   });
 
-  for (const [n, id, group] of [[1, 's4/d1', /setup/i], [2, 's2/r1', /T-002/], [3, 's1/q3', /T-001/], [4, 's2/c1', /T-002/]]) {
+  for (const [n, id, group] of [[1, 's5/g1', /T-003/], [2, 's6/k2', /T-001/], [3, 's4/d1', /setup/i], [4, 's2/r1', /T-002/],
+    [5, 's1/q3', /T-001/], [6, 's2/c1', /T-002/], [7, 's6/k1', /T-002/]]) {
     await check(`click ${n} on the counter opens ${id}, the next oldest waiting ask, in its drawer`, async () => {
       await counter(page).click();
       await until(`the drawer of ${group}`, async () => group.test(await drawer(page).innerText()));
@@ -254,6 +300,33 @@ async function stage(q, button, text) {
       await until(`${id} scrolled into view`, () => inViewport(card(page, id)));
     });
   }
+
+  await check('the drawer of T-001 holds k2, which names no task, and not k1, which names T-002', async () => {
+    await fresh(page);
+    await openTask(page, 'T-001');
+    ok(await drawer(page).locator('[data-ask="s6/k2"]').isVisible(), 'no k2');
+    ok(!(await drawer(page).locator('[data-ask="s6/k1"]').count()), 'k1 is in the drawer of T-001');
+  });
+
+  await check('the rail of T-002 lists the steps of the grid with the grid\'s labels in its order, then the done gate', async () => {
+    await fresh(page);
+    const heads = await until('the grid header', async () => {
+      const h = await page.locator('table thead th').allInnerTexts();
+      return h.length > 2 && h.slice(2).map((t) => t.replace(/\s+/g, ' ').trim());
+    });
+    await openTask(page, 'T-002');
+    await expand(page);
+    const rail = (await drawer(page).locator('nav[aria-label^="Solve steps"] li').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
+    ok(JSON.stringify(rail) === JSON.stringify([...heads, 'done']), `rail: ${rail.join(' | ')}; grid: ${heads.join(' | ')}`);
+  });
+
+  await check('the rail of T-002 marks done the steps the grid ticks, 3 and 9, and 11, the step its session reports, as current', async () => {
+    const got = await drawer(page).locator('nav[aria-label^="Solve steps"] ol').evaluate((ol) => [...ol.children].map((li) => {
+      const n = li.textContent.trim().split(/\s+/)[0];
+      return `${li.matches('.done') ? n : ''}${li.getAttribute('aria-current') === 'step' ? `>${n}` : ''}`;
+    }).filter(Boolean).join(' '));
+    ok(got === '3 9 >11', `rail: ${JSON.stringify(got)}`);
+  });
 
   await check('the link ui-ask.sh printed for c1 opens the drawer of T-002 scrolled to the card of c1', async () => {
     await fresh(page, fs.readFileSync(path.join(UI, 'c1.url'), 'utf8').trim());
@@ -350,6 +423,12 @@ async function stage(q, button, text) {
     ok(!(await c.getByRole('textbox').count()), 'a text box');
     const live = await c.getByRole('button', { name: /^[A-D]\b/ }).evaluateAll((bs) => bs.filter((b) => !b.disabled).length);
     ok(live === 0, `${live} enabled option buttons`);
+  });
+
+  await check('the triage panel of T-003, whose tier, archetype and complexity are the draft\'s placeholders, reads Not triaged yet.', async () => {
+    const text = await drawer(page).locator('[data-panel="triage"]').innerText();
+    ok(/Not triaged yet\./.test(text), `triage: ${text.slice(0, 300)}`);
+    ok(!/<|green\|yellow|feature\|bugfix|low\|medium/.test(text), `a placeholder in: ${text.slice(0, 300)}`);
   });
 
   for (const [width, height] of [[1440, 900], [390, 844]]) {
@@ -504,8 +583,20 @@ async function stage(q, button, text) {
     await until('sent on c1', async () => /Sent, waiting for the session/.test(await card(page, 's2/c1').innerText()), 1500);
   });
 
-  await check('the counter reads All answered once the last waiting ask q3 has an answer', async () => {
+  await check('with q3, k1 and k2 answered the counter reads 1 to answer, 1 whose session ended: the gone g1', async () => {
     writeAtomic(path.join(UI, 'sessions/s1/answers/2-q3.txt'), 'Q1 A');
+    writeAtomic(path.join(UI, 'sessions/s6/answers/1-k1.txt'), 'Q1 A');
+    writeAtomic(path.join(UI, 'sessions/s6/answers/2-k2.txt'), 'ok');
+    const want = '1 to answer, 1 whose session ended';
+    const text = await until(want, async () => {
+      const t = (await counter(page).innerText()).replace(/\s+/g, ' ').trim();
+      return t === want && t;
+    }, 3000).catch(async () => (await counter(page).innerText()).trim());
+    ok(text === want, `counter: ${JSON.stringify(text)}`);
+  });
+
+  await check('the counter reads All answered once the gone g1, the last waiting ask, has an answer', async () => {
+    writeAtomic(path.join(UI, 'sessions/s5/answers/1-g1.txt'), 'Q1 A');
     const text = await until('All answered', async () => {
       const t = (await counter(page).innerText()).trim();
       return t === 'All answered' && t;
@@ -809,6 +900,49 @@ async function stage(q, button, text) {
     ok(!wide.length, wide.join(', '));
   });
   await org.close();
+
+  // --- the intake: a New request box on the Pipeline tab that sends the request to the CEO as a free message --------
+  const posted = [];
+  const intake = await context.newPage();
+  await intake.route('**/api/org', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ...ORG, ceo: { sid: 's-ceo', pane: 'w1:p9' } }) }));
+  await intake.route('**/api/answers/s-ceo', (r) => {
+    posted.push(r.request().postDataJSON());
+    return r.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+  });
+  await intake.goto(`${BASE}/#${TOKEN}`);
+  const box = intake.locator('[data-intake]');
+  const request = 'Export the invoices to the ledger, every night';
+
+  await check('with a CEO the New request box offers P0 to P3 with P2 selected, enabled, and no command to start the CEO', async () => {
+    await until('the enabled box', () => box.locator('textarea').isEnabled());
+    const options = await box.locator('select option').evaluateAll((os) => os.map((o) => `${o.textContent.trim()}${o.selected ? '*' : ''}`));
+    ok(options.join(' ') === 'P0 P1 P2* P3', `options: ${options.join(' ')}`);
+    ok(!(await box.innerText()).includes('factory ceo'), `box: ${await box.innerText()}`);
+  });
+
+  await check('the text typed in New request stays, focused, across a refresh of the page\'s data', async () => {
+    await box.locator('textarea').fill(request);
+    await box.evaluate((el) => { el.dataset.old = '1'; });
+    writeAtomic(path.join(UI, 'sessions/s1/relay'), '1 blocked\n');
+    await until('a re-render', async () => (await intake.locator('[data-intake]').getAttribute('data-old')) === null, 3000);
+    const got = await intake.evaluate(() => ({
+      value: document.querySelector('[data-intake] textarea').value,
+      focused: document.activeElement === document.querySelector('[data-intake] textarea'),
+    }));
+    ok(got.value === request && got.focused, `after the refresh: ${JSON.stringify(got)}`);
+  });
+
+  await check('Send of New request posts request: <text>, priority P1 to the CEO as a free message and says it was sent', async () => {
+    await box.locator('select').selectOption('P1');
+    await box.getByRole('button', { name: /^send$/i }).click();
+    await until('the post to the CEO', () => posted.length);
+    const want = { ask: '', text: `request: ${request}, priority P1` };
+    ok(JSON.stringify(posted) === JSON.stringify([want]), `posted: ${JSON.stringify(posted)}`);
+    await until('the sent note', async () => (await box.innerText()).includes(`Sent to the CEO: ${want.text}`));
+    ok((await box.locator('textarea').inputValue()) === '', 'the text stays after the send');
+  });
+  await intake.close();
 
   await browser.close();
   process.exit(failed);

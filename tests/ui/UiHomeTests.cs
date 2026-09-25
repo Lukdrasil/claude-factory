@@ -44,6 +44,21 @@ public sealed class UiHomeTests : IDisposable
     }
 
     [Fact]
+    public void An_ask_keeps_its_own_task_and_one_without_a_task_takes_its_session_s()
+    {
+        var dir = Path.Combine(_ui, "sessions", "s6");
+        Directory.CreateDirectory(Path.Combine(dir, "asks"));
+        File.WriteAllText(Path.Combine(dir, "session.md"), "---\nsid: s6\npane: w1:p6\nflow: grill\ntask: T-001\nstep: round 1\n---\n");
+        File.WriteAllText(Path.Combine(dir, "asks", "k1.md"), "---\nask: k1\ntask: T-002\nflow: grill\nstep: round 1\nstatus: open\n---\n\nThe first.\n");
+        File.WriteAllText(Path.Combine(dir, "asks", "k2.md"), "---\nask: k2\nflow: grill\nstep: round 1\nstatus: open\n---\n\nThe second.\n");
+
+        var asks = new UiHome(_ui).Sessions().Single(s => s.Sid == "s6").Asks.ToDictionary(a => a.Ask, a => a.Task);
+
+        Assert.Equal("T-002", asks["k1"]);
+        Assert.Equal("T-001", asks["k2"]);
+    }
+
+    [Fact]
     public void Frontmatter_is_cached_by_path_and_mtime_and_read_anew_once_the_mtime_moves()
     {
         var path = Path.Combine(_ui, "cached.md");

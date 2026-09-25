@@ -242,6 +242,42 @@ public sealed class StateReaderTests : IDisposable
         Assert.Equal(new SlotUse(0, null), setup.Capacity.Sessions);
     }
 
+    void Parent(string id, string fields, string body = "") =>
+        Write(_state, $"repos/cf/tasks/{id}-steps.md", $"---\nid: {id}\nrepo: cf\n{fields}---\n\n# Goal\nfeat: {id}\n{body}");
+
+    [Fact]
+    public void A_parent_row_carries_the_solve_steps_its_state_records_and_a_block_none()
+    {
+        Parent("T-CF-5", "status: in_progress\ntier: yellow\narchetype: feature\nrequest: R-20260925-5\nplan_hash: abc\nmr_url: null\n",
+            "\n## Related issues\nnone\n");
+        Parent("T-CF-5-01", "status: done\n");
+        Parent("T-CF-5-02", "status: review\n");
+        Write(_state, "repos/cf/plans/five-plan-ready.md", "---\ntask: T-CF-5\n---\n\n# Spec\n");
+        Write(_state, "repos/cf/progress/T-CF-5.md", "# T-CF-5\n\n## Wave plan\n- wave 1: T-CF-5-01\n- wave 2: T-CF-5-02\n");
+        Write(_state, "requests/R-20260925-5/map.md", "---\nrequest: R-20260925-5\n---\n\nStatus: planned\n\n## Destination\n\nFive.\n");
+        Parent("T-CF-6", "status: draft\ntier: <green|yellow|red>\narchetype: <feature|bugfix|refactor|research|ops>\nrequest: R-20260925-6\n",
+            "\n## Related issues\n<the related issues>\n");
+        Write(_state, "requests/R-20260925-6/map.md", "---\nrequest: R-20260925-6\n---\n\nStatus: charting\n\n## Destination\n\nSix.\n");
+        Parent("T-CF-7", "status: done\ntier: green\narchetype: bugfix\nmr_url: https://example.invalid/mr/7\n",
+            "\n## Context\nFrom the plan `repos/cf/plans/seven-plan-ready.md`.\n\n## Related issues\nnone\n");
+        Parent("T-CF-7-01", "status: done\n");
+        Write(_state, "repos/cf/plans/seven-plan-ready.md", "---\nrepo: cf\n---\n\n# Spec\n");
+        Write(_state, "repos/cf/progress/T-CF-7.md",
+            "# T-CF-7\n\n## Wave plan\n- wave 1: T-CF-7-01\n\n## Evidence\ngreen\n\n## Duplication\nnone\n\n## Review\napproved\n");
+        Parent("T-CF-8", "status: draft\ntier: red\narchetype: feature\n");
+        Write(_state, "repos/cf/plans/eight-plan-ready.md", "---\ntask: T-CF-8\n---\n\n# Spec\n");
+        Write(_state, "repos/cf/verdicts/eight.md", "---\nplan_hash: x\n---\n\n## plan-check\nok\n");
+
+        var rows = State.Tasks().ToDictionary(r => r.Id);
+
+        Assert.Equal(["3", "3b", "4", "5", "6", "8", "9", "10"], rows["T-CF-5"].Steps);
+        Assert.Empty(rows["T-CF-5-01"].Steps);
+        Assert.Empty(rows["T-CF-6"].Steps);
+        Assert.Equal(["3", "4", "5", "6", "8", "9", "10", "11", "12", "13", "14", "15", "16"], rows["T-CF-7"].Steps);
+        Assert.Equal(["4", "5"], rows["T-CF-8"].Steps);
+        Assert.Equal(rows["T-CF-5"].Steps, State.Task("T-CF-5")!.Task.Steps);
+    }
+
     public void Dispose()
     {
         Directory.Delete(_state, recursive: true);
