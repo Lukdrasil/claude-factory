@@ -13,6 +13,7 @@ trap 'rm -rf "$tmp"' EXIT
 . "$(dirname -- "$0")/herdr-stub.sh"
 herdr_stub "$tmp/stub"
 FACTORY_UI_HOME="$tmp/ui"
+unset FACTORY_UNIT
 export FACTORY_UI_HOME
 
 state="$tmp/factory/state"
@@ -324,5 +325,19 @@ check 'a notification not shown leaves no stamp'  0 '^1$' "$(stamps)"
 notify 'Q3 - No page?'
 check 'without a URL the body names the tab'      0 '^notification show "L T-012-grill waits" --body "Q3 - No page? tab L T-012-grill" ' "$(cat "$log")"
 check 'the ask without a URL is stamped too'      0 '^2$' "$(stamps)"
+
+# two watchers of one parent, the CEO's and the lead's, each keep their own state: both see every transition
+task T-013 in_progress null
+task T-013-01 in_progress null
+watch() { FACTORY_UNIT=$1 sh "$bin/herd-watch.sh" T-013 --once --no-mr --state "$state"; }
+watch ceo >/dev/null
+watch T-013-lead >/dev/null
+task T-013-01 review null
+ceo=$(watch ceo)
+lead=$(watch T-013-lead)
+check 'the CEO watcher sees the transition'       0 '^T-013-01 status in_progress -> review$' "$ceo"
+check 'the lead watcher sees it too'              0 '^T-013-01 status in_progress -> review$' "$lead"
+check 'each watcher has its own state file'       0 '^herd-watch-T-013-lead.state herd-watch-ceo.state $' \
+  "$(ls "$tmp/factory/demo/.harness/T-013" | grep '^herd-watch' | tr '\n' ' ')"
 
 exit $fail
