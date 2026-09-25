@@ -351,7 +351,7 @@ is 'the archived request reads from requests/archive'         "$(j 'const r=b[1]
 
 is 'GET /api/requests/R-20260925-1 is 200'                    "$(api /api/requests/R-20260925-1)" 200
 is 'a request has the fields of the contract, in order'       "$(j 'Object.keys(b).join(",")')" \
-  'id,status,destination,notes,terms,archived,decisions,outOfScope,fog,tickets,frontier,parents'
+  'id,status,destination,notes,terms,archived,decisions,outOfScope,fog,tickets,frontier,parents,html'
 is 'its decisions are the resolved tickets'                   "$(j 'b.decisions')" '[{"title":"Which ledger API","file":"01-which-ledger-api.md","gist":"The REST API, v2."}]'
 is 'its out of scope is the dropped ticket'                   "$(j 'b.outOfScope')" '[{"title":"Get ledger access","file":"03-get-ledger-access.md","gist":"Access is the other team'"'"'s rollout."}]'
 is 'its fog, notes and terms are the sections'                "$(j '[b.fog,b.notes,b.terms].join("|")')" \

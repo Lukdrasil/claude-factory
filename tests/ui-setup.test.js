@@ -217,6 +217,15 @@ async function tabs(page) {
     ok(text.includes('2026-09-24'), `no doctor.json time in: ${text.slice(0, 300)}`);
   });
 
+  await check('the Setup header counts the real steps as doctor does, not its doctor step: 2 done, 2 missing, 1 failing', async () => {
+    const { p } = await withTab(context, 'Setup', full, CEO);
+    const head = await until('the counts', async () => {
+      const t = await p.locator('[data-setup-tab] > p').first().innerText();
+      return /done/.test(t) && t;
+    }).finally(() => p.close());
+    for (const s of ['2 done', '2 missing', '1 failing']) ok(head.includes(s), `no ${s} in: ${head}`);
+  });
+
   await check('the Setup tab offers Start the CEO with the command of the ceo step in a code element', async () => {
     const { p } = await withTab(context, 'Setup', full, null);
     const box = p.locator('[data-start-ceo]');
