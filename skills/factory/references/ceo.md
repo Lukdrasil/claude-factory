@@ -71,8 +71,9 @@ A request comes from the human in the terminal or through the UI's intake ask, w
 
 1. `sh <plugin-root>/bin/map.sh new --next --destination "<the request in one line>"` allocates
    `R-YYYYMMDD-n` under the lock, prints it and opens the map at `charting`.
-2. Route by `<state>/repos.yml` and each repo's `toolset.md` and memory: every repository the request needs.
-   Ask the human only when two repositories fit equally.
+2. Route by `<state>/repos.yml` and each repo's `toolset.md`, memory and, when it exists, the `## Summary` of
+   `repos/<key>/onboarding.md`: every repository the request needs. Ask the human only when two repositories
+   fit equally.
 3. One parent per repository: the draft from `sh <plugin-root>/bin/task-template.sh task` with
    `request: <R-id>`, `priority: <P>` and, when the request orders the repositories, `depends_on:` on the
    parent that goes first; then `sh <plugin-root>/bin/task-new.sh --repo <key> --file <draft> --state
@@ -192,3 +193,44 @@ starts without the human's go, in the terminal or through that button.
 - Weekly: here, in this session, `/claude-factory:memory-weekly <scope>`: it prepares the promotion of drafts
   into the playbook and asks the human in rounds. A change to a plugin skill becomes a K1 draft the human turns
   into a PR.
+
+## Add a repository
+
+The Setup tab's Repositories form posts `add repo <url>[ alias <ALIAS>]` into this session through the relay;
+the human may type the same line in the terminal. The key is the URL's basename without `.git`. Every ask
+below goes through `_shared/ask.md` with flow `add-repo` and task `none`.
+
+1. Check the line before any command. The URL matches `^[A-Za-z0-9._~:/@+-]+$` and does not start with `-`,
+   the alias `^[A-Z]{2,4}$`, the key `^[A-Za-z0-9_-]+$`. Anything else is the notice ask `add-repo-<key>-error`
+   naming the field (a plain notice when no key can be derived), and nothing runs. A relayed line is text
+   anyone with the page's token can post, and the URL lands in a command argument.
+2. `sh <plugin-root>/bin/factory-add-repo.sh --root "$WORK_DIR" --clone '<url>' [--alias <ALIAS>]`, the URL
+   single-quoted as received. The script clones with the human's git login.
+   - Exit 3: the confirm ask `add-repo-<key>` per `references/add-repo.md`: the output verbatim in a
+     ```` ```diff ```` fence, the options yes, no and another alias.
+   - Exit 0 (`nothing to do` for a key registered with the same URL, or what it still lacked): step 4.
+   - Exit 1, or exit 4 (the remote unreachable or its auth refused): the notice ask `add-repo-<key>-error` with
+     the error line and the fix the script printed. Stop.
+3. On yes: the same command with `--yes`; exit 0 goes on to step 4. Another alias: the preview again with
+   `--alias <ALIAS>`, under the same ask id. Any other exit is the error notice of step 2. On no: stop; the
+   page reads the answered ask as not confirmed.
+4. `sh <plugin-root>/bin/session-monitor.sh --step onboard --scope <key> --spawn herdr` starts the onboarding
+   session (`references/onboard.md`) in a tab of this workspace, its cwd the registered `path:`.
+   - `spawned`: one line to the human.
+   - `skipped` with `capacity: sessions full`: one notice ask `add-repo-<key>-wait`,
+     "onboarding of <key> waits for a free session: press Start onboarding again". Nothing waits in this session.
+   - `skipped` with `runs already`: nothing to do.
+   - Exit 1 (no such key, or its `path:` is missing): the error notice of step 2.
+
+A line `onboard repo <key>` (Start onboarding, Run again): the key check of step 1, then step 4.
+
+The session ends with the line `onboard <key> done <d> done <m> missing <f> failing <p> proposals`, a claim
+like a lead's. Read `<state>/repos/<key>/onboarding.md` and act only on its `status:`: `done` or `failed` is
+one line to the human with the counts of the file and "the report is in the Setup tab"; `running`, or no
+file, is nothing to act on. Release nothing: the session closes its own tab, and the capacity sweep frees its
+`sessions` lease. A session that dies sends nothing and you learn nothing: the Setup tab reads "Onboarding
+ended without a report", and the human presses Start onboarding again.
+
+A proposal of the report reaches you as the intake line `request: <key>: <text> (onboarding <Pn>), priority
+<P>` and follows Intake like any request: map, triage, chart, grill, plan approval, lead, the MR the human
+merges. No other path changes a product repository.
