@@ -197,17 +197,19 @@ const SESSIONS = [
   fakeSession('s-busy', { flow: 'onboard', step: 'Onboarding busy', agent: 'working' }),
   fakeSession('s-dead', { flow: 'onboard', step: 'Onboarding dead', agent: 'gone' }),
 ];
-const REPOS_SETUP = { steps: STEPS, doctorAt: '2026-09-24T21:40:00Z', reposYml: REPOS_YML, addRepos: ADD_REPOS, onboarding: ONBOARDING };
+const REPOS_SETUP = () => ({ steps: STEPS, doctorAt: '2026-09-24T21:40:00Z', reposYml: REPOS_YML, addRepos: ADD_REPOS, onboarding: ONBOARDING });
 
-/** A page on the Setup tab with `setup` merged into /api/setup (its `tick` bumped by `poke`), the sessions and the CEO
- * given, every post to /api/answers caught. */
+/** A page on the Setup tab with `setup` merged into /api/setup (its `tick` bumped by `poke`, a field given as undefined
+ * dropped), the sessions and the CEO given, every post to /api/answers caught. */
 async function withRepos(context, setup, ceo, sessions = SESSIONS) {
   const p = await context.newPage();
   const posted = [];
   const live = { ...setup, tick: 0 };
   await p.route('**/api/setup', async (r) => {
     const res = await r.fetch();
-    await r.fulfill({ response: res, json: { ...(await res.json()), ...live } });
+    const json = { ...(await res.json()), ...live };
+    for (const [k, v] of Object.entries(live)) if (v === undefined) delete json[k];
+    await r.fulfill({ response: res, json });
   });
   await p.route('**/api/sessions', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(sessions) }));
   await p.route('**/api/org', (r) => r.fulfill({ status: 200, contentType: 'application/json',
@@ -241,7 +243,7 @@ async function repos(page) {
   const context = page.context();
 
   await check('the Repositories section sits above the doctor steps, with Add repository in its header', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     const order = await p.evaluate(() => {
       const r = document.querySelector('[data-repos]');
       const s = document.querySelector('[data-steps]');
@@ -256,13 +258,13 @@ async function repos(page) {
   });
 
   await check('the section has one row per repos.yml key, then the keys only an add-repo file names', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     const keys = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => e.dataset.repoRow)).finally(() => p.close());
     ok(keys.join(' ') === 'demo busy dead plain bad slow waits nope copy', `rows: ${keys.join(' ')}`);
   });
 
   await check('without a CEO session every button of the section is disabled and it names the command that starts the CEO', async () => {
-    const { p, posted } = await withRepos(context, REPOS_SETUP, null);
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), null);
     await row(p, 'demo').locator('summary').click();
     const buttons = await repoSection(p).locator('button').evaluateAll((bs) => bs.map((b) => `${b.textContent.trim()}=${b.disabled}`));
     const selects = await repoSection(p).locator('select').evaluateAll((ss) => ss.map((s) => s.disabled));
@@ -278,7 +280,7 @@ async function repos(page) {
   });
 
   await check('with a CEO session Add repository opens the form with Send disabled until a URL is there', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);
     const send = repoSection(p).getByRole('button', { name: 'Send' });
     const before = await send.isDisabled();
@@ -297,13 +299,13 @@ async function repos(page) {
     ["https://example.test/g/demo.git'; rm -rf ~; '", '', /only letters, digits and \. _ ~ : \/ @ \+ -/],
     ['-uhttps://example.test/g/demo.git', '', /must not start with -/],
     ['ftp://example.test/g/demo.git', '', /Use an https:\/\/, http:\/\/, ssh:\/\/ or user@host:path URL/],
-    ['https://example.test/', '', /must end in the repository name/],
+    ['https://example.test/g/my.repo.git', '', /must end in the repository name/],
     ['https://example.test/g/demo.git', 'dem', /The alias is 2 to 4 capital letters/],
     ['https://example.test/g/demo.git', 'DEMOS', /The alias is 2 to 4 capital letters/],
   ];
   for (const [url, alias, want] of problems) {
     await check(`the form refuses ${JSON.stringify(url)}${alias ? ` with alias ${alias}` : ''}: ${want.source.slice(0, 60)}`, async () => {
-      const { p, posted } = await withRepos(context, REPOS_SETUP, CEO);
+      const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
       await openForm(p);
       await p.locator('[data-repos] input[data-k="url"]').fill(url);
       await p.locator('[data-repos] input[data-k="alias"]').fill(alias);
@@ -320,7 +322,7 @@ async function repos(page) {
   }
 
   await check('the form takes ssh://, http:// and user@host:path URLs and names their key', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);
     const got = [];
     for (const url of ['ssh://git@example.test/g/one.git', 'http://example.test/g/two', 'git@example.test:g/three.git']) {
@@ -334,7 +336,7 @@ async function repos(page) {
   });
 
   await check('Send posts add repo https://example.test/g/demo.git alias DEM as a free message to the CEO sid', async () => {
-    const { p, posted } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);
     await p.locator('[data-repos] input[data-k="url"]').fill('https://example.test/g/demo.git');
     await p.locator('[data-repos] input[data-k="alias"]').fill('DEM');
@@ -350,7 +352,7 @@ async function repos(page) {
   });
 
   await check('Send without an alias posts add repo <url> alone', async () => {
-    const { p, posted } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);
     await p.locator('[data-repos] input[data-k="url"]').fill('git@example.test:g/three.git');
     await repoSection(p).getByRole('button', { name: 'Send' }).click();
@@ -359,7 +361,7 @@ async function repos(page) {
   });
 
   await check('the URL box keeps the focus, its text and its caret across a re-render', async () => {
-    const { p, poke } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p, poke } = await withRepos(context, REPOS_SETUP(), CEO);
     await openForm(p);
     const input = p.locator('[data-repos] input[data-k="url"]');
     await input.click();
@@ -377,7 +379,7 @@ async function repos(page) {
   });
 
   await check('every row reads its state: confirm, not confirmed, cloning, onboarding runs, waits for a session, ended without a report, report, not onboarded', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     const got = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => `${e.dataset.repoRow}=${e.dataset.state}`));
     const text = {};
     for (const k of ['waits', 'nope', 'copy', 'busy', 'dead', 'plain', 'bad', 'slow']) text[k] = await row(p, k).innerText();
@@ -394,14 +396,14 @@ async function repos(page) {
   });
 
   await check('a pending add-repo file with no ask at all reads Not confirmed. Send again.', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO, [SESSIONS[1]]);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO, [SESSIONS[1]]);
     const got = await row(p, 'waits').getAttribute('data-state');
     const text = await row(p, 'waits').innerText().finally(() => p.close());
     ok(got === 'unconfirmed' && /Not confirmed\. Send again\./.test(text), `waits: ${got} ${text}`);
   });
 
   await check('Waiting for your confirm opens the setup drawer on the confirm ask', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     await row(p, 'waits').getByRole('button', { name: /confirm/i }).click();
     await until('the setup drawer', async () => /setup/i.test(await drawer(p).getAttribute('aria-label')));
     const shown = await card(p, 's-ceo/add-repo-waits').isVisible().finally(() => p.close());
@@ -409,7 +411,7 @@ async function repos(page) {
   });
 
   await check('a failed add-repo file is a banner above the report of its row, its detail as text', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     const r = row(p, 'demo');
     const banner = await r.locator('[data-failed]').innerText();
     const first = await r.evaluate((el) => el.firstElementChild && el.firstElementChild.hasAttribute('data-failed'));
@@ -424,7 +426,7 @@ async function repos(page) {
   });
 
   await check('the report shows its counts, summary, checks and proposals, a check line with <script> as text', async () => {
-    const { p } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p } = await withRepos(context, REPOS_SETUP(), CEO);
     const r = row(p, 'demo');
     const head = await r.innerText();
     await r.locator('summary').click();
@@ -445,7 +447,7 @@ async function repos(page) {
   });
 
   await check('Make it a request posts the intake line at P3, then at the priority picked, and the report stays open', async () => {
-    const { p, posted } = await withRepos(context, REPOS_SETUP, CEO);
+    const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
     const r = row(p, 'demo');
     await r.locator('summary').click();
     await r.locator('[data-proposal="P1"]').getByRole('button', { name: 'Make it a request' }).click();
@@ -460,7 +462,7 @@ async function repos(page) {
 
   for (const [key, name] of [['plain', 'Start onboarding'], ['slow', 'Start onboarding'], ['dead', 'Start again'], ['demo', 'Run again']]) {
     await check(`${name} of ${key} posts onboard repo ${key}`, async () => {
-      const { p, posted } = await withRepos(context, REPOS_SETUP, CEO);
+      const { p, posted } = await withRepos(context, REPOS_SETUP(), CEO);
       await row(p, key).getByRole('button', { name }).click();
       const got = await lastPost(posted).finally(() => p.close());
       ok(JSON.stringify(got.body) === JSON.stringify({ ask: '', text: `onboard repo ${key}` }), `body: ${JSON.stringify(got.body)}`);
@@ -468,7 +470,7 @@ async function repos(page) {
   }
 
   await check('with /api/setup of a server before addRepos and onboarding every repos.yml key reads Not onboarded', async () => {
-    const { steps, doctorAt, reposYml } = REPOS_SETUP;
+    const { steps, doctorAt, reposYml } = REPOS_SETUP();
     const { p } = await withRepos(context, { steps, doctorAt, reposYml, addRepos: undefined, onboarding: undefined }, CEO);
     const got = await p.locator('[data-repo-row]').evaluateAll((els) => els.map((e) => `${e.dataset.repoRow}=${e.dataset.state}`));
     const errors = await p.locator('.error').allInnerTexts().finally(() => p.close());
