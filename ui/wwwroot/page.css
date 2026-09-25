@@ -25,6 +25,7 @@ ul { margin: 0; padding-left: 18px; }
 .muted { color: var(--muted); }
 .empty, .error { padding: 16px; }
 .error, .bad { color: var(--bad); }
+.stale { position: fixed; left: 16px; bottom: 16px; z-index: 3; margin: 0; padding: 6px 12px; border: 1px solid var(--warn); border-radius: 6px; background: var(--warn-soft); color: var(--warn); font-size: 12px; }
 
 .btn { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 5px 11px; cursor: pointer; }
 .btn.sm { padding: 2px 8px; font-size: 12px; }

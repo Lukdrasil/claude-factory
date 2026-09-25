@@ -539,6 +539,27 @@ async function confirmYes(page, name, key) {
     ok(r1 !== c1, `r1 looks like c1: ${r1}`);
   });
 
+  // --- the token and the change stream: a plain message for a token the server refuses, a cue while the stream is down
+  await check('a token the server refuses reads The UI token is not valid any more, no status code', async () => {
+    await page.goto('about:blank');
+    await page.goto(`${BASE}/#token=not-the-token`);
+    const text = await until('the token message', async () => {
+      const t = await page.locator('body').innerText();
+      return /The UI token is not valid any more: open the URL ui-up\.sh printed\./.test(t) && t;
+    });
+    ok(!/\b401\b|answered/.test(text), `the raw error: ${text.slice(0, 300)}`);
+  });
+
+  await check('while the change stream is down the page shows it may be out of date, and the cue clears on reconnect', async () => {
+    const cue = page.getByText(/may be out of date/i);
+    await page.route('**/api/stream', (route) => route.abort());
+    await fresh(page);
+    await until('the stale cue', () => cue.isVisible(), 5000);
+    ok(!(await page.locator('.error').count()), `an error: ${await page.locator('.error').first().innerText().catch(() => '')}`);
+    await page.unroute('**/api/stream');
+    await until('no stale cue', async () => !(await cue.count()), 5000);
+  });
+
   await browser.close();
   process.exit(failed);
 })().catch((e) => {
