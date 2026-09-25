@@ -23,8 +23,9 @@ that used to sit in that key lives here instead.
   units run in herdr, and in the state clone for every parent of a request that is in flight, it exits 2 with
   one herd-list line per herd that no `monitor` entry of the hook's `background_tasks` watches with
   `herd-watch.sh <T-id>`, so a CEO or lead whose Monitor expired, or that was restarted, arms it again. Never
-  when `stop_hook_active` is true, at most twice per session (its counter `.harness-rearm-<sid>` sits in the
-  stamp directory, outside the state clone).
+  when `stop_hook_active` is true, at most twice per session: its counter `.harness-rearm-<sid>` sits in the
+  task's `.harness/<T-id>/` for a lead, and in the state clone's git dir (`git rev-parse --absolute-git-dir`)
+  for the CEO, where no commit and no status sees it.
 - `session-start.sh` warns when the running plugin root looks older than this repo: `bin/attribution-gate.sh`
   missing from it, a `.claude-plugin/plugin.json` version other than the installed one, or, for a dev checkout,
   a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR

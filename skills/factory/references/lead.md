@@ -14,9 +14,11 @@ change yourself, never chart or edit a map, and never touch another repository. 
 
 ## Start
 
-1. Claim the parent as your own first step (the queue claims nothing): `sh
-   <plugin-root>/bin/state-report.sh --task <T-id> --set-status in_progress --owner
-   factory@<host>:<session_id>`, with the owner of your identity line.
+1. Claim the parent as your own first step (the queue claims nothing), with the owner string
+   `factory@<host>:<session_id>` of your identity line. A `ready` parent: `sh <plugin-root>/bin/state-report.sh
+   --task <T-id> --set-status in_progress --owner <owner>`. A parent already `in_progress` (an earlier lead ended
+   on a cross-repo need, step 4 of the last section) is reclaimed without a status change: `sh
+   <plugin-root>/bin/state-report.sh --task <T-id> --owner <owner> --no-status`.
 2. Arm the watcher through the Monitor tool: command `sh <plugin-root>/bin/herd-watch.sh <T-id> --interval
    60`, description `herd-watch.sh <T-id>`, `timeout_ms` at its maximum, and arm it again on every expiry. The
    Stop hook `rearm-check.sh` reminds you when it is missing.
@@ -70,7 +72,8 @@ When every block is merged:
 4. The human reviews and merges it. Tell them (a notice ask) and the CEO (SendMessage `<T-id> task MR open
    <url>`), and keep the watcher armed: a red pipeline or a review thread is a fix block you dispatch.
 5. Once the human says it is merged: the done gate of `references/done.md`, `sh
-   <plugin-root>/bin/task-done.sh <T-id>` (it archives the parent), knowledge review once for the parent
+   <plugin-root>/bin/task-done.sh <T-id> --state "$WORK_DIR/state"` (it resolves no state from the parent
+   worktree on its own; it archives the parent), knowledge review once for the parent
    (lessons as proposals under `repos/<key>/agents/<agent>/memory/proposals/` through
    `_shared/knowledge-review.md`), SendMessage the CEO `<T-id> done`, disarm the watcher, end.
 
@@ -93,7 +96,12 @@ Your task needs a change in another repository. You never touch it.
    progress file.
 3. The CEO reopens the request map and the human decides. In scope, the dependent blocks get `depends_on` on
    the new parent; out of scope, the CEO tells you and the human decides what the blocks become.
-4. When every remaining block depends on the new parent: report the parent `blocked` with the new parent's id
-   in its progress file, `sh <plugin-root>/bin/capacity.sh release <T-id>-lead` to give back your
-   `repo-lead` slot, SendMessage the CEO `<T-id> waits on <new T-id>`, and end. The queue starts a new lead for
-   the task once the dependency is done.
+4. When every remaining block depends on the new parent, you end without reporting the parent: it stays
+   `in_progress` (setting it back to `ready` is a human gate, and `blocked -> in_progress` is no transition of
+   yours), and the dependent blocks carry `blocked` with the cross-repo line. Write the new parent's id into the
+   parent's progress file (`state-commit.sh` as in step 1), release the parent's owner so the Stop hook does not
+   ask you for a self-report of it (`sh <plugin-root>/bin/state-report.sh --task <T-id> --owner null
+   --no-status`), give back your `repo-lead` slot with `sh <plugin-root>/bin/capacity.sh release <T-id>-lead`,
+   SendMessage the CEO `<T-id> waits on <new T-id>`, and end. `queue-next.sh` prints such an `in_progress`
+   parent again (a request set, no open `<T-id>-lead` record, a runnable block) once the dependency is done, and
+   the new lead reclaims it (Start, step 1).
