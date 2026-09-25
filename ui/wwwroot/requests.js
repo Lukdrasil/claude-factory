@@ -64,17 +64,24 @@ const item = (t, parent) => `<li class="${parent ? 'par' : 'blk'}" data-item="${
   + `<span><span class="id">${esc(t.id)}</span> ${esc(t.goal)}${t.acceptance ? `<span class="acc">${esc(t.acceptance)}</span>` : ''}${critic(t)}</span>`
   + `<span>${parent ? prio(t.priority) : ''}<span class="chip">${esc(t.status)}</span></span></li>`;
 
+/** Approve of a `planned` request (`data-act="approve-plan"`), which sends `approve <R-id>` to the CEO, disabled while no CEO session runs, and the outcome of the last send. */
+const approve = (d, ceo, note) => (d.status !== 'planned' || d.archived ? ''
+  : `<p><button class="btn sm primary" data-act="approve-plan" data-id="${esc(d.id)}"${ceo ? '' : ' disabled'}>Approve ${esc(d.id)}</button> `
+    + `<span class="muted">${ceo ? 'The CEO checks the cut, sets its parents and blocks ready and queues them.' : 'No CEO session runs, so nothing goes out.'}</span></p>`
+    + (note ? `<p class="${note.error ? 'bad' : 'muted'}">${esc(note.text)}</p>` : ''));
+
 /**
- * The Plan tab: the final plan of the request shown, its destination, decisions and out of scope, and a read-only
- * checklist of its parents per repo with their blocks, status and acceptance, and spec-critic's line of each red block.
- * The approval is the CEO's confirm ask.
+ * The Plan tab: the final plan of the request shown, its destination, decisions and out of scope, Approve while it is
+ * `planned`, and a read-only checklist of its parents per repo with their blocks, status and acceptance, and
+ * spec-critic's line of each red block.
  */
-export function renderPlan(list, id, detail) {
+export function renderPlan(list, id, detail, ceo = null, note = null) {
   return tab('plan', list, id, detail, (d) => {
     const repos = new Map();
     for (const p of d.parents || []) repos.set(p.repo, [...(repos.get(p.repo) || []), p]);
     return dest(d, list.find((r) => r.id === id))
-      + '<p class="muted">Read-only: each status follows the state repo. You approve this plan in the CEO\'s confirm ask, not here.</p>'
+      + approve(d, ceo, note)
+      + '<p class="muted">Each status follows the state repo.</p>'
       + `<div class="cols"><div><h3>Decisions</h3>${lines(d.decisions, d.html?.decisions, 'None yet.')}</div><div><h3>Out of scope</h3>${lines(d.outOfScope, d.html?.outOfScope, 'Nothing.')}</div></div>`
       + `<div data-checklist>${[...repos].map(([repo, ps]) => `<h3 data-plan-repo="${esc(repo)}">${esc(repo)}</h3><ul class="ck">`
         + `${ps.map((p) => item(p, true) + (p.blocks || []).map((b) => item(b, false)).join('')).join('')}</ul>`).join('') || '<p class="muted">No parent yet.</p>'}</div>`;

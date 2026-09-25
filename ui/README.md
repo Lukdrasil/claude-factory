@@ -76,7 +76,7 @@ date; it clears once the stream is back.
 | module | what |
 |---|---|
 | `pipeline.js` | `renderTop(sessions, tab)`: the tabs, the to-answer counter and the setup strip; `renderPipeline(board, sessions, requests, capacity)`: the filter bar and the grid of tasks across the five phases of the solve steps, grouped by request, blocks folded under their parent, the step a session reports marked `aria-current="step"` |
-| `requests.js` | `renderMap(list, id, detail)` and `renderPlan(list, id, detail)`: the request list and the map, or the final plan with its read-only checklist, of the request shown |
+| `requests.js` | `renderMap(list, id, detail)` and `renderPlan(list, id, detail)`: the request list and the map, or the final plan with its read-only checklist and, while it is `planned`, Approve, of the request shown |
 | `org.js` | `renderOrg(org)`: the CEO, capacity, leads and leases of `/api/org`; `capacityStrip(capacity)`, `prio(p)` and `when(stamp)` |
 | `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope, the pass it is due for and their start buttons |
 | `setup.js` | `renderSetupStrip(setup)`: the machine checklist in the strip; `renderSetupTab(setup, sessions, ceo, note)`: the Repositories section, the doctor steps and Start the CEO |
@@ -133,7 +133,9 @@ Org tab sends `set capacity <name> <N>`, a repository's default branch Set on th
 New request box's Base branch rides on the request as `, base <branch>`. The CEO writes them with `bin/state-set.sh`
 and `bin/state-report.sh --base-branch`. Unblock under each blocked task or block of the drawer sends `unblock <T-id>`,
 the human's approval back to `ready`: the CEO runs `bin/task-approve.sh` and tells the parent's lead. It is disabled
-while no CEO session runs.
+while no CEO session runs. Approve on the Plan tab of a `planned` request sends `approve <R-id>`, the human's plan
+approval, so the CEO never waits on a confirm ask for it: the CEO checks the cut, runs `bin/task-approve.sh` for its
+parents and blocks and queues them. It is disabled while no CEO session runs.
 
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
@@ -180,7 +182,7 @@ The header holds six tabs, and every tab keeps the counter, the setup strip and 
   destination, the open and claimed tickets with the frontier marked, the decisions so far, the fog and out of scope.
 - Plan: the final plan of the same request, its destination, decisions and out of scope, and the checklist of its
   parents per repo with their blocks, status and acceptance. The checklist is read-only; the human approves the
-  plan in the CEO's confirm ask, never on the page.
+  plan with Approve above it, which sends `approve <R-id>` to the CEO.
 - Org: the CEO session, the capacity, one row per lead and every lease.
 - Memory: the last daily and weekly pass of every scope and the pass it is due for; a scope whose first pass is
   due, work in its `drafts/` or `proposals/` and no `passes.yml` yet, reads never twice. With a CEO session each scope offers Start daily and

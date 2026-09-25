@@ -12,7 +12,7 @@ const app = document.getElementById('app');
 const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
-  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, capNote: null, stale: false,
+  tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, capNote: null, approveNote: null, stale: false,
   busy: new Map(), auto: null, mute: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
@@ -182,7 +182,7 @@ function renderTab() {
   const map = S.map?.id === rid ? S.map : null;
   const el = {
     Map: () => renderMap(S.requests, rid, map),
-    Plan: () => renderPlan(S.requests, rid, map),
+    Plan: () => renderPlan(S.requests, rid, map, S.org?.ceo, S.approveNote),
     Org: () => renderOrg(S.org, S.capNote),
     Memory: () => renderMemory(S.setup.passes || [], S.org?.ceo, S.passNote),
     Setup: () => renderSetupTab(S.setup, S.sessions, S.org?.ceo, S.repoNote),
@@ -477,6 +477,7 @@ app.addEventListener('click', (e) => {
     return track(b, () => tellCeo(`set capacity ${b.dataset.name} ${n}`, 'capNote'), false);
   }
   if (act === 'onboard') return track(b, () => tellCeo(onboardLine(b.dataset.key)));
+  if (act === 'approve-plan') return track(b, () => tellCeo(`approve ${b.dataset.id}`, 'approveNote'));
   if (act === 'unblock') return track(b, () => tellCeo(`unblock ${b.dataset.id}`, 'unblockNote'));
   if (act === 'propose') return track(b, () => propose(b));
   if (act === 'redraw') return track(b, () => redraw(b.closest('[data-visual]')));

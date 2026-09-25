@@ -89,7 +89,7 @@ Every line that asks for an action goes on to a session of its own, `sh <plugin-
 ... --spawn herdr` in your workspace, and you only act on what that session reports. A line whose shape is known
 goes straight to its handler; anything else the human says goes to a route session, which judges it. You never
 judge a line whose shape is in the table, and you never ask the human which handler it goes to: a doubt is a
-route session's to settle. The `set` lines and `unblock` are the exception to a session of their own: each is one
+route session's to settle. The `set` lines, `approve` and `unblock` are the exception to a session of their own: each is one
 script you run yourself, then one line to the human with what it printed, or its refusal.
 
 | the line | you dispatch |
@@ -105,6 +105,7 @@ script you run yourself, then one line to the human with what it printed, or its
 | `set capacity <sessions|role> <N>` | you run `sh <plugin-root>/bin/state-set.sh capacity <name> <N>` |
 | `set default branch <key> <branch>` | you run `sh <plugin-root>/bin/state-set.sh default-branch <key> <branch>` |
 | `set base <T-id> <branch>` | you run `sh <plugin-root>/bin/state-report.sh --task <T-id> --no-status --base-branch <branch>` |
+| `approve <R-id>` | the human's plan approval of a request, the Approve of the UI's Plan tab (Approval below) |
 | `unblock <T-id>` | the human's approval of a `blocked` task or block, the Unblock of the UI: you run `sh <plugin-root>/bin/task-approve.sh <T-id> --state <state>`, then `herdr agent prompt lead_<unit> "<T-id> ready again"` to the lead of its parent when one runs, else `sh <plugin-root>/bin/session-monitor.sh --queue`. A `<T-id>` the state does not show `blocked` is one line to the human, nothing run |
 | anything else from the human | `--step route --message "<the message as received>"` (`references/route.md`) |
 
@@ -174,17 +175,19 @@ state shows its output:
 
 ## Approval
 
-When every parent of a request has its blocks and a clean cut check, one confirm ask per request, `flow:
-approve`: the destination, the decisions, out of scope, then per repository the parents with their blocks and
-acceptance, and per red block spec-critic's line, read from the block's `## Spec critic`; the UI's Plan
-checklist shows the same, read-only, and `spec-critic missing` for a red block without one. The answer is the
-human's, never yours.
+When every parent of a request has its blocks and a clean cut check, one line to the human, `<R-id> ready to
+approve: the Plan tab of the UI, or approve <R-id>`, and you go on with the loop: you never ask and never wait
+for it. The Plan tab shows the destination, the decisions, out of scope, then per repository the parents with
+their blocks and acceptance, and per red block spec-critic's line, read from the block's `## Spec critic`, or
+`spec-critic missing`. The approval is the human's `approve <R-id>` line, typed or sent by the Plan tab's
+Approve, never yours.
 
-On yes: one call `sh <plugin-root>/bin/task-approve.sh <ids...> --state <state>`, the parents and their blocks in depends_on
+On `approve <R-id>`: check the state first. A request whose map is not `planned`, or with a parent that has no
+blocks or no clean cut check, is one line to the human with the reason, nothing run. Else one call `sh <plugin-root>/bin/task-approve.sh <ids...> --state <state>`, the parents and their blocks in depends_on
 order, in one lock and one commit. Show the human every `<id> ready <plan_hash>` line and every warning it
 prints (one per unfinished depends_on). Exit 1 approved nothing: show the reason and stop there. On exit 0:
-`sh <plugin-root>/bin/map.sh status <R-id> queued`, then `session-monitor.sh --queue`. On no: the request
-stays `planned` and the human says what changes.
+`sh <plugin-root>/bin/map.sh status <R-id> queued`, then `session-monitor.sh --queue`. Until the line comes the
+request stays `planned`; a change the human wants instead reaches you as a free message (route).
 
 ## Queue and leads
 
@@ -214,7 +217,7 @@ as a prompt in this session (`<T-id> lead started`, `<T-id> task MR open <url>`,
 cross-repo need <key>`, `<T-id> waits on <new T-id>`): a claim, not the human, which you check against the
 state before you act on it (the parent's owner, `mr_url`, its status, the `## Cross-repo need` section of its
 progress file). A message coordinates; the state repo stays the record, and a message never carries an
-approval: an approval is the human's answer to an ask.
+approval: an approval is the human's, an answer to an ask or their own `approve` or `unblock` line.
 
 ## A cross-repo need
 

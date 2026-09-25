@@ -1151,11 +1151,34 @@ async function stage(q, button, text) {
     for (const s of ['grace period', 'dotnet test --filter Rotation.Grace', 'done']) ok(got.grace.includes(s), `no ${s} in: ${got.grace}`);
   });
 
-  await check('the Plan checklist is read-only: no input, button or editable element, and the approval is the CEO\'s confirm ask', async () => {
+  await check('the Plan checklist is read-only: no input, button or editable element', async () => {
     const n = await org.locator('[data-checklist]').locator('input, textarea, select, button, [contenteditable]').count();
     ok(n === 0, `${n} controls in the checklist`);
-    ok(!(await org.locator('[data-plan]').getByRole('button', { name: /approve/i }).count()), 'an approve button');
-    ok(/confirm ask/i.test(await org.locator('[data-plan]').innerText()), 'no word of the CEO\'s confirm ask');
+  });
+
+  await check('with no CEO session Approve of the planned R-20260925-1 is disabled and says nothing goes out', async () => {
+    ok(await org.locator('[data-plan] [data-act="approve-plan"][data-id="R-20260925-1"]').isDisabled(), 'Approve is enabled');
+    ok((await org.locator('[data-plan]').innerText()).includes('No CEO session runs, so nothing goes out.'), 'no word of the missing CEO');
+  });
+
+  await check('with a CEO session Approve on the Plan tab posts approve R-20260925-1 to the CEO and says it was sent', async () => {
+    const p = await mocked({ '/api/requests': REQUESTS, '/api/requests/R-20260925-1': DETAIL, '/api/org': { ...ORG, ceo: { sid: 's-ceo', pane: 'w1:p9' } } });
+    const sent = [];
+    await p.route('**/api/answers/s-ceo', (r) => {
+      sent.push(r.request().postDataJSON());
+      return r.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+    });
+    try {
+      await p.getByRole('tab', { name: 'Plan' }).click();
+      const btn = p.locator('[data-plan] [data-act="approve-plan"][data-id="R-20260925-1"]');
+      await until('Approve enabled', async () => (await btn.count()) && !(await btn.isDisabled()));
+      await btn.click();
+      await until('the approve post', () => sent.length);
+      ok(JSON.stringify(sent) === JSON.stringify([{ ask: '', text: 'approve R-20260925-1' }]), `posted: ${JSON.stringify(sent)}`);
+      await until('the sent note', async () => (await p.locator('[data-plan]').innerText()).includes('Sent to the CEO: approve R-20260925-1'));
+    } finally {
+      await p.close();
+    }
   });
 
   await check('at 390x844 no tab scrolls the page sideways', async () => {
