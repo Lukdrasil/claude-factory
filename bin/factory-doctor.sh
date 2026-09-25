@@ -45,17 +45,20 @@ plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-ok() { echo "ok: $1"; }
-missing() { echo "missing: $1, $2"; }
+# every line the report prints and every row doctor.json holds goes through here: the user:pass@ of a url is
+# dropped, since doctor.json is served to the page by /api/setup
+redact() { printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'; }
+ok() { redact "ok: $1"; }
+missing() { redact "missing: $1, $2"; }
 # one check: printed as a line of the report, or with --json a row of the steps file
 step() { # <id> <done|missing|failing> <detail> [<fix>]
   if [ "$json" = 1 ]; then
-    printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$(flat "$3")" "$(flat "${4:-}")" >> "$tmp/steps"
+    redact "$(printf '%s\t%s\t%s\t%s' "$1" "$2" "$(flat "$3")" "$(flat "${4:-}")")" >> "$tmp/steps"
   else
     case "$2" in
       done) ok "$3" ;;
       missing) missing "$3" "${4:-}" ;;
-      *) echo "failing: $3, ${4:-}" ;;
+      *) redact "failing: $3, ${4:-}" ;;
     esac
   fi
 }

@@ -305,6 +305,17 @@ djson
 has "without them the user settings decide: no WORK_DIR" '^missing ' "$(step work-dir)"
 cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
+# a state remote with credentials in its url: doctor names the remote, never the secret, in doctor.json or its report
+git -C "$st" remote set-url origin https://oauth2:SECRET@gitlab.example.com/g/state.git
+djson
+has "the state remote with credentials is still read" '^done .*https://gitlab\.example\.com/g/state\.git' "$(step state-remote)"
+if grep -q SECRET "$dj"; then printf 'FAIL doctor.json carries the credentials of the state remote\n'; fail=1
+else printf 'PASS doctor.json carries no credentials of the state remote\n'; fi
+out=$(cd "$tmp/clone" && HOME="$dhome" sh "$bin/factory-doctor.sh" --root "$w" 2>&1)
+if printf '%s\n' "$out" | grep -q SECRET; then printf 'FAIL the report prints the credentials of the state remote\n'; fail=1
+else printf 'PASS the report prints no credentials of the state remote\n'; fi
+git -C "$st" remote set-url origin "$tmp/state-origin.git"
+
 # --- each check missing or failing ----------------------------------------------------------------------------------
 sys="$tmp/sys"
 mkdir -p "$sys"
