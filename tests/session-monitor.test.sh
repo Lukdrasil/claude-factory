@@ -235,6 +235,15 @@ check 'claude carries the session name'         '^agent start implementer_t-101 
 out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
 check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
 
+: > "$HERDR_STUB_LOG"
+out=$(FACTORY_CLAUDE_ARGS='--plugin-dir /sim/plugin --settings /sim/settings.json' \
+  sh "$bin/session-monitor.sh" --task T-102 --spawn herdr --state "$hstate" 2>/dev/null)
+out=$(cat "$HERDR_STUB_LOG")
+check 'FACTORY_CLAUDE_ARGS rides along on agent start' \
+  '^agent start implementer_t-102 .* -- .*--name "[^"]*" --plugin-dir /sim/plugin --settings /sim/settings.json $'
+out=$(FACTORY_CLAUDE_ARGS='--plugin-dir /sim/plugin' sh "$bin/session-monitor.sh" --task T-102 --dry-run --state "$hstate" 2>/dev/null)
+check 'and on a printed line'                   'claude --model [^ ]* --name "[^"]*" --plugin-dir /sim/plugin "'
+
 out=$(sh "$bin/session-monitor.sh" --task T-103 --spawn herdr --state "$hstate" 2>/dev/null)
 check 'a herdr spawn of a block goes out'       '^T-103-01 spawned '
 out=$(cat "$hroot/demo/.harness/T-103/herdr-tabs" 2>/dev/null)
