@@ -52,6 +52,10 @@ case "${1:-} ${2:-}" in
     printf '{"id":"cli:tab:create","result":{"root_pane":{"agent_status":"unknown","cwd":"/tmp","focused":false,"pane_id":"w9:p%s","revision":0,"tab_id":"%s","workspace_id":"w9"},"tab":{"agent_status":"unknown","focused":false,"label":"%s","number":2,"pane_count":1,"tab_id":"%s","workspace_id":"w9"},"type":"tab_created"}}\n' \
       "$$" "$id" "$label" "$id"
     ;;
+  'tab rename')
+    [ -f "$s/tabs/${3:-}" ] || { printf '{"error":{"code":"tab_not_found","message":"tab %s not found"},"id":"cli:tab:rename"}\n' "${3:-}"; exit 1; }
+    t=$3; shift 3; printf '%s' "$*" > "$s/tabs/$t"; echo '{"id":"cli:tab:rename","result":{"type":"ok"}}'
+    ;;
   'tab close')
     if [ -f "$s/tabs/${3:-}" ]; then rm -f "$s/tabs/$3"; echo '{"id":"cli:tab:close","result":{"type":"ok"}}'
     else printf '{"error":{"code":"tab_not_found","message":"tab %s not found"},"id":"cli:tab:close"}\n' "${3:-}"; exit 1; fi

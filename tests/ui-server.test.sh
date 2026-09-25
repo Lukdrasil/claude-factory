@@ -37,7 +37,8 @@ trap 'exit 1' INT TERM
 
 . "$repo/tests/ui-fixture.sh"
 
-relay_tabs() { grep -lx 'factory-ui-relay' "$HERDR_STUB"/tabs/* 2>/dev/null | wc -l | tr -d ' '; }
+relay_label='ui relay (no agent)'
+relay_tabs() { grep -lxF "$relay_label" "$HERDR_STUB"/tabs/* 2>/dev/null | wc -l | tr -d ' '; }
 creates() { grep -c '^tab create' "$HERDR_STUB/log" | tr -d ' '; }
 closes() { grep -c '^tab close' "$HERDR_STUB/log" | tr -d ' '; }
 
@@ -92,7 +93,7 @@ token=$(cat "$ui/token" 2>/dev/null)
 has 'the token is 32 hex bytes'                               '^[0-9a-f]{64}$' "$token"
 is 'the token file has mode 600'                              "$(stat -c %a "$ui/token" 2>/dev/null)" 600
 has 'the printed URL carries the port and the token fragment' "http://127\.0\.0\.1:$port1/#.*$token" "$(cat "$tmp/up.out")"
-is 'one relay tab named factory-ui-relay is open'             "$(relay_tabs)" 1
+is 'one relay tab named ui relay (no agent) is open'         "$(relay_tabs)" 1
 has 'the relay tab runs ui-relay.sh'                          'ui-relay\.sh' "$(cat "$HERDR_STUB/log")"
 has 'the relay is pointed at the same UI home'                "$ui" "$(cat "$HERDR_STUB/log")"
 ready "$port1" || bad "the server never answered / on $port1: $(docker logs "$name" 2>&1 | tail -n 20)"
@@ -245,9 +246,15 @@ is 'the token is reused'                                      "$(cat "$ui/token"
 has 'it prints the same URL'                                  "http://127\.0\.0\.1:$port1/#.*$token" "$(cat "$tmp/up.out")"
 is 'no second relay tab is opened'                            "$(relay_tabs) $(creates)" '1 1'
 
+# --- a relay tab still named factory-ui-relay (from an older plugin) is reused and renamed, not doubled -----------
+old=$(grep -lxF "$relay_label" "$HERDR_STUB"/tabs/* | head -n1); printf '%s' factory-ui-relay > "$old"
+up --state "$state1" >/dev/null 2>&1
+is 'the old relay tab is renamed, no tab is opened'           "$(relay_tabs) $(creates)" '1 1'
+is 'no tab keeps the old name'                                "$(grep -lx factory-ui-relay "$HERDR_STUB"/tabs/* 2>/dev/null | wc -l | tr -d ' ')" 0
+
 # --- the relay tab is there but no ui-relay.sh runs in it (a herdr restart leaves a bare shell): ui-up.sh finds its
 # pane through `pane list`, sees no ui-relay.sh in `pane process-info` and runs the relay there again -------------
-relay_tab=$(grep -lx 'factory-ui-relay' "$HERDR_STUB"/tabs/* 2>/dev/null | head -n1)
+relay_tab=$(grep -lxF "$relay_label" "$HERDR_STUB"/tabs/* 2>/dev/null | head -n1)
 RELAY_TAB=${relay_tab##*/} RELAY_PROCS="$tmp/relaywrap/procs"
 export RELAY_TAB RELAY_PROCS
 mkdir -p "$tmp/relaywrap"
