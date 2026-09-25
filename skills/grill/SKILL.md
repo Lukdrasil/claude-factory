@@ -15,7 +15,9 @@ decision branches into the decisions that hang off it.
 
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the
 questions you can ask _now_ without guessing at answers you have not heard yet. Ask the whole frontier in one
-round, numbered, each with lettered options and your recommendation, then wait.
+round, numbered, each with lettered options and your recommendation, then wait. Every round goes through
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`, so with the UI on it is an ask the browser shows, not only terminal
+text.
 
 ```
 ❓ **Q3** - **<question title>** (after Q1, Q2): <question body: what hangs on it, possibly several paragraphs>
