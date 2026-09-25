@@ -280,4 +280,6 @@ async function stream() {
 if (token) {
   refresh();
   stream();
+  // why: the leases under .capacity never reach the change stream, so the capacity and the Org tab poll for them
+  setInterval(refresh, 5000);
 }
