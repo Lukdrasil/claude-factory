@@ -1,7 +1,9 @@
 #!/bin/sh
 # state-commit.sh and state-push.sh over throwaway state clones: an agent commits its own state files under the
 # state lock and only the paths it names, and the push to the state root is a separate step with its own lock
-# that never autostashes, never resets, and keeps the commits when the root refuses them.
+# that never autostashes, never resets, and keeps the commits when the root refuses them. A rebase that
+# conflicts leaves <git-dir>/factory-push.blocked with the reason and the paths, every refusal prints it, and
+# the next push that lands removes it.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(cd "$(mktemp -d)" && pwd -P)
@@ -193,7 +195,24 @@ check 'a conflicting rebase exits 1' 1 "$rc"
 check 'the conflicting commit stays' "$before" "$(git -C "$st" rev-parse HEAD)"
 check 'the conflicting rebase is aborted' no "$([ -d "$st/.git/rebase-merge" ] || [ -d "$st/.git/rebase-apply" ] && echo yes || echo no)"
 check 'the tree is clean after the abort' '' "$(git -C "$st" status --porcelain --untracked-files=no)"
+blocked="$st/.git/factory-push.blocked"
+check 'a conflicting rebase leaves the blocked marker' yes "$([ -f "$blocked" ] && echo yes || echo no)"
+check 'the marker holds the reason' yes "$(has "$blocked" 'conflicts')"
+check 'the marker holds the conflicting path' yes "$(grep -qx 'mine.md' "$blocked" 2>/dev/null && echo yes || echo no)"
+check 'the conflicting pass prints the marker' yes "$(grep -q 'mine.md' "$tmp/out" && echo yes || echo no)"
+printf 'another session, not committed\n' >> "$st/notes.md"
+rc=0
+sh "$bin/state-push.sh" --state "$st" >"$tmp/out" 2>&1 || rc=$?
+check 'another refusal while blocked exits 1' 1 "$rc"
+check 'another refusal while blocked prints the marker' yes "$(grep -q 'mine.md' "$tmp/out" && echo yes || echo no)"
+git -C "$st" checkout -q -- notes.md
 git -C "$st" reset -q --keep HEAD~1
+printf 'no conflict\n' > "$st/notes.md"
+git -C "$st" commit -q -m 'a commit after the conflict was resolved' -- notes.md
+rc=0
+sh "$bin/state-push.sh" --state "$st" >"$tmp/out" 2>&1 || rc=$?
+check 'the push after the conflict lands' "0 $(git -C "$st" rev-parse HEAD)" "$rc $(git -C "$st.git" rev-parse main)"
+check 'the push that lands removes the marker' no "$([ -f "$blocked" ] && echo yes || echo no)"
 
 # --- a refused push exits 1 and keeps the commits -----------------------------------------
 st="$tmp/r/state"
