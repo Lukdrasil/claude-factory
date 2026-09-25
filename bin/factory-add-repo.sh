@@ -56,10 +56,6 @@ root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
 state="$root/state"
 [ -f "$state/repos.yml" ] || die "$state/repos.yml does not exist - run factory-init.sh --root $root first"
 plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-case "$alias" in
-  ''|[A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) ;;
-  *) die "--alias takes 2 to 4 uppercase letters, not '$alias'" ;;
-esac
 
 top='' branch=''
 if [ -n "$clone" ]; then
@@ -112,6 +108,10 @@ unreachable() { # <git's output>: exit 4 with its lines up to fatal:, at most th
 }
 fresh=0
 [ -z "$clone" ] || trap 'on_exit $?' EXIT
+case "$alias" in
+  ''|[A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) ;;
+  *) die "--alias takes 2 to 4 uppercase letters, not '$alias'" ;;
+esac
 if [ -n "$clone" ] && grep -q "^$key:" "$state/repos.yml"; then
   # F6: a registered key is not fetched or cloned again; with the same URL the registration below runs in its
   # path: (nothing to do, or the missing alias or toolset), and its onboarding runs there
