@@ -609,6 +609,9 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
     echo "session-monitor: herdr agent prompt failed for $id; the session is up, prompt it by hand" >&2
     rc=2; continue
   fi
+  # plan 3.7: reattach after a herdr restart finds the agent by its session id when the pane id changed
+  sid=$(herdr agent get "$name" 2>/dev/null | json result.agent.agent_session.value || :)
+  [ "$role" = pass ] || [ -z "$sid" ] || sh "$bin/herdr-tabs.sh" session "$id" "$sid" --state "$state" || :
   printf '%s spawned %s\n' "$id" "$cwd"
 done < "$units"
 end_pass $rc
