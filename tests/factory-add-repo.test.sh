@@ -208,4 +208,39 @@ out=$(cadd --clone "$curl_nodir"); rc=$?
 [ -z "$(ls -A "$cf/sub")" ] && [ -z "$(ls -A "$clones")" ]; check 'a refused clones directory is left empty' $?
 printf 'clones: %s\n' "$clones" > "$cstate/factory.yml"
 
+# the preview asks the remote (git ls-remote) for its default branch and prints the clone and the registration
+mkorigin demo trunk
+curl="file://$tmp/origin/demo.git"
+out=$(cadd --clone "$curl"); rc=$?
+[ "$rc" = 3 ]; check 'a --clone preview exits 3' $?
+[ "$(printf '%s\n' "$out" | head -n1)" = demo ]; check 'the first stdout line is the key' $?
+has "$out" "+ git clone $curl $clones/demo   (default branch trunk)"; check 'the preview prints the clone line with the remote default branch' $?
+has "$out" 'note: alias DEM proposed from the key'; check 'the preview proposes the alias' $?
+has "$out" "+ demo: {url: \"$curl\", default_branch: trunk, path: \"$clones/demo\", alias: DEM}   in $cstate/repos.yml"
+check 'the preview prints the repos.yml line with the path under the clones directory' $?
+has "$out" "+ $cstate/repos/demo/toolset.md   from the stack found after the clone"; check 'the preview names the toolset' $?
+[ "$(printf '%s\n' "$out" | tail -n1)" = 'pending - rerun with --yes to apply' ]; check 'the preview ends pending' $?
+[ -z "$(ls -A "$clones")" ] && ! grep -q '^demo:' "$cstate/repos.yml"; check 'a preview clones and writes nothing' $?
+j=$(aj demo)
+has "$j" '"key":"demo"' && has "$j" "\"url\":\"$curl\"" && has "$j" "\"path\":\"$clones/demo\"" \
+  && has "$j" '"state":"pending"' && has "$j" "\"detail\":\"$clones/demo\""
+check 'the preview writes json pending with the clone target as its detail' $?
+printf '%s\n' "$j" | grep -qE '^\{"at":"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z",'; check 'the json at is a UTC ISO time' $?
+[ -z "$(find "$tmp/ui/setup/add-repo" -name '*.tmp')" ]; check 'the json temp file is renamed away' $?
+out=$(FACTORY_UI_HOME="$tmp/noui" cadd --clone "$curl"); rc=$?
+[ "$rc" = 3 ] && [ ! -e "$tmp/noui/setup/add-repo" ]; check 'without a UI home: the same exit, no json' $?
+
+# F3: a remote that cannot be reached exits 4 fast, and the token of the URL reaches no line and no file
+start=$(date +%s)
+out=$(cadd --clone 'http://u:tok-SECRET@127.0.0.1:9/g/farhost.git'); rc=$?
+[ "$rc" = 4 ]; check 'an unreachable URL exits 4' $?
+[ $(($(date +%s) - start)) -lt 30 ]; check 'an unreachable URL exits fast' $?
+grep -qF 'cannot reach http://127.0.0.1:9/g/farhost.git: ' "$tmp/cerr"; check 'the reason names the URL without its userinfo' $?
+grep -qF 'git ls-remote http://127.0.0.1:9/g/farhost.git works in your terminal' "$tmp/cerr"; check 'the fix says to try git ls-remote' $?
+j=$(aj farhost)
+has "$j" '"state":"failed"' && has "$j" '"url":"http://127.0.0.1:9/g/farhost.git"' && has "$j" '"detail":"cannot reach '
+check 'an unreachable URL writes json failed with the reason' $?
+! grep -q SECRET "$tmp/cerr" && ! has "$out" SECRET && ! has "$j" SECRET; check 'the token is in no stdout, stderr or json line' $?
+[ ! -e "$clones/farhost" ] && [ ! -e "$clones/.farhost.cf-clone" ]; check 'an unreachable URL leaves no directory' $?
+
 exit "$fail"
