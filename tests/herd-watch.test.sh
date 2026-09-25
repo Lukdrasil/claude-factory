@@ -256,6 +256,12 @@ out=$(sh "$bin/herd-watch.sh" T-010 --once --no-mr --state "$state")
 check 'the next ask is a new wait'                0 '^T-010-grill waits r2$' "$out"
 if [ "$(shows)" -eq 2 ]; then printf 'PASS the next ask is notified\n'
 else printf 'FAIL after the next ask %s notifications\n' "$(shows)"; fail=1; fi
+# answered and back at the prompt inside one interval: no agent change, so the answer is its own line
+ask sid-g r2 answered 'Which name'
+out=$(sh "$bin/herd-watch.sh" T-010 --once --no-mr --state "$state")
+check 'an answered ask with the step still ready is reported' 0 '^T-010-grill answered r2$' "$out"
+out=$(sh "$bin/herd-watch.sh" T-010 --once --no-mr --state "$state")
+check 'the answer is reported once'               1 'answered' "$out"
 rec T-010 T-010-plan-check tab-102
 herdr_agent - idle pane-102 sid-p
 mkdir -p "$FACTORY_UI_HOME/sessions/sid-p"
