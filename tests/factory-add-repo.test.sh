@@ -243,4 +243,25 @@ check 'an unreachable URL writes json failed with the reason' $?
 ! grep -q SECRET "$tmp/cerr" && ! has "$out" SECRET && ! has "$j" SECRET; check 'the token is in no stdout, stderr or json line' $?
 [ ! -e "$clones/farhost" ] && [ ! -e "$clones/.farhost.cf-clone" ]; check 'an unreachable URL leaves no directory' $?
 
+# a git that echoes the URL as given, token included, in the lines before its fatal: and a hint after it: the reason
+# carries the lines up to the fatal: one, redacted, and not the hint
+mkdir -p "$tmp/gitstub"
+realgit=$(command -v git)
+cat > "$tmp/gitstub/git" <<EOF
+#!/bin/sh
+case " \$* " in
+  *" ls-remote "*)
+    printf 'remote: HTTP Basic: Access denied to %s\nfatal: Authentication failed for %s\nhint: see git help credentials\n' "\$4" "\$4" >&2
+    exit 128 ;;
+esac
+exec "$realgit" "\$@"
+EOF
+chmod +x "$tmp/gitstub/git"
+out=$(PATH="$tmp/gitstub:$PATH" cadd --clone 'https://oauth2:glpat-SECRET3@h.test/g/denied.git'); rc=$?
+[ "$rc" = 4 ]; check 'an auth failure exits 4' $?
+grep -qF "cannot reach https://h.test/g/denied.git: remote: HTTP Basic: Access denied to https://h.test/g/denied.git / fatal: Authentication failed for https://h.test/g/denied.git" "$tmp/cerr"
+check 'the reason joins the git lines up to fatal:, each URL redacted' $?
+! grep -q 'hint:' "$tmp/cerr"; check 'the reason drops what git prints after fatal:' $?
+! grep -q SECRET "$tmp/cerr" && ! has "$(aj denied)" SECRET; check 'the token of an exit 4 git line reaches neither stderr nor the json' $?
+
 exit "$fail"
