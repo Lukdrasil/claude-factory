@@ -6,7 +6,8 @@
 # ui-relay.sh there (a herdr restart restores the tab as a bare shell), and prints the URL with the token. A
 # state dir is one with a repos.yml. With no --state and none to resolve from the cwd, as before factory init,
 # it starts with /ui only on port 7171. A running container whose cf.version or cf.state label differs is
-# recreated. Exits 3 when Docker is not running, 4 outside herdr.
+# recreated. FACTORY_UI_IMAGE, set only by the test suites, names another image to build and run. Exits 3 when
+# Docker is not running, 4 outside herdr.
 #
 #   ui-up.sh [--state <dir>]
 set -eu
@@ -39,7 +40,7 @@ fi
 name=${FACTORY_UI_CONTAINER:-claude-factory-ui}
 ui=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
 ver=$(sed -n 's/.*"version":[[:space:]]*"\([^"]*\)".*/\1/p' "$root/.claude-plugin/plugin.json" | head -n1)
-image="claude-factory-ui:$ver"
+image=${FACTORY_UI_IMAGE:-claude-factory-ui:$ver}
 port=''
 [ -z "$state" ] || port=$(sed -n 's/^ui_port:[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$state/factory.yml" 2>/dev/null | head -n1)
 port=${port:-7171}
