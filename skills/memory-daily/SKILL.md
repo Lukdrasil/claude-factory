@@ -55,10 +55,12 @@ A lesson is kept only when all three hold; name the one that fails when it does 
      `curate-apply.sh approve` to the `ceo` role only: the proposal stays in the queue for the weekly round,
      where the CEO approves it after the human's yes (`pass-stamp.sh --due weekly` lists the scope), and the
      report names it `keep, <why it stays in this tier>`.
+   - a proposal with a `Replaces:` line, in any scope: no verdict applied, it stays in the queue for the
+     weekly round, where the human decides it; the report names it `waits, Replaces: <paths>`.
    - a filed lesson is never deleted here: a draft verdict adds its line with `Source: <path>`, and the weekly
      pass deletes the source once the human promotes that draft; every other verdict goes into the report
      only (retiring filed lessons is `factory consolidate`'s).
-   Completion: the queue holds only the proposals of a keep verdict.
+   Completion: the queue holds only the proposals of a keep verdict and those with a `Replaces:` line.
 4. **Age the drafts** of the scope's own `drafts/`: a draft with one lesson line dated more than 7 days ago is
    deleted (Q6), `state-commit.sh -m "chore(memory): drop draft <slug>, one lesson for 7 days" -- <draft>`.
    Completion: no such draft is left.
