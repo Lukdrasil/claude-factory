@@ -141,4 +141,7 @@ done
 dash=$(printf '\342\200\224|\342\200\223')
 ! grep -Eq "$dash" "$onboard" "$ceo" "$skill" "$context" "$0"; check 'no U+2013 or U+2014 in the changed files' $?
 
+# sim F38: after the clone the CEO followed add-repo.md's toolset offer and doctor, asked in the terminal and never
+# started the onboarding; a missing toolset is the onboarding's toolset check, so step 3 goes on to step 4 anyway
+has "$ceo" 'no toolsets/<stack>\.md.*step 4|step 4.*no toolsets/<stack>\.md'; check 'a missing toolset still goes on to the onboarding' $?
 exit "$fail"
