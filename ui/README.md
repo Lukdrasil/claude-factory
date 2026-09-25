@@ -124,7 +124,8 @@ The header holds six tabs, and every tab keeps the counter, the setup strip and 
   the CEO with the fix of the `ceo` step. Every fix runs in a terminal or through a session's confirm ask.
 
 The page reads `/api/org`, `/api/requests` and `/api/requests/{id}` so that any answer but 200 counts as no data,
-and treats a missing field as empty, so it runs against a server that lacks them.
+and treats a missing field as empty, so it runs against a server that lacks them. Besides every stream event it
+reloads every 5 s, since the leases under `.capacity` never reach the stream: the capacity and the Org tab follow them.
 
 On a narrow screen the grid scrolls sideways inside its container, the tabs scroll inside the header and the drawer
 takes the full width, decision mode included.

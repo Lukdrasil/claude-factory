@@ -58,6 +58,7 @@ settings="$tmp/settings.json"
 printf '{}\n' > "$settings"
 sh "$bin/factory-init.sh" --root "$root" --settings "$settings" --spawn herdr --ui docker > "$tmp/init.out" 2>&1
 is 'factory-init.sh without --yes exits 3 with its diff'     "$?" 3
+has 'factory-init.sh writes setup/doctor.json into the UI home' '"steps"' "$(cat "$ui/setup/doctor.json" 2>/dev/null)"
 
 sh "$bin/ui-session.sh" --session s-doctor --pane w1:p8 --flow doctor --task none --step 'doctor: offer the fixes' \
   || bad 'ui-session.sh s-doctor'
