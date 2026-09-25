@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 
 public sealed record SlotUse(int Used, int? Cap);
@@ -14,7 +15,7 @@ public sealed record CeoInfo(string Sid, string Pane);
 
 public sealed record OrgInfo(CapacityInfo Capacity, List<Lease> Leases, List<Lead> Leads, CeoInfo? Ceo);
 
-public sealed record PassInfo(string Scope, string Daily, string Weekly);
+public sealed record PassInfo(string Scope, string Daily, string Weekly, string Due = "none");
 
 public sealed record DoctorStep(string Id, string State, string Detail, string Fix);
 
@@ -107,6 +108,24 @@ public static class Passes
         return new PassInfo(scope, Stamp("daily"), Stamp("weekly"));
     }
 
+    /// <summary>
+    /// Which pass of a scope is due, <c>daily</c>, <c>weekly</c>, <c>both</c> or <c>none</c>, by the rule of
+    /// <c>pass-stamp.sh --due</c>: a pass with work whose stamp is never, unreadable, or 24 h (daily) or 7 d (weekly) old or more.
+    /// </summary>
+    public static string Due(PassInfo pass, bool dailyWork, bool weeklyWork, DateTimeOffset now)
+    {
+        bool Old(string stamp, TimeSpan max) =>
+            !DateTimeOffset.TryParseExact(stamp, "yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
+            || now - at >= max;
+        return (dailyWork && Old(pass.Daily, TimeSpan.FromHours(24)), weeklyWork && Old(pass.Weekly, TimeSpan.FromDays(7))) switch
+        {
+            (true, true) => "both",
+            (true, false) => "daily",
+            (false, true) => "weekly",
+            _ => "none",
+        };
+    }
+
     /// <summary>The scope of a passes.yml by its path in the state repo, null for a path no scope owns.</summary>
     public static string? ScopeOf(string relative) =>
         relative.Split('/') switch
@@ -163,30 +182,48 @@ public sealed partial class StateReader
     CapacityInfo CapacityInUse(List<Lease> leases) =>
         Capacity.Of(Capacity.Caps(ReadOrNull(root, "factory.yml") ?? ""), leases);
 
-    /// <summary>Every passes.yml a scope owns: global, then per repo, per agent, per repo agent.</summary>
+    /// <summary>
+    /// Every scope with a passes.yml or with work for a pass, global, then per repo, per agent, per repo agent, the folders
+    /// <c>pass-stamp.sh --due</c> walks; one without a passes.yml reads never twice. Each carries the pass it is due for.
+    /// </summary>
     List<PassInfo> Passes()
     {
-        IEnumerable<string> Under(string folder, params string[] tail) =>
-            Directory.Exists(Path.Combine(root, folder))
-                ? Directory.EnumerateDirectories(Path.Combine(root, folder)).Order(StringComparer.Ordinal).Select(d => Path.Combine([d, .. tail]))
+        IEnumerable<string> Dirs(string folder) =>
+            Directory.Exists(folder)
+                ? Directory.EnumerateDirectories(folder).Where(d => !Path.GetFileName(d).StartsWith('.')).Order(StringComparer.Ordinal)
                 : [];
-        var repos = Directory.Exists(Path.Combine(root, "repos"))
-            ? Directory.EnumerateDirectories(Path.Combine(root, "repos")).Order(StringComparer.Ordinal).ToList()
-            : [];
-        var files = new[] { Path.Combine(root, "memory", "global", "passes.yml") }
-            .Concat(Under("repos", "memory", "passes.yml"))
-            .Concat(Under("agents", "memory", "passes.yml"))
-            .Concat(repos.Select(r => Path.Combine(r, "agents")).Where(Directory.Exists)
-                .SelectMany(a => Directory.EnumerateDirectories(a).Order(StringComparer.Ordinal))
-                .Select(d => Path.Combine(d, "passes.yml")));
+        var folders = new[] { Path.Combine(root, "memory", "global") }
+            .Concat(Dirs(Path.Combine(root, "repos")).Select(r => Path.Combine(r, "memory")))
+            .Concat(Dirs(Path.Combine(root, "agents")).Select(a => Path.Combine(a, "memory")))
+            .Concat(Dirs(Path.Combine(root, "repos")).SelectMany(r => Dirs(Path.Combine(r, "agents"))));
+        var now = DateTimeOffset.UtcNow;
         var list = new List<PassInfo>();
-        foreach (var file in files.Where(File.Exists))
+        foreach (var folder in folders.Where(Directory.Exists))
         {
-            if (global::Passes.ScopeOf(Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/')) is { } scope)
+            var file = Path.Combine(folder, "passes.yml");
+            if (global::Passes.ScopeOf(Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/')) is not { } scope)
             {
-                list.Add(global::Passes.Parse(scope, File.ReadAllText(file)));
+                continue;
+            }
+            var proposals = Path.Combine(scope.StartsWith("repo-agent:", StringComparison.Ordinal) ? Path.Combine(folder, "memory") : folder, "proposals");
+            var drafts = AnyMd(Path.Combine(folder, "drafts"));
+            var daily = drafts || AnyMd(proposals);
+            var weekly = drafts || (scope.StartsWith("repo-agent:", StringComparison.Ordinal)
+                ? AnyMd(proposals, text => text.Split('\n').Any(l => l.StartsWith("Replaces:", StringComparison.Ordinal)))
+                : daily);
+            var pass = File.Exists(file) ? global::Passes.Parse(scope, File.ReadAllText(file))
+                : daily || weekly ? new PassInfo(scope, "never", "never")
+                : null;
+            if (pass is not null)
+            {
+                list.Add(pass with { Due = global::Passes.Due(pass, daily, weekly, now) });
             }
         }
         return list;
     }
+
+    /// <summary>Whether <paramref name="dir"/> holds a top-level <c>*.md</c>, a dot file aside as the shell glob leaves it, whose text passes <paramref name="text"/> when given.</summary>
+    static bool AnyMd(string dir, Func<string, bool>? text = null) =>
+        Directory.Exists(dir)
+        && Directory.EnumerateFiles(dir, "*.md").Any(f => !Path.GetFileName(f).StartsWith('.') && (text is null || text(File.ReadAllText(f))));
 }
