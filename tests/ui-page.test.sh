@@ -1,7 +1,8 @@
 #!/bin/sh
-# The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, three
-# more sessions, an ask of every kind and a drawn visual of s2, served through ui-up.sh and driven by tests/ui-page.test.js through the
-# fixture's `browser`, as the host uid so the asks it writes mid-run belong to the host.
+# The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, five
+# more sessions, an ask of every kind, a grill ask of s6 filed under another task and one naming none, and a drawn
+# visual of s2, served through ui-up.sh and driven by tests/ui-page.test.js through the fixture's `browser`, as the
+# host uid so the asks it writes mid-run belong to the host.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-page: no docker`.
 set -u
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -32,7 +33,11 @@ task() { # <id> <status> <goal>
 }
 task T-001-01 in_progress 'Block one of the fixture.'
 task T-002 in_progress 'The second fixture task.'
-task T-003 in_progress 'The task of a session outside herdr.'
+# T-002 is triaged and approved and nothing else, while its session reports step 11
+printf '\n## Related issues\nnone\n' >> "$state1/repos/claude-factory/tasks/T-002-fixture.md"
+# T-003 is a draft nobody triaged yet: the template's placeholders stand in tier, archetype and complexity
+printf -- '---\nid: T-003\nrepo: claude-factory\nstatus: in_progress\ntier: <green|yellow|red>\narchetype: <feature|bugfix|refactor|research|ops>\ncomplexity: <low|medium|high>\n---\n\n# Goal\n%s\n' \
+  'The task of a session outside herdr.' > "$state1/repos/claude-factory/tasks/T-003-fixture.md"
 
 session() { sh "$bin/ui-session.sh" "$@" || bad "ui-session.sh $*"; }
 session --session s1 --step 'Step 4 of 16: grill T-001'
@@ -40,6 +45,7 @@ session --session s2 --pane w1:p2 --flow solve --task T-002 --step 'Step 11 of 1
 session --session s3 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 session --session s4 --pane w1:p4 --flow doctor --task none --step 'doctor'
 session --session s5 --pane w1:p5 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
+session --session s6 --pane w1:p6 --flow grill --task T-001 --step 'Step 4 of 16: grill T-001'
 
 put() { # <sid> <ask> <task> <flow> <mtime>, stdin: the markdown
   { printf -- '---\nask: %s\ntask: %s\nflow: %s\nstep: fixture\nstatus: open\n---\n\n' "$2" "$3" "$4"; cat; } \
@@ -139,6 +145,15 @@ put s5 g1 T-003 solve '2026-09-24 09:10' <<'EOF'
 
 ➡️ **A**: the relay queues it.
 EOF
+put s6 k1 T-002 grill '2026-09-24 10:04' <<'EOF'
+❓ **Q1** - **Which grill answer?**: the grill of s6 asks this for T-002.
+  **A** the grill one
+  **B** the other one
+
+➡️ **A**: it belongs to T-002.
+EOF
+printf -- '---\nask: k2\nflow: grill\nstep: fixture\nstatus: open\n---\n\nThe grill notice of s6, naming no task.\n' > "$ui/sessions/s6/asks/k2.md"
+touch -d '2026-09-24 09:55' "$ui/sessions/s6/asks/k2.md"
 printf 'gone\n' > "$ui/sessions/s5/agent"
 printf '<!doctype html>\n<p id="out">the drawing of s2</p>\n' > "$ui/sessions/s2/visual.html"
 printf -- '---\nrow: 2\nversion: 1\nstatus: current\n---\n' > "$ui/sessions/s2/visual.md"
