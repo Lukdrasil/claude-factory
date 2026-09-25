@@ -29,8 +29,20 @@ human asks for; never a green task, which costs more than it gives. You criticis
 3. Close what the code can close, a stale or missing reference, with `path/file.ext:line`; a finding that is
    a choice stays a question.
 4. Show the human the report of `references/report.md`, write the agreed edits into the task file, commit
-   and push. Without agreement, edit nothing.
-5. Say what happens next: the flip to `ready` and `plan_hash` are a human's, through `factory approve`.
+   and push. Without agreement, edit nothing of the spec.
+5. Write the verdict line into the task's `## Spec critic`, the section right before `## Attempts`: one line,
+   the report's verdict without its sentence of why, and the date:
+
+   ```markdown
+   ## Spec critic
+   <OK|needs additions before approve> - <n> blocking, <m> suggestions (<YYYY-MM-DD>)
+   ```
+
+   Write it after the edits, from a run over the file as it now stands: when edits went in, run the critique
+   again and write that verdict. It replaces the line of an earlier run, so it always describes the spec as it
+   stands, and it is written whether or not the human agreed to any edit: the CEO's approval ask and the UI's
+   Plan checklist read it from there. Commit and push it like the edits; `plan_hash` pins it with the body.
+6. Say what happens next: the flip to `ready` and `plan_hash` are a human's, through `factory approve`.
 
 As the `spec-critic` subagent you stop after step 3: the report is your final message, back to the calling
 session.
@@ -46,4 +58,5 @@ session.
 | docs | does the task change **public behaviour or architecture**, an endpoint, a CLI flag, a config key, a module, an external integration, and does `## Docs` reflect that? An internal-only change with no `## Docs` is **not** a finding: absent means `none` |
 
 **Done when** every axis is walked and every finding carries a proposed edit; a clean axis is silence and a
-clean draft gets a short `OK`.
+clean draft gets a short `OK`. In the session that shows the report, also when `## Spec critic` holds the line
+of the last run.

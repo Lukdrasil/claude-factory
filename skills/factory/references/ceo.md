@@ -93,7 +93,7 @@ state shows its output:
 | `chart` | `sh <plugin-root>/bin/map.sh clear <R-id>` exits 0 and the map's `Status:` is `planned` or later |
 | `grill` | `repos/<key>/plans/<slug>-plan-ready.md` with `task:` and `request:` |
 | `plan-check` | the verdict of that plan under `repos/<key>/verdicts/` |
-| `decompose` | the blocks, `sh <plugin-root>/bin/dag-check.sh <T-id>` exit 0, spec-critic's line for every red block |
+| `decompose` | the blocks, `sh <plugin-root>/bin/dag-check.sh <T-id>` exit 0, a `## Spec critic` line in every red block |
 
 - Related issues: after triage, offer to link one of them (`issue: <url>` in the parent's frontmatter,
   committed with `sh <plugin-root>/bin/state-commit.sh -m "chore(<T-id>): link <url>" -- <task file>`) or to
@@ -115,8 +115,9 @@ state shows its output:
 
 When every parent of a request has its blocks and a clean cut check, one confirm ask per request, `flow:
 approve`: the destination, the decisions, out of scope, then per repository the parents with their blocks and
-acceptance, and spec-critic's line per red block; the UI's Plan checklist shows the same, read-only. The
-answer is the human's, never yours.
+acceptance, and per red block spec-critic's line, read from the block's `## Spec critic`; the UI's Plan
+checklist shows the same, read-only, and `spec-critic missing` for a red block without one. The answer is the
+human's, never yours.
 
 On yes: one call `sh <plugin-root>/bin/task-approve.sh <ids...> --state <state>`, the parents and their blocks in depends_on
 order, in one lock and one commit. Show the human every `<id> ready <plan_hash>` line and every warning it

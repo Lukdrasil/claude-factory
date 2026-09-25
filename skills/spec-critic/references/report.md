@@ -21,6 +21,9 @@ notices it broke. A missing decision is a finding, not an invitation to invent o
 - <a decision I have nowhere to take from>
 ```
 
+The verdict line without its sentence of why, dated, is the line SKILL.md step 5 writes into the task's
+`## Spec critic`.
+
 Budget: **the report under 300 words**. A finding is two lines: what is missing, and the finished text to
 paste. The axes you walked and found clean do not appear.
 
