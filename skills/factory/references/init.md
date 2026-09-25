@@ -34,7 +34,8 @@ Completion: every answer recorded, from the user or the stated default.
   clone and `--settings <file>` when the settings live elsewhere than `~/.claude/settings.json`. Exit 0 with
   `nothing to do`: continue at Register. Exit 3: the output is the diff over the state repo (`git init`, or
   `git clone <url>` whose `repos.yml` is adopted), `repos.yml`, `factory.yml` and the settings file gaining
-  `env.WORK_DIR`. A new `factory.yml` carries the `capacity:` defaults; an existing one keeps its keys and
+  `env.WORK_DIR` and the `permissions.allow` rules of the step sessions (Read of the root and the plugin,
+  Edit and Write of `state/`, `Bash(sh <plugin-root>/bin/*)`). A new `factory.yml` carries the `capacity:` defaults; an existing one keeps its keys and
   gains the `ui:` asked for and a `ui_port:` when it has none. Every run, preview included, refreshes the
   Setup tab's `doctor.json` (`references/doctor.md`).
 - **Confirm.** Ask whether to apply it with a confirm (`_shared/ask.md`) that carries the printed diff
