@@ -46,6 +46,7 @@ has() { # <label> <line>
   printf '%s\n' "$lines" | grep -qxF "$2"; check $? "$1"
 }
 has "PreToolUse on Agent runs the capacity gate" 'PreToolUse Agent bin/capacity.sh --hook pretooluse'
+has "PreToolUse on AskUserQuestion runs the ask gate" 'PreToolUse AskUserQuestion bin/ask-gate.sh'
 has "SubagentStart acquires the lease" 'SubagentStart - bin/capacity.sh --hook subagentstart'
 has "SubagentStart injects the playbook" 'SubagentStart - bin/playbook-inject.sh --hook'
 has "SubagentStop releases the lease" 'SubagentStop - bin/capacity.sh --hook subagentstop'
