@@ -4,30 +4,54 @@
 # state repo, nothing pushed. Idempotent: a registered clone with an alias and a toolset is "nothing to do".
 #
 #   factory-add-repo.sh --root <dir> [--repo <clone-dir>] [--alias <ALIAS>] [--yes]
+#   factory-add-repo.sh --root <dir> --clone <url> [--alias <ALIAS>] [--yes]
 #
 # The key is the basename of the origin URL without .git. The alias (2 to 4 uppercase letters, unique in repos.yml)
 # makes the repo's new task ids T-<ALIAS>-<n>; it is proposed from the key unless --alias names one, and a repo
 # registered before aliases gets it added to its line. Every run refreshes the doctor.json of the Setup tab.
 #
+# --clone first clones <url> into <clones>/<key>, <clones> being `clones:` of <root>/state/factory.yml: absolute and
+# outside <root>, whose <root>/<key> holds the task worktrees. A key registered with the same URL is not cloned or
+# fetched again. Each state goes to <ui home>/setup/add-repo/<key>.json for the Setup tab, when the UI home exists:
+# `{"at","key","url","path","state","detail"}`, state pending, cloning, registered or failed.
+#
 # Exit 0 = applied, or nothing to do. Exit 3 = changes pending, printed, not written (no --yes), the same gate
-# factory-init.sh has, so the skill previews and reruns identically on both scripts.
+# factory-init.sh has, so the skill previews and reruns identically on both scripts. Exit 4 = the URL cannot be
+# reached (host, auth, no such repo). Exit 1 = refused, the reason on stderr.
 set -eu
 
-root='' repo='' yes=0 alias=''
-die() { printf 'factory-add-repo: %s\n' "$1" >&2; exit 1; }
+root='' repo='' yes=0 alias='' clone=''
+. "$(dirname -- "$0")/lib-tasks.sh"
+# why: a reason can quote the URL as it was typed, token included, so every one goes through redact_urls
+why=''
+die() { why=$(redact_urls "$1"); printf 'factory-add-repo: %s\n' "$why" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root|--repo|--alias)
+    --root|--repo|--alias|--clone)
       [ $# -ge 2 ] || die "$1 needs a value"
-      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; --alias) alias=$2 ;; esac
+      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; --alias) alias=$2 ;; --clone) clone=$2 ;; esac
       shift 2 ;;
     --yes) yes=1; shift ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
+# why: the URL comes from a line typed into the UI or the terminal and ends up as a git argument: no quote, space or
+# shell character, no leading - that git would read as an option, and a scheme git clones or the scp form
+if [ -n "$clone" ]; then
+  nourl="'$clone' is not a URL to clone: http(s)://, ssh://, file:// or user@host:path, with letters, digits and ._~:/@+- only"
+  case "$clone" in -*|*[!A-Za-z0-9._~:/@+-]*) die "$nourl" ;; esac
+  case "$clone" in
+    http://*|https://*|ssh://*|file://*) ;;
+    *://*) die "$nourl" ;;
+    *) printf '%s\n' "$clone" | grep -qE '^([A-Za-z0-9._~+-]+@)?[A-Za-z0-9.-]+:.' || die "$nourl" ;;
+  esac
+  [ -z "$repo" ] || die "--clone and --repo exclude each other"
+fi
+# taken now: the doctor refresh at the end creates the UI home, and the status json is only for a UI that exists
+ui_home=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
+[ -d "$ui_home" ] || ui_home=''
 [ -n "$root" ] || die "--root <dir> is required"
-[ -n "$repo" ] || repo=$(pwd)
 root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
 state="$root/state"
 [ -f "$state/repos.yml" ] || die "$state/repos.yml does not exist - run factory-init.sh --root $root first"
@@ -37,16 +61,67 @@ case "$alias" in
   *) die "--alias takes 2 to 4 uppercase letters, not '$alias'" ;;
 esac
 
-top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
-[ -n "$top" ] || die "$repo is not a git clone"
-url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origin remote"
-# why: an http(s) origin can carry user:password@ or token@ (a glpat- token), which repos.yml would put into the
-# why: state repo and its history; an scp-style git@host:path names only the ssh user and is kept as it is
-case "$url" in http://*@*|https://*@*) url=$(printf '%s' "$url" | sed 's#^\(https*://\)[^@/]*@#\1#') ;; esac
+top='' branch=''
+if [ -n "$clone" ]; then
+  # the URL as typed reaches only git ls-remote and git clone, which may need its credentials; everything printed
+  # or written carries this one
+  url=$(redact_urls "$clone")
+else
+  [ -n "$repo" ] || repo=$(pwd)
+  top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
+  [ -n "$top" ] || die "$repo is not a git clone"
+  url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origin remote"
+  # why: an http(s) origin can carry user:password@ or token@ (a glpat- token), which repos.yml would put into the
+  # why: state repo and its history; an scp-style git@host:path names only the ssh user and is kept as it is
+  case "$url" in http://*@*|https://*@*) url=$(printf '%s' "$url" | sed 's#^\(https*://\)[^@/]*@#\1#') ;; esac
+fi
 key=${url%/}; key=${key##*[/:]}; key=${key%.git}
 printf '%s' "$key" | grep -qE '^[A-Za-z0-9_-]+$' || die "'$key' is not a usable repo key (letters, digits, - and _)"
-branch=$(git -C "$top" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || :)
-branch=${branch#origin/}; [ -n "$branch" ] || branch=main
+echo "$key"
+
+# --- --clone: the status json, the clones directory and the target ---------------------------------------------
+jpath=''
+json_str() { printf '%s' "$1" | tr '\t\n\r' '   ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+status() { # <pending|cloning|registered|failed> <detail>: written through a temp file and a rename
+  [ -n "$ui_home" ] || return 0
+  st_d="$ui_home/setup/add-repo"
+  { mkdir -p "$st_d" \
+    && printf '{"at":"%s","key":"%s","url":"%s","path":"%s","state":"%s","detail":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$key" "$(json_str "$url")" "$(json_str "$jpath")" "$1" \
+      "$(json_str "$(redact_urls "$2")")" > "$st_d/.$key.json.tmp" \
+    && mv -f "$st_d/.$key.json.tmp" "$st_d/$key.json"; } || :
+}
+on_exit() { # <exit status>
+  case "$1" in
+    0) status registered '' ;;
+    3) status pending "$jpath" ;;
+    *) status failed "${why:-exit $1}" ;;
+  esac
+}
+if [ -n "$clone" ]; then
+  trap 'on_exit $?' EXIT
+  nodir="no clones directory: add clones: <absolute dir> to $state/factory.yml"
+  cv=$(sed -n 's/^clones:[[:space:]]*//p' "$state/factory.yml" 2>/dev/null | head -n1 \
+    | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//' | tr -d "\"'")
+  case "$cv" in
+    '') die "$nodir" ;;
+    /*) ;;
+    *) die "$nodir (clones: $cv is not absolute)" ;;
+  esac
+  # why: both sides resolved, so a symlink into the root is refused like the root itself
+  clones=$(CDPATH= cd -P -- "$cv" 2>/dev/null && pwd) || die "$nodir (clones: $cv is no directory)"
+  rroot=$(CDPATH= cd -P -- "$root" && pwd)
+  case "$clones/" in
+    "$rroot/"*) die "$nodir (clones: $cv is $root or under it, whose <key>/ directories hold the task worktrees)" ;;
+  esac
+  top="$clones/$key"
+  jpath=$top
+fi
+
+if [ -z "$branch" ]; then
+  branch=$(git -C "$top" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || :)
+  branch=${branch#origin/}; [ -n "$branch" ] || branch=main
+fi
 
 commit() { # <message> <path...>
   m=$1; shift
@@ -75,8 +150,6 @@ propose_alias() { # <key> <taken aliases, space separated>
       for (i = 4; i <= length(l); i++) try(substr(l, 1, 3) substr(l, i, 1))
     }'
 }
-
-echo "$key"
 
 # --- what is pending ---------------------------------------------------------------------------------------
 need_yml=0 need_alias=0
@@ -118,7 +191,6 @@ files=$(git -C "$top" ls-files)
 # whose config-conventional caps the header at 100 - the job failed on a title the factory had already opened.
 # A clone that lints its own titles gets that cap written into its registry entry, so mr_title_check refuses
 # the goal while the task is being authored instead of the forge refusing the MR.
-. "$(dirname -- "$0")/lib-tasks.sh"
 title_max='' title_src=''
 if cc=$(commitlint_cap "$top"); then
   title_max=${cc%%	*}
