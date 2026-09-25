@@ -13,6 +13,11 @@
 # session's uncommitted edit is not rebased, and a rebase that conflicts is aborted, so every local commit and
 # every uncommitted edit stays exactly where it was. The next pass tries again.
 #
+# A rebase that conflicts is not solved by trying again, so it leaves the marker <git-dir>/factory-push.blocked:
+# its first line the reason, one conflicting path per line after it. Every pass that refuses while the marker
+# exists prints it on stderr after its own reason, and a pass that finds nothing left to push or pushes removes
+# it; the conflict itself is resolved by hand (rebase the clone onto origin, or drop the local commit).
+#
 # Exit 0 = pushed, nothing to push, no origin (the clone is the state root itself), or another push holds the
 # lock; 1 = the push did not land (refused, unreachable, or the rebase could not run), the commits stay local.
 set -eu
@@ -33,6 +38,12 @@ done
 state=$(git -C "$state" rev-parse --show-toplevel 2>/dev/null) || die "$state is not a state clone, pass --state <dir>"
 git -C "$state" remote get-url origin >/dev/null 2>&1 || exit 0
 gd=$(git -C "$state" rev-parse --path-format=absolute --git-dir)
+blocked="$gd/factory-push.blocked"
+die() {
+  printf 'state-push: %s\n' "$1" >&2
+  [ ! -f "$blocked" ] || sed "s|^|state-push: blocked ($blocked): |" "$blocked" >&2
+  exit 1
+}
 
 # one push at a time per clone; a held lock is a push already on its way
 if command -v flock >/dev/null 2>&1; then
@@ -57,13 +68,14 @@ up="refs/remotes/origin/$branch"
 
 # nothing new since the last push this clone knows of: no network at all
 if git -C "$state" rev-parse -q --verify "$up" >/dev/null && git -C "$state" merge-base --is-ancestor HEAD "$up"; then
+  rm -f "$blocked"
   exit 0
 fi
 
 git -C "$state" fetch -q origin 2>/dev/null || die "the fetch from origin failed, the commits of $state stay local"
 
 if git -C "$state" rev-parse -q --verify "$up" >/dev/null; then
-  git -C "$state" merge-base --is-ancestor HEAD "$up" && exit 0
+  if git -C "$state" merge-base --is-ancestor HEAD "$up"; then rm -f "$blocked"; exit 0; fi
   if ! git -C "$state" merge-base --is-ancestor "$up" HEAD; then
     # the remote moved: rebase onto it under the state lock, no writer commits while the branch is rewritten
     state_lock "$state" && lrc=0 || lrc=$?
@@ -73,6 +85,10 @@ if git -C "$state" rev-parse -q --verify "$up" >/dev/null; then
       die "origin/$branch moved and $state has uncommitted edits; no autostash, the commits stay local until the tree is clean"
     fi
     if ! git -C "$state" -c rebase.autoStash=false rebase -q "$up" >/dev/null 2>&1; then
+      {
+        printf 'the rebase onto origin/%s conflicts (%s), resolve it by hand; the conflicting paths:\n' "$branch" "$(date '+%Y-%m-%d %H:%M')"
+        git -C "$state" diff --name-only --diff-filter=U
+      } > "$blocked" 2>/dev/null || :
       git -C "$state" rebase --abort >/dev/null 2>&1 || :
       state_unlock
       die "the rebase onto origin/$branch conflicts, it was aborted; the commits of $state stay local"
@@ -83,3 +99,4 @@ fi
 
 git -C "$state" push -q origin "HEAD:refs/heads/$branch" >/dev/null 2>&1 \
   || die "the state root refused the push, the commits of $state stay local"
+rm -f "$blocked"
