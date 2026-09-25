@@ -124,6 +124,38 @@ case " $(sh "$bin/queue-next.sh" --state "$st" | cut -d' ' -f1 | tr '\n' ' ')" i
   *) check 'a closed lead record puts T-105 back' yes no ;;
 esac
 
+# DECISIONS D20, [XR] 4: a lead ends with its parent left in_progress and the dependent blocks blocked; the
+# parent is back in the queue, whatever its owner, once no lead record is open and one block is runnable again
+task demo T-130 in_progress P2 R-20260925-5 'factory@host:old' '[]'
+task demo T-130-01 ready P2 R-20260925-5 null '[]'
+lead T-130 demo 'T-130-lead tab-30 pane-30'
+task demo T-131 in_progress P2 R-20260925-5 'factory@host:old' '[]'
+task demo T-131-01 blocked P2 R-20260925-5 null '[T-ECS-6]'
+task demo T-132 in_progress P2 R-20260925-5 'factory@host:old' '[]'
+task demo T-132-01 blocked P2 R-20260925-5 null '[T-ECS-5]'
+task demo T-132-02 done P2 R-20260925-5 null '[]'
+task demo T-133 in_progress P2 null 'factory@host:old' '[]'
+task demo T-133-01 ready P2 null null '[]'
+task demo T-134 in_progress P1 R-20260925-5 'factory@host:old' '[]'
+task demo T-134-01 blocked P1 R-20260925-5 null '[T-900]'
+lead T-134 demo 'T-134-lead tab-34 pane-34'
+lead T-134 demo 'T-134-lead tab-34 closed'
+task demo T-135 in_progress P2 R-20260925-5 null '[]'
+git -C "$st" add -A
+git -C "$st" commit -q -m 'fixture in_progress'
+out=$(sh "$bin/queue-next.sh" --state "$st" 2>&1)
+has_line() { printf '%s\n' "$out" | grep -qx -- "$1" && echo yes || echo no; }
+has_id() { printf '%s\n' "$out" | grep -q "^$1 " && echo yes || echo no; }
+check 'in_progress with an open lead record is not in the queue' no "$(has_id T-130)"
+check 'in_progress, no lead record, a block runnable again is in the queue' yes "$(has_line 'T-131 demo P2 R-20260925-5')"
+check 'in_progress with only blocks waiting on an open dependency is not in the queue' no "$(has_id T-132)"
+check 'in_progress without a request is not in the queue' no "$(has_id T-133)"
+check 'in_progress with a closed lead record and an archived dependency is in the queue' yes \
+  "$(has_line 'T-134 demo P1 R-20260925-5')"
+check 'in_progress without a block is not in the queue' no "$(has_id T-135)"
+check 'in_progress parents keep the priority order' 'T-110 T-114 T-134' \
+  "$(printf '%s\n' "$out" | awk '$3 == "P1" { printf "%s%s", s, $1; s = " " }')"
+
 # an empty state prints nothing and exits 0
 mkdir -p "$tmp/empty/state/repos"
 git init -q -b main "$tmp/empty/state"
