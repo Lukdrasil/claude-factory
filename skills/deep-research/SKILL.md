@@ -58,8 +58,9 @@ Calibration: `references/rubric-self-check.md`.
 2. Work out the destination per `references/destination.md` and say the path.
 3. Spawn one subagent, the one for the tier, with the prompt of `references/prompt.md`. One, never two.
 4. Check the report exists there with its sections, filling in what is missing.
-5. Commit and push from the state clone per `references/destination.md`.
+5. Commit the report in the state clone per `references/destination.md` (through `bin/state-commit.sh`; the push
+   runs in the background).
 6. Give the user 3 to 6 sentences and the path, never the report pasted into the chat.
 
-**Done when** the report is committed and pushed in the state clone and the user has the path. Research
+**Done when** the report is committed in the state clone and the user has the path. Research
 **never changes product code**: follow-up work is proposed in the report's `## Conclusion`, not committed.

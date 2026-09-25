@@ -49,6 +49,6 @@ Replaces: <path to source 1>, <path to source 2>
 
 `Replaces:` lists existing paths relative to the state repo root, each gone on approval. A duplicate
 merges both evidences; a contradiction says in `Why:` why the other falls; a staleness keeps the rewrite, or
-proposes that the lesson goes away without a replacement. The gate has no delete button: the curator removes
-the sources with git and rejects it (RUNBOOK 4). A human decides, at the gate (P6) or through
+proposes that the lesson goes away without a replacement. On approval `curate-apply.sh` deletes
+every path the `Replaces:` line names in the approving commit. A human decides, at the gate (P6) or through
 `memory-curator` (ADR-0052).
