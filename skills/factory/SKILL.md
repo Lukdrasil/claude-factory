@@ -1,6 +1,6 @@
 ---
 name: factory
-description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, onboard for the session that reports how ready an added repository is, approve and done for the human gates. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo, onboard or init against it.
+description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, onboard for the session that reports how ready an added repository is, approve and done for the human gates, ui to start or stop the Factory UI. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo, onboard, ui or init against it.
 ---
 
 # factory
@@ -27,6 +27,7 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh --task <T-NNN>` starts one named task, or the current wave of its blocks, as their own sessions and claims each one; with no argument it only lists the ready tasks to choose from, and `--all` (the batch a user has to ask for by name) also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |
+| `ui` | starts the Factory UI through `ui-up.sh` and gives the URL with its token; `ui down` stops it through `ui-down.sh` | `references/ui.md` |
 
 Read the reference for the subcommand the user asked for (`${CLAUDE_SKILL_DIR}/references/<subcommand>.md`)
 and follow it. Without a subcommand: `init` when `WORK_DIR` is unset or has no `state/`, otherwise `doctor`.
