@@ -318,6 +318,11 @@ s=$(cat "$ui/sessions/s-step/session.md" 2>/dev/null)
 has "a step session registers its task" '^task: T-PRD-1$' "$s"
 has "a step session registers its step line" '^step: Step 3 of 16: triage T-PRD-1$' "$s"
 has "a step session registers the solve flow" '^flow: solve$' "$s"
+start s-onb "$tmp/prod" HERDR_ENV=1 HERDR_PANE_ID=pane-12 FACTORY_FLOW=onboard FACTORY_TASK=none 'FACTORY_STEP=Onboarding prod'
+s=$(cat "$ui/sessions/s-onb/session.md" 2>/dev/null)
+has "a session with FACTORY_FLOW registers that flow" '^flow: onboard$' "$s"
+has "an onboarding session registers no task" '^task: none$' "$s"
+has "an onboarding session registers its step" '^step: Onboarding prod$' "$s"
 start s-noherdr "$tmp/prod" HERDR_PANE_ID=pane-8
 [ ! -e "$ui/sessions/s-noherdr" ] && pass "no HERDR_ENV, no registration" || flunk "no HERDR_ENV, no registration"
 start s-stranger "$tmp/stranger" HERDR_ENV=1 HERDR_PANE_ID=pane-9
