@@ -647,10 +647,12 @@ if [ "$stack" = dotnet ]; then
   if binds coverage || binds crap; then
     glob_re=''
     p1=$(printf '\001'); p2=$(printf '\002')
+    set -f
     for gl in $globs; do
       re=$(printf '%s' "$gl" | sed "s/[.]/\\\\./g; s#\\*\\*/#$p1#g; s#\\*\\*#$p2#g; s/\\*/[^\\/]*/g; s#$p1#(.*/)?#g; s#$p2#.*#g")
       glob_re="${glob_re:+$glob_re|}^($re)\$"
     done
+    set +f
     testprojs=$(find "$top" -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.git/*' 2>/dev/null \
       | while IFS= read -r f; do
           rel=${f#"$top"/}
