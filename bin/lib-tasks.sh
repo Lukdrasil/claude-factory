@@ -8,7 +8,7 @@
 # reads the factory root and the plugin, edits the state clone and runs the plugin scripts without a dialog,
 # which a model that cannot run in auto mode (Haiku 4.5) needs
 factory_allow_rules() { # <work dir> <plugin root>
-  printf '%s\n' "Read(/$1/**)" "Read(/$2/**)" "Edit(/$1/state/**)" "Write(/$1/state/**)" "Bash(sh $2/bin/*)" "Bash($2/bin/*)"
+  printf '%s\n' "Read(/$1/**)" "Read(/$2/**)" "Edit(/$1/state/**)" "Bash(sh $2/bin/*)" "Bash($2/bin/*)"
 }
 
 # every task file of $state, one path per line: the live ones under repos/<key>/tasks/, and with --all also the
