@@ -51,17 +51,19 @@ A lesson is kept only when all three hold; name the one that fails when it does 
      otherwise a new `drafts/<slug>.md` in the format below. Remove the proposal and commit both in one:
      `state-commit.sh -m "chore(memory): draft <slug> from <proposal>" -- <draft> <proposal>` (a proposal
      that was never committed is removed and left out of the paths).
-   - keep: `curate-apply.sh approve <proposal> --reason "<why it stays in this tier>"`.
+   - keep: `curate-apply.sh approve <proposal> --reason "<why it stays in this tier>"`, only for a proposal
+     with no `Replaces:` line. Approve deletes every file `Replaces:` names, which is the human's call: such a
+     proposal stays in the queue for the weekly pass, named in the report as `waits, Replaces: <paths>`.
    - a filed lesson is never deleted here: a draft verdict adds its line with `Source: <path>`, and the weekly
      pass deletes the source once the human promotes that draft; every other verdict goes into the report
      only (retiring filed lessons is `factory consolidate`'s).
-   Completion: the queue is empty.
+   Completion: the queue holds only the `Replaces:` proposals of a keep verdict.
 4. **Age the drafts** of the scope's own `drafts/`: a draft with one lesson line dated more than 7 days ago is
    deleted (Q6), `state-commit.sh -m "chore(memory): drop draft <slug>, one lesson for 7 days" -- <draft>`.
    Completion: no such draft is left.
 5. **Stamp**: `pass-stamp.sh daily <scope>`. Completion: exit 0 and its line printed.
 6. **Report**: the counts (read, one-off, drafted as new, drafted into an existing draft, kept, drafts
-   deleted), then one line per file, `<path> -> <verdict>, <reason or draft>`.
+   deleted, left for the weekly pass), then one line per file, `<path> -> <verdict>, <reason or draft>`.
 
 ## Draft format
 
