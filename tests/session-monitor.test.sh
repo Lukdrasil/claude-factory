@@ -575,7 +575,7 @@ check 'a spawn turns the auto memory off'           '^CLAUDE_CODE_DISABLE_AUTO_M
 out=$(cat "$HERDR_STUB_LOG")
 check 'a step agent is <step>_<id less t->'         '^agent start chart_ecs-12 --kind claude '
 check 'agent start waits up to 120 s'               '^agent start chart_ecs-12 .*--timeout 120000 '
-check 'the chart prompt charts the request map'     '^agent prompt chart_ecs-12 "/claude-factory:wayfinder chart R-20260925-1 T-ECS-12" $'
+check 'the chart prompt charts the request map'     '^agent prompt chart_ecs-12 "/claude-factory:wayfinder chart R-20260925-1 T-ECS-12" --wait --until working --until blocked --until done --timeout 60000 $'
 exists 'a step leases a sessions slot'              "$lease/sessions/T-ECS-12-chart"
 out=$(cat "$ostate/repos/ecs-core/tasks/T-ECS-12.md")
 check 'a chart step claims nothing'                 '^status: ready$'
@@ -593,7 +593,7 @@ out=$(cat "$HERDR_STUB_LOG")
 check 'a lead gets its own workspace'               "^workspace create --cwd $oroot/ecs-core/T-ECS-12 --label \"T-ECS-12 ecs-core\" .*--no-focus"
 nocheck 'a lead opens no tab'                       '^tab create '
 check 'the lead starts in the root pane'            '^agent start lead_ecs-12 --kind claude --pane pane-1 '
-check 'the lead prompt herds its task'              '^agent prompt lead_ecs-12 "/claude-factory:factory herd T-ECS-12" $'
+check 'the lead prompt herds its task'              '^agent prompt lead_ecs-12 "/claude-factory:factory herd T-ECS-12" --wait --until working --until blocked --until done --timeout 60000 $'
 out=$(envof)
 check 'the lead role is repo-lead'                  '^FACTORY_ROLE=repo-lead$'
 check 'the lead unit is <T-id>-lead'                '^FACTORY_UNIT=T-ECS-12-lead$'
@@ -632,6 +632,20 @@ out=$(HERDR_STUB_START=agent_not_ready sm --task T-ECS-14 --step chart 2>/dev/nu
 if [ "$rc" -eq 2 ]; then printf 'PASS a wait that times out exits 2\n'; else printf 'FAIL a wait that timed out exited %s\n' "$rc"; fail=1; fi
 out=$(cat "$HERDR_STUB_LOG")
 nocheck 'a wait that times out prompts nothing'     '^agent prompt chart_ecs-14 '
+
+# a prompt herdr saw no state change after (agent_prompt_stalled) is typed once more; a second stall exits 2
+: > "$HERDR_STUB_LOG"
+rm -f "$HERDR_STUB_DIR/stalls"
+out=$(HERDR_STUB_STALLS=1 sm --task T-ECS-13 --step chart 2>/dev/null)
+check 'a prompt that stalled once still goes out'   '^T-ECS-13-chart spawned '
+out=$(grep -c '^agent prompt chart_ecs-13 ' "$HERDR_STUB_LOG")
+check 'the stalled prompt is typed twice'           '^2$'
+: > "$HERDR_STUB_LOG"
+rm -f "$HERDR_STUB_DIR/stalls"
+HERDR_STUB_STALLS=2 sm --task T-ECS-13 --step chart >/dev/null 2>&1; rc=$?
+if [ "$rc" -eq 2 ]; then printf 'PASS a prompt that stalls twice exits 2\n'; else printf 'FAIL a prompt that stalled twice exited %s\n' "$rc"; fail=1; fi
+out=$(grep -c '^agent prompt chart_ecs-13 ' "$HERDR_STUB_LOG")
+check 'it is not typed a third time'                '^2$'
 
 # the sessions cap: a block with no slot is skipped and not claimed; a lead needs two free slots
 rm -rf "$lease"
@@ -688,7 +702,7 @@ out=$(sm --step pass --scope ecs-core/implementer 2>/dev/null)
 check 'the daily pass goes out in the state clone'  "^pass-ecs-core-implementer spawned $ostate\$"
 out=$(cat "$HERDR_STUB_LOG")
 check 'the pass is pass_<alias>-<agent>'            '^agent start pass_ecs-implementer '
-check 'the pass prompts the daily skill'            '^agent prompt pass_ecs-implementer "/claude-factory:memory-daily ecs-core/implementer" $'
+check 'the pass prompts the daily skill'            '^agent prompt pass_ecs-implementer "/claude-factory:memory-daily ecs-core/implementer" --wait --until working --until blocked --until done --timeout 60000 $'
 out=$(envof)
 check 'the pass unit is pass-<key>-<agent>'         '^FACTORY_UNIT=pass-ecs-core-implementer$'
 exists 'a pass leases a sessions slot'              "$lease/sessions/pass-ecs-core-implementer"
