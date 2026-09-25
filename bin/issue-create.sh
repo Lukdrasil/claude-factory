@@ -40,7 +40,12 @@ clone=$(yml_field "$key" path)
 remote=$(git -C "$clone" remote get-url origin 2>/dev/null || :)
 [ -n "$remote" ] || die "$clone has no origin remote, so there is no forge to create the issue on"
 
-host=$(printf '%s' "$remote" | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#[:/].*##')
+# why: an http(s) origin keeps its port, the forge's own (a self-hosted GitLab on :8929); an ssh one drops it, the
+# why: port of the ssh daemon, and an scp-style git@host:group/repo is the bare host
+case "$remote" in
+  http://*|https://*) host=$(printf '%s' "$remote" | sed -e 's#^[a-z]*://##' -e 's#^[^@/]*@##' -e 's#/.*##') ;;
+  *) host=$(printf '%s' "$remote" | sed -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#[:/].*##') ;;
+esac
 repo=$(printf '%s' "$remote" | sed -e 's#^\([a-zA-Z+]*://[^/]*\):[0-9]\{1,\}/#\1/#' -e 's#^[a-zA-Z+]*://##' -e 's#^[^@/]*@##' -e 's#^[^:/]*[:/]##' -e 's#/*$##' -e 's#\.git$##')
 
 case "$host" in
@@ -48,5 +53,9 @@ case "$host" in
     gh label create ai-drafted -c 7057ff -d "Drafted by an agent" >/dev/null 2>&1 || :
     gh issue create -R "$host/$repo" --title "$title" --body-file "$body" --label ai-drafted ;;
   *)
-    glab issue create -R "$host/$repo" --title "$title" --description-file "$body" --label ai-drafted ;;
+    # why: glab reads a bare <host>/<group>/<repo> whose host it does not know (localhost, a host not logged in
+    # why: yet) as a gitlab.com path; as a URL the host and its port are always the host. glab takes the scheme
+    # why: from its own config (api_protocol), so https for an ssh origin changes nothing
+    case "$remote" in http://*) scheme=http ;; *) scheme=https ;; esac
+    glab issue create -R "$scheme://$host/$repo" --title "$title" --description-file "$body" --label ai-drafted ;;
 esac

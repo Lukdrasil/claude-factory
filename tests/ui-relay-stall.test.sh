@@ -3,6 +3,7 @@
 # was already sent: the answer counts as delivered and is never typed twice, while an error before the input
 # (agent_blocked) keeps it queued.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

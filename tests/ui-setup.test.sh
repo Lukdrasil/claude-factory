@@ -6,6 +6,7 @@
 # each one in the Playwright container of tests/ui-page.test.sh and prints its own PASS and FAIL lines. Without
 # Docker it prints `SKIP ui-setup: no docker`.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$repo/bin"
 

@@ -7,6 +7,7 @@
 # The server runs from an image built from this checkout's ui/ under a tag of its content. The browser checks print
 # their own PASS and FAIL lines. Without Docker it prints `SKIP ui-multisession: no docker`.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if ! docker info >/dev/null 2>&1; then

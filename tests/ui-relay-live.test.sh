@@ -3,6 +3,7 @@
 # while the session is idle and the relay is up, must each arrive once as a user turn equal to the posted text
 # within 4 s of the post (QS-02). Without herdr or a Claude login it prints a SKIP line, which is not a pass.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 root=$(dirname -- "$bin")
 

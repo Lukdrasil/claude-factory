@@ -9,7 +9,7 @@
 # An existing <root>/state with a repos.yml is adopted byte for byte; only the missing pieces are added.
 # --from <url> makes <root>/state a clone of an existing state repo (a second machine): the preview clones it into
 # a scratch directory to show what it lacks, the apply moves that clone into place. A new factory.yml carries the
-# capacity defaults. Every run refreshes the doctor.json of the Setup tab.
+# capacity defaults and context_window: 1000000. Every run refreshes the doctor.json of the Setup tab.
 set -eu
 
 root='' settings="$HOME/.claude/settings.json" yes=0 spawn='' ui='' from=''
@@ -53,13 +53,17 @@ refresh_doctor() { sh "$(dirname -- "$0")/factory-doctor.sh" --json --root "$roo
 
 # where the state repo's files are read from: the state repo, or with --from a scratch clone of the url
 src=$state
+# why: the url as printed: the user:password@ or token@ of an http(s) url stays in the clone's .git/config (the
+# why: pushes need it) and out of the output, which ends up in a session transcript
+shown() { printf '%s' "$1" | sed 's#^\(https*://\)[^@/]*@#\1#'; }
 if [ -n "$from" ]; then
   if [ -d "$state/.git" ]; then
     cur_origin=$(git -C "$state" remote get-url origin 2>/dev/null || :)
-    [ "$cur_origin" = "$from" ] || die "$state exists with origin ${cur_origin:-none}, not $from"
+    [ "$cur_origin" = "$from" ] || die "$state exists with origin $(shown "${cur_origin:-none}"), not $(shown "$from")"
   else
-    [ ! -e "$state" ] || [ -z "$(ls -A "$state")" ] || die "$state exists and is no git clone, so it cannot become a clone of $from"
-    git clone -q "$from" "$tmp/from" 2>"$tmp/clone.err" || die "cannot clone $from: $(tail -n1 "$tmp/clone.err")"
+    [ ! -e "$state" ] || [ -z "$(ls -A "$state")" ] \
+      || die "$state exists and is no git clone, so it cannot become a clone of $(shown "$from")"
+    git clone -q "$from" "$tmp/from" 2>"$tmp/clone.err" || die "cannot clone $(shown "$from"): $(tail -n1 "$tmp/clone.err")"
     src="$tmp/from"
   fi
 fi
@@ -89,6 +93,8 @@ printf '%s\n' \
 printf '%s\n' \
   '# standalone factory config (ADR-0052): curation: auto|manual' \
   'curation: auto' \
+  '# the context window of the sessions in tokens (compact-tripwire.sh): 1000000 on a 1M model, 200000 otherwise' \
+  'context_window: 1000000' \
   '# how session-monitor.sh starts a task: herdr|manual' \
   "spawn: $spawn" \
   '# the Factory UI: docker|off, and the port it listens on' \
@@ -149,7 +155,7 @@ fi
 if [ "$need_init" = 1 ] || [ "$need_yml" = 1 ]; then
   echo "state repo $state:"
   if [ "$fresh" = 1 ]; then echo "+ git init -b main $state"
-  elif [ "$need_init" = 1 ]; then echo "+ git clone $from $state"; fi
+  elif [ "$need_init" = 1 ]; then echo "+ git clone $(shown "$from") $state"; fi
   if [ "$need_yml" = 1 ]; then
     diff -u --label /dev/null --label "$state/repos.yml" /dev/null "$tmp/repos.yml" || :
   elif [ "$fresh" = 1 ]; then

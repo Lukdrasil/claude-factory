@@ -5,6 +5,7 @@
 # Pipeline, Map, Plan, Org and Memory tabs over the server of the fixture's `org_state`.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-org: no docker`.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$repo/bin"
 

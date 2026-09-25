@@ -123,4 +123,14 @@ check 'block-mr.sh renders - [x] a in ## Done as a' '**What changed** - a; b' \
 check 'block-mr.sh drops the box from an Evidence bullet' '**How to verify** - `sh tests/x.test.sh` -> exit 0' \
   "$(printf '%s\n' "$out" | grep -F '**How to verify**')"
 
+# a self-hosted GitLab on a port (F10): the origin's host keeps its port and still routes to glab
+git -C "$tmp/demo/T-700" remote set-url origin http://localhost:8929/g/r.git
+git -C "$tmp/demo/T-700-01" remote set-url origin http://localhost:8929/g/r.git
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1)
+check 'mr-open.sh routes an http://localhost:8929 origin to glab' 'glab mr create' \
+  "$(printf '%s\n' "$out" | grep -o '^glab mr create')"
+out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp/demo/T-700-01" 2>&1)
+check 'block-mr.sh routes an http://localhost:8929 origin to glab' 'glab mr create' \
+  "$(printf '%s\n' "$out" | grep -o '^glab mr create' | head -n1)"
+
 exit $fail

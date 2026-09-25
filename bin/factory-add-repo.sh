@@ -40,6 +40,9 @@ esac
 top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
 [ -n "$top" ] || die "$repo is not a git clone"
 url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origin remote"
+# why: an http(s) origin can carry user:password@ or token@ (a glpat- token), which repos.yml would put into the
+# why: state repo and its history; an scp-style git@host:path names only the ssh user and is kept as it is
+case "$url" in http://*@*|https://*@*) url=$(printf '%s' "$url" | sed 's#^\(https*://\)[^@/]*@#\1#') ;; esac
 key=${url%/}; key=${key##*[/:]}; key=${key%.git}
 printf '%s' "$key" | grep -qE '^[A-Za-z0-9_-]+$' || die "'$key' is not a usable repo key (letters, digits, - and _)"
 branch=$(git -C "$top" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || :)

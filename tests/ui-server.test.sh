@@ -8,6 +8,7 @@
 # named from FACTORY_UI_CONTAINER so a real claude-factory-ui on this machine is never touched.
 # Without Docker it prints `SKIP ui-server: no docker` and exits 0.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$repo/bin"
 

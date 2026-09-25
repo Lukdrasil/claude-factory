@@ -70,6 +70,11 @@ download_assets() {
     done
   else
     proj=$(printf '%s' "$path" | sed 's#/#%2F#g')
+    # why: glab api --hostname refuses a host:port ("invalid hostname"), GITLAB_HOST takes it
+    case "$host" in
+      *:*) set -- env GITLAB_HOST="$host" glab api ;;
+      *) set -- glab api --hostname "$host" ;;
+    esac
     for a in $(grep -oE '(/-/project/[0-9]+)?/uploads/[a-f0-9]+/[^)"\\[:space:]]+' "$src" | sort -u); do
       found=1
       file=${a##*/}
@@ -81,7 +86,7 @@ download_assets() {
       # prefix from the secret: pasted screenshots on GitLab are all called image.png
       # (dest, not out, the caller holds out as a temp file with the issue output and a trap deletes it)
       dest="$dir/$(printf '%.8s' "$secret")-$file"
-      if glab api --hostname "$host" "projects/$p/uploads/$secret/$file" > "$dest" 2>/dev/null; then
+      if "$@" "projects/$p/uploads/$secret/$file" > "$dest" 2>/dev/null; then
         echo "$dest"
       else
         rm -f "$dest"
@@ -110,9 +115,12 @@ case "$cmd" in
     host=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://\([^/]*\)/.*#\1#p')
     [ -n "$host" ] || { echo "forge.sh: cannot parse URL: $2" >&2; exit 2; }
     # project and number from the URL: glab takes the host from the URL only for the main object, and the comments then
-    # hit gitlab.com (401 on self-hosted). The only thing that keeps both on one instance is -R <host>/<project>.
+    # hit gitlab.com (401 on self-hosted). The only thing that keeps both on one instance is -R, and as a URL,
+    # <scheme>://<host>/<project>: a bare <host>/<group>/<repo> whose host glab does not know (localhost, a host:port)
+    # is read as a gitlab.com path. The host keeps its port; glab takes the protocol from its own config.
     # Side effect: /-/work_items/<iid> works too, which is how GitLab 17 links issues.
     path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\(.*\)/-/[a-z_]*/[0-9].*#\1#p')
+    repo="${2%%://*}://$host/$path"
     iid=$(printf '%s' "$2" | sed -n 's#.*/-/[a-z_]*/\([0-9][0-9]*\).*#\1#p')
     # Gitea shape: exactly /<owner>/<repo>/(issues|pulls)/<n>, an issue URL says issues, an MR URL says pulls
     case "$cmd" in issue) seg=issues ;; *) seg=pulls ;; esac
@@ -142,8 +150,8 @@ case "$cmd" in
         || { echo "forge.sh: cannot take the project and number from the URL: $2" >&2; exit 2; }
       # glab keeps the detail and the comments in two calls; make the separator visible in the output
       case "$cmd" in
-        issue) { try glab issue view "$iid" -R "$host/$path" -F json; echo; echo "--- comments ---"; try glab issue view "$iid" -R "$host/$path" --comments; } > "$out" ;;
-        mr) { try glab mr view "$iid" -R "$host/$path" -F json; echo; echo "--- comments ---"; try glab mr view "$iid" -R "$host/$path" --comments; } > "$out" ;;
+        issue) { try glab issue view "$iid" -R "$repo" -F json; echo; echo "--- comments ---"; try glab issue view "$iid" -R "$repo" --comments; } > "$out" ;;
+        mr) { try glab mr view "$iid" -R "$repo" -F json; echo; echo "--- comments ---"; try glab mr view "$iid" -R "$repo" --comments; } > "$out" ;;
       esac
     fi
     cat "$out"

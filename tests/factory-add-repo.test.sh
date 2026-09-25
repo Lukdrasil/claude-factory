@@ -116,4 +116,22 @@ out=$(add --repo "$tmp/legacy"); rc=$?
 out=$(add --repo "$tmp/legacy" --alias LGC); rc=$?
 [ "$rc" = 1 ]; check '--alias over a registered alias is refused' $?
 
+# F12: the credentials of an http(s) origin (user:password@ or token@) never reach repos.yml, its history or the
+# output; an scp-style origin is written as it is
+mkrepo tags
+git -C "$tmp/tags" remote set-url origin http://root:glpat-SECRET1@localhost/root/tags.git
+out=$(add --repo "$tmp/tags" --yes)
+grep -qE '^tags: \{url: "http://localhost/root/tags\.git", ' "$state/repos.yml"; check 'user:password@ is stripped from an http url' $?
+mkrepo tok2
+git -C "$tmp/tok2" remote set-url origin https://glpat-SECRET2@gitlab.example.com:8443/g/tok2.git
+out="$out$(add --repo "$tmp/tok2" --yes)"
+grep -qE '^tok2: \{url: "https://gitlab\.example\.com:8443/g/tok2\.git", ' "$state/repos.yml"; check 'token@ is stripped from an https url, the port kept' $?
+! grep -q SECRET "$state/repos.yml"; check 'no credential in repos.yml' $?
+! git -C "$state" log -p | grep -q SECRET; check 'no credential in the state history' $?
+! printf '%s\n' "$out" | grep -q SECRET; check 'no credential in the output' $?
+mkrepo scpform
+git -C "$tmp/scpform" remote set-url origin git@gitlab.example.com:g/scpform.git
+add --repo "$tmp/scpform" --yes >/dev/null
+grep -qE '^scpform: \{url: "git@gitlab\.example\.com:g/scpform\.git", ' "$state/repos.yml"; check 'an scp-style url is written as it is' $?
+
 exit "$fail"

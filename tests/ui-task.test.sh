@@ -6,6 +6,7 @@
 # worktree's build is tested.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-task: no docker`.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if ! docker info >/dev/null 2>&1; then

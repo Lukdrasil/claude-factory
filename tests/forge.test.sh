@@ -2,7 +2,9 @@
 # forge.sh Gitea reads: an issue or pull request URL of the Gitea shape is read through
 # `tea api -l <login> repos/<owner>/<repo>/...`, the login being the `tea login list` row whose URL host matches
 # the URL's host. No matching login exits 3 after printing the signed-in instances. tea, gh and glab are stubs
-# on PATH; tea logs every argument in brackets and prints a login table for `login list`.
+# on PATH; tea logs every argument in brackets and prints a login table for `login list`. GitLab reads go through
+# `glab ... -R <scheme>://<host>/<project>`, a port kept (F10), and attachments through `glab api`, with
+# GITLAB_HOST=<host>:<port> in place of --hostname when the host has a port; glab logs like tea, plus GITLAB_HOST.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
@@ -37,7 +39,15 @@ case "$1" in
 esac
 EOF
 printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/gh"
-printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/glab"
+cat > "$tmp/bin/glab" <<'EOF'
+#!/bin/sh
+{ printf 'glab'; [ -z "${GITLAB_HOST:-}" ] || printf ' GITLAB_HOST=%s' "$GITLAB_HOST"; for a in "$@"; do printf ' [%s]' "$a"; done; printf '\n'; } >> "$STUB_LOG"
+case "$1" in
+  issue|mr) echo '{"description":"![shot](/uploads/0123456789abcdef/shot.png)"}' ;;
+  api) echo PNG ;;
+  *) exit 1 ;;
+esac
+EOF
 chmod +x "$tmp/bin/tea" "$tmp/bin/gh" "$tmp/bin/glab"
 
 run() { # <args...>: forge.sh with the stubs on PATH; exit code in $got, stdout in $tmp/out
@@ -75,5 +85,24 @@ run issue https://other.example.org/acme/widgets/issues/5
 want_exit 'no login: exit 3' 3
 want_out 'no login: signed-in instances printed' "$tmp/err" 'tea: '
 if grep -q '^tea \[api\]' "$log"; then no 'no login: no api call' "$(cat "$log")"; else ok 'no login: no api call'; fi
+
+# GitLab: the project in -R as a URL, so glab never reads <host>/<group>/<repo> as a gitlab.com path, and a port kept
+run mr http://localhost:8929/g/r/-/merge_requests/3
+want_exit 'gitlab mr with a port: exit 0' 0
+want_call 'gitlab mr with a port: detail through -R http://localhost:8929/g/r' \
+  'glab [mr] [view] [3] [-R] [http://localhost:8929/g/r] [-F] [json]'
+want_call 'gitlab mr with a port: comments through the same -R' 'glab [mr] [view] [3] [-R] [http://localhost:8929/g/r] [--comments]'
+run issue https://gitlab.example.com/group/sub/w/-/issues/5 --assets "$tmp/a1"
+want_exit 'gitlab issue: exit 0' 0
+want_call 'gitlab issue: detail through -R https://gitlab.example.com/group/sub/w' \
+  'glab [issue] [view] [5] [-R] [https://gitlab.example.com/group/sub/w] [-F] [json]'
+want_call 'gitlab issue: the attachment through glab api --hostname' \
+  'glab [api] [--hostname] [gitlab.example.com] [projects/group%2Fsub%2Fw/uploads/0123456789abcdef/shot.png]'
+# glab api --hostname refuses host:port ("invalid hostname"), GITLAB_HOST takes it
+run issue http://localhost:8929/g/r/-/issues/4 --assets "$tmp/a2"
+want_exit 'gitlab issue with a port: exit 0' 0
+want_call 'gitlab issue with a port: the attachment through GITLAB_HOST=localhost:8929' \
+  'glab GITLAB_HOST=localhost:8929 [api] [projects/g%2Fr/uploads/0123456789abcdef/shot.png]'
+want_out 'gitlab issue with a port: the attachment is saved' "$tmp/out" "$tmp/a2/01234567-shot.png"
 
 exit "$fail"
