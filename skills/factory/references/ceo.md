@@ -14,7 +14,7 @@ you is a step session you dispatch, or a subagent of a session.
 
 One herdr session with the cwd `$WORK_DIR/state` (the state clone, `<state>` below), in the workspace
 `factory`, herdr agent name `ceo`. The human starts it there with `claude '/claude-factory:factory ceo'`;
-doctor's `ceo` step reads done once `herdr agent get ceo` answers. The workspace also holds the `factory-ui-relay` tab and every pre-approval
+doctor's `ceo` step reads done once `herdr agent get ceo` answers. The workspace also holds the `ui relay (no agent)` tab (a shell loop that types UI answers into sessions) and every pre-approval
 step tab (triage, chart, grill, plan-check, decompose) of every request, so everything waiting on the human is
 in one place. Without `HERDR_ENV=1` there is no org: say so and offer `factory herd` or `factory solve` for
 one task instead.

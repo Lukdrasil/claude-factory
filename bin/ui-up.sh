@@ -2,7 +2,7 @@
 # Starts the Factory UI: builds the image claude-factory-ui:<plugin version> when missing, starts or reuses the
 # one container as the host uid:gid with the state dir at /state read-only and the UI home at /ui read-write,
 # published on 127.0.0.1:<ui_port> or a random free port when that is taken, opens the relay in the herdr tab
-# factory-ui-relay when none is open, runs it again in that tab's pane when `herdr pane process-info` shows no
+# `ui relay (no agent)` when none is open (a shell loop, no Claude session; an older `factory-ui-relay` tab is renamed), runs it again in that tab's pane when `herdr pane process-info` shows no
 # ui-relay.sh there (a herdr restart restores the tab as a bare shell), and prints the URL with the token. A
 # state dir is one with a repos.yml. With no --state and none to resolve from the cwd, as before factory init,
 # it starts with /ui only on port 7171. A running container whose cf.version or cf.state label differs is
@@ -95,10 +95,13 @@ port=$(docker port "$name" 8080/tcp | sed -n 's/^127\.0\.0\.1://p' | head -n1)
 [ -n "$port" ] || die "the container $name publishes no port on 127.0.0.1"
 put "$ui/port" "$port"
 
-relay_tab=$(herdr tab list 2>/dev/null | tr '{' '\n' | grep -E '"label":"factory-ui-relay"[,}]' \
-  | grep -o '"tab_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+# why: the tab runs a shell loop, not an agent, and its name says so; an older plugin named it factory-ui-relay
+relay_label='ui relay (no agent)'
+relay_line=$(herdr tab list 2>/dev/null | tr '{' '\n' | grep -E '"label":"(ui relay \(no agent\)|factory-ui-relay)"[,}]' | head -n1)
+relay_tab=$(printf '%s' "$relay_line" | grep -o '"tab_id":"[^"]*"' | cut -d'"' -f4)
+case "$relay_line" in *'"label":"factory-ui-relay"'*) herdr tab rename "$relay_tab" "$relay_label" >/dev/null 2>&1 || : ;; esac
 if [ -z "$relay_tab" ]; then
-  set -- tab create --label factory-ui-relay --no-focus
+  set -- tab create --label "$relay_label" --no-focus
   [ -z "${HERDR_WORKSPACE_ID:-}" ] || set -- "$@" --workspace "$HERDR_WORKSPACE_ID"
   pane=$(herdr "$@" | grep -o '"pane_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
   [ -n "$pane" ] || die "herdr tab create gave no pane for the relay"
