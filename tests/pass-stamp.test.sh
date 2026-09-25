@@ -2,7 +2,9 @@
 # pass-stamp.sh (agent-org plan 3.8, Q4): a daily or weekly pass stamps the passes.yml of its scope, the four
 # scope shapes each in their own folder, one commit under the state lock; --due lists the scopes whose pass is
 # due (daily after 24 h or never, weekly after 7 d or never) and that have work for it (daily: a proposal or a
-# draft, weekly: a draft). session-start.sh prints that list in the state clone and nowhere else.
+# draft, weekly: a draft, a proposal with a `Replaces:` line, or any proposal of a legacy tier, which the daily
+# pass leaves for the human's round).
+# session-start.sh prints that list in the state clone and nowhere else.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(cd "$(mktemp -d)" && pwd -P)
@@ -82,6 +84,9 @@ printf '# p\n' > "$d/agents/scout/memory/proposals/p.md"
 for a in implementer scout test-designer; do mkdir -p "$d/repos/demo/agents/$a/drafts"; printf '# d\n' > "$d/repos/demo/agents/$a/drafts/d.md"; done
 mkdir -p "$d/repos/demo/agents/drafter/drafts"
 printf '# d\n' > "$d/repos/demo/agents/drafter/drafts/d.md"
+mkdir -p "$d/repos/demo/agents/replacer/memory/proposals"
+printf '# r\n\nReplaces: repos/demo/agents/replacer/memory/old.md\n' > "$d/repos/demo/agents/replacer/memory/proposals/r.md"
+printf '# r\n\nReplaces: `agents/scout/memory/old.md`\n' > "$d/agents/scout/memory/proposals/r.md"
 printf 'daily: 2026-09-24T13:00:00Z\nweekly: 2026-09-19T12:00:00Z\n' > "$d/repos/demo/agents/scout/passes.yml"
 printf 'daily: 2026-09-24T11:00:00Z\nweekly: 2026-09-17T12:00:00Z\n' > "$d/repos/demo/agents/test-designer/passes.yml"
 printf 'daily: 2026-09-24T12:00:00Z\nweekly: never\n' > "$d/repos/demo/memory/passes.yml"
@@ -92,11 +97,15 @@ due() { PASS_STAMP_NOW=1790337600 sh "$bin/pass-stamp.sh" --due "$1" --state "$d
 check '2. daily: never, 24 h and older, with work, sorted' 'agent:scout daily 2026-09-01T00:00:00Z
 repo-agent:demo/drafter daily never
 repo-agent:demo/implementer daily never
+repo-agent:demo/replacer daily never
 repo-agent:demo/test-designer daily 2026-09-24T11:00:00Z
 repo:demo daily 2026-09-24T12:00:00Z' "$(due daily)"
-check '2. weekly: never and 7 d and older, only with drafts' 'repo-agent:demo/drafter weekly never
+check '2. weekly: never and 7 d and older, with drafts, a Replaces: proposal or a legacy proposal' 'agent:scout weekly never
+repo-agent:demo/drafter weekly never
 repo-agent:demo/implementer weekly never
-repo-agent:demo/test-designer weekly 2026-09-17T12:00:00Z' "$(due weekly)"
+repo-agent:demo/replacer weekly never
+repo-agent:demo/test-designer weekly 2026-09-17T12:00:00Z
+repo:demo weekly never' "$(due weekly)"
 sh "$bin/pass-stamp.sh" --due monthly --state "$d" >/dev/null 2>&1; rc=$?
 check '2. --due of an unknown kind is refused' 1 "$rc"
 check '2. --due exits 0 on an empty state' '0 ' \

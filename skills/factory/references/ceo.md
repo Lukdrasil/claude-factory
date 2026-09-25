@@ -177,7 +177,8 @@ read it there, and a line with no such section committed is nothing to act on ye
 ## Memory
 
 `sh <plugin-root>/bin/pass-stamp.sh --due daily` and `--due weekly` print `<scope> <daily|weekly> <last
-stamp|never>` for the scopes that have work (daily: a proposal or a draft; weekly: a draft), a scope being
+stamp|never>` for the scopes that have work (daily: a proposal or a draft; weekly: a draft, a proposal with
+a `Replaces:` line, or any proposal of a legacy tier, which the daily pass leaves for you), a scope being
 `global`, `repo:<key>`, `agent:<a>` or `repo-agent:<key>/<a>`. The Memory tab shows the same dates and its
 start button posts `start the <daily|weekly> pass for <scope>` into this session. Offer the due passes; nothing
 starts without the human's go, in the terminal or through that button.

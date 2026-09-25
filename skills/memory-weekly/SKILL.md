@@ -13,9 +13,9 @@ drafts the daily pass (`memory-daily`) wrote, asks the human in rounds, and appl
 - Inside the CEO session, after the human's go (typed, or the Memory tab's start button, which posts `start
   the weekly pass for <scope>`). Never `claude -p` or any other headless run.
 - The argument is `repo-agent:<key>/<agent>` (`<key>/<agent>` means the same). A legacy tier (`global`,
-  `repo:<key>`, `agent:<agent>`) has no drafts, only the `Replaces:` proposals the daily pass left in its
-  queue: one round through `_shared/ask.md`, one question per proposal (approve, which deletes what
-  `Replaces:` names, or reject), applied with `curate-apply.sh`, then stop, nothing is stamped. No scope: ask
+  `repo:<key>`, `agent:<agent>`) has no drafts, only the proposals the daily pass kept in its queue: one
+  round through `_shared/ask.md`, one question per proposal (approve, which deletes what `Replaces:` names, or
+  reject), applied with `curate-apply.sh`, then stop, nothing is stamped. No scope: ask
   for it through `_shared/ask.md`.
 - cwd is the state clone `$WORK_DIR/state`. The scope's folder is `repos/<key>/agents/<agent>/`: `drafts/`,
   `k1/`, `playbook.md` (at most 800 words), `passes.yml`.
