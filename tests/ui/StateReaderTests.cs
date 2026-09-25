@@ -309,8 +309,122 @@ public sealed class StateReaderTests : IDisposable
         Assert.Equal(rows["T-CF-5"].Steps, State.Task("T-CF-5")!.Task.Steps);
     }
 
+    const string Report =
+        "---\nrepo: demo\nstatus: done\nat: 2026-09-25T11:00:00Z\nsession: 5f1c-onboard\nstack: dotnet\n---\n# Onboarding of demo\n\n"
+        + "An onboarding session reports and proposes; it changes nothing. Send a proposal as a request to have a lead do it.\n\n"
+        + "## Summary\nA **dotnet** service with <script>alert(1)</script> one solution.\nIt builds with `dotnet build`.\n\n"
+        + "## Checks\n"
+        + "- done registration: demo is in repos.yml\n"
+        + "- missing analyzers: no AnalysisLevel in Directory.Build.props Fix: run setup-guardrails Fix: twice\n"
+        + "- failing ci: <script>alert(2)</script> never runs the tests\n"
+        + "- done agents-md: AGENTS.md names the build\n\n"
+        + "## Proposals\n"
+        + "- P1 analyzers: set up the dotnet analyzers with \"warnings as errors\"\n"
+        + "- P2 ci: run the tests in CI\n";
+
+    [Fact]
+    public void An_onboarding_report_reads_its_frontmatter_checks_with_the_fix_split_at_the_last_Fix_proposals_and_summary()
+    {
+        Write(_state, "repos/demo/onboarding.md", Report);
+
+        var report = Assert.Single(State.Onboarding());
+
+        Assert.Equal(("demo", "done", "2026-09-25T11:00:00Z", "dotnet"), (report.Repo, report.Status, report.At, report.Stack));
+        Assert.Equal(
+            [
+                new OnboardingCheck("done", "registration", "demo is in repos.yml", ""),
+                new OnboardingCheck("missing", "analyzers", "no AnalysisLevel in Directory.Build.props Fix: run setup-guardrails", "twice"),
+                new OnboardingCheck("failing", "ci", "<script>alert(2)</script> never runs the tests", ""),
+                new OnboardingCheck("done", "agents-md", "AGENTS.md names the build", ""),
+            ],
+            report.Checks);
+        Assert.Equal(
+            [
+                new OnboardingProposal("P1", "analyzers", "set up the dotnet analyzers with \"warnings as errors\""),
+                new OnboardingProposal("P2", "ci", "run the tests in CI"),
+            ],
+            report.Proposals);
+        Assert.Contains("<strong>dotnet</strong>", report.SummaryHtml);
+        Assert.Contains("<code>dotnet build</code>", report.SummaryHtml);
+        Assert.DoesNotContain("<script>", report.SummaryHtml);
+        Assert.DoesNotContain("Onboarding of", report.SummaryHtml);
+        Assert.DoesNotContain("registration", report.SummaryHtml);
+    }
+
+    [Fact]
+    public void A_line_the_check_or_proposal_regex_does_not_match_is_skipped()
+    {
+        Write(_state, "repos/demo/onboarding.md",
+            "---\nrepo: demo\nstatus: done\n---\n# Onboarding of demo\n\n## Checks\n"
+            + "- done registration: fine\n- ok alias: not a state\n- done Alias: capital id\n- done tools:\n- done 1ci: digit first\n"
+            + "* done ci: a star\n-  done ci: two spaces\nsome prose\n- done ci: fine too\r\n\n"
+            + "## Proposals\n- P1 ci: fine\n- P analyzers: no number\n- p2 ci: lower p\n- P3 CI: capital area\n- P4 docs:\n- P5 docs: fine too\n");
+
+        var report = Assert.Single(State.Onboarding());
+
+        Assert.Equal(["registration", "ci"], report.Checks.Select(c => c.Id));
+        Assert.Equal("fine too", report.Checks[1].Detail);
+        Assert.Equal(["P1", "P5"], report.Proposals.Select(p => p.Id));
+    }
+
+    [Fact]
+    public void A_report_without_summary_checks_or_proposals_reads_empty_and_one_without_frontmatter_fields_reads_empty_strings()
+    {
+        Write(_state, "repos/demo/onboarding.md", "---\nrepo: demo\nstatus: running\nat: 2026-09-25T11:00:00Z\n---\n# Onboarding of demo\n");
+        Write(_state, "repos/bare/onboarding.md", "# Onboarding of bare\n\n## Checks\n- done registration: fine\n");
+
+        var reports = State.Onboarding();
+
+        Assert.Equal(["bare", "demo"], reports.Select(r => r.Repo));
+        Assert.Equal(("", "", ""), (reports[0].Status, reports[0].At, reports[0].Stack));
+        Assert.Single(reports[0].Checks);
+        var demo = reports[1];
+        Assert.Equal(("running", ""), (demo.Status, demo.Stack));
+        Assert.Equal("", demo.SummaryHtml);
+        Assert.Empty(demo.Checks);
+        Assert.Empty(demo.Proposals);
+    }
+
+    [Fact]
+    public void Reports_come_in_repo_key_order_and_an_unreadable_one_is_skipped()
+    {
+        Write(_state, "repos/zeta/onboarding.md", Report.Replace("repo: demo", "repo: zeta"));
+        Write(_state, "repos/alpha/onboarding.md", Report.Replace("repo: demo", "repo: alpha"));
+        Write(_state, "repos/locked/onboarding.md", Report.Replace("repo: demo", "repo: locked"));
+        Write(_state, "repos/none/toolset.md", "no report here\n");
+        File.SetUnixFileMode(Path.Combine(_state, "repos/locked/onboarding.md"), UnixFileMode.None);
+
+        Assert.Equal(["alpha", "zeta"], State.Onboarding().Select(r => r.Repo));
+    }
+
+    [Fact]
+    public void Setup_carries_the_add_repo_files_and_the_onboarding_reports()
+    {
+        Write(_state, "repos/demo/onboarding.md", Report);
+        Write(_ui, "setup/add-repo/demo.json",
+            "{\"at\":\"2026-09-25T10:00:00Z\",\"key\":\"demo\",\"url\":\"https://example.test/g/demo.git\",\"path\":\"/c/demo\",\"state\":\"registered\",\"detail\":\"\"}\n");
+
+        var setup = State.Setup(Home);
+
+        Assert.Equal([new AddRepoInfo("demo", "https://example.test/g/demo.git", "/c/demo", "registered", "", "2026-09-25T10:00:00Z")], setup.AddRepos);
+        Assert.Equal("demo", Assert.Single(setup.Onboarding).Repo);
+    }
+
+    [Fact]
+    public void Setup_without_add_repo_files_or_reports_has_empty_lists()
+    {
+        var setup = new StateReader(Path.Combine(_state, "nowhere")).Setup(Home);
+
+        Assert.Empty(setup.AddRepos);
+        Assert.Empty(setup.Onboarding);
+    }
+
     public void Dispose()
     {
+        foreach (var file in Directory.EnumerateFiles(_state, "*", SearchOption.AllDirectories))
+        {
+            File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
         Directory.Delete(_state, recursive: true);
         Directory.Delete(_ui, recursive: true);
     }
