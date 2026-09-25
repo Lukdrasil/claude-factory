@@ -6,6 +6,7 @@
 # The shell checks GET /visual; tests/ui-visual.test.js checks the drawer through the fixture's `browser` and prints
 # its own PASS and FAIL lines. Without Docker it prints `SKIP ui-visual: no docker` after the brief checks.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 brief="$repo/skills/grill/references/visual-brief.md"

@@ -3,6 +3,7 @@
 # prompt with the state it was typed into and when that state began, so the settle rule, the pane check, replay
 # (QS-04), isolation (QS-07) and merges (QS-08) are all read off the same record.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

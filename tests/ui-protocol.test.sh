@@ -5,6 +5,7 @@
 # factory-doctor.sh reports Docker, herdr and that setting; session-start.sh registers a session only with
 # ui: docker and HERDR_ENV=1; and skills/_shared/ask.md is the one skill file that names AskUserQuestion.
 set -u
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 bin="$repo/bin"
 tmp=$(mktemp -d)
@@ -338,7 +339,7 @@ grep -Eq 'solve-next\.sh .*--ui' "$repo/skills/factory/references/solve.md" \
 # F9: a ui suite run inside a factory wrote its fixture session into that factory's UI home, so every ui suite and
 # the fixture clear the caller's FACTORY_UI_HOME, FACTORY_UI_CONTAINER and WORK_DIR before their first scratch dir
 for f in "$repo"/tests/ui-*.test.sh "$repo/tests/ui-fixture.sh"; do
-  unsets=$(awk '/mktemp|\$tmp/ { exit } /^unset / { print }' "$f")
+  unsets=$(awk '/^[[:space:]]*#/ { next } /mktemp|\$tmp/ { exit } /^unset / { print }' "$f")
   miss=''
   for v in FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR; do
     printf '%s\n' "$unsets" | grep -Eq "[[:space:]]$v([[:space:]]|\$)" || miss="$miss $v"

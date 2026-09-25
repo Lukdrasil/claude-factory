@@ -6,6 +6,7 @@
 # the Playwright harness of the page suites; `org_state <dir>` builds a third state repo with the real scripts for
 # the request, org and setup routes.
 
+unset FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR
 fail=0
 pass() { printf 'PASS %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fail=1; }
