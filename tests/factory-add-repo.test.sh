@@ -264,4 +264,60 @@ check 'the reason joins the git lines up to fatal:, each URL redacted' $?
 ! grep -q 'hint:' "$tmp/cerr"; check 'the reason drops what git prints after fatal:' $?
 ! grep -q SECRET "$tmp/cerr" && ! has "$(aj denied)" SECRET; check 'the token of an exit 4 git line reaches neither stderr nor the json' $?
 
+# --yes clones into <clones>/<key> through a temp directory, then registers: a stale temp directory of a killed apply
+# is removed first, and a git spy keeps the json as it was while git clone ran
+mkdir -p "$clones/.demo.cf-clone/stale"
+mkdir -p "$tmp/gitspy"
+cat > "$tmp/gitspy/git" <<EOF
+#!/bin/sh
+case " \$* " in *" clone "*) cat "$tmp/ui/setup/add-repo/"*.json > "$tmp/during-clone.json" 2>/dev/null ;; esac
+exec "$realgit" "\$@"
+EOF
+chmod +x "$tmp/gitspy/git"
+out=$(PATH="$tmp/gitspy:$PATH" cadd --clone "$curl" --yes); rc=$?
+[ "$rc" = 0 ]; check '--clone --yes without a prior preview exits 0' $?
+[ -s "$tmp/cerr" ] && sed 's/^/  stderr: /' "$tmp/cerr"
+[ "$(printf '%s\n' "$out" | head -n1)" = demo ]; check 'the first stdout line is the key' $?
+[ -f "$clones/demo/App.sln" ] && [ "$(git -C "$clones/demo" symbolic-ref --short HEAD)" = trunk ]; check 'the clone is at <clones>/demo on the default branch' $?
+[ ! -e "$clones/.demo.cf-clone" ]; check 'the stale temp directory is gone' $?
+has "$(cat "$tmp/during-clone.json" 2>/dev/null)" "\"state\":\"cloning\"" && has "$(cat "$tmp/during-clone.json" 2>/dev/null)" "\"detail\":\"$clones/demo\""
+check 'while git clone runs the json is cloning with the clone target' $?
+cl=$(printf '%s\n' "$out" | grep -nxF "cloned $curl into $clones/demo" | cut -d: -f1)
+rg=$(printf '%s\n' "$out" | grep -n '^registered demo ' | cut -d: -f1)
+[ -n "$cl" ] && [ -n "$rg" ] && [ "$cl" -lt "$rg" ]; check 'the cloned line comes before the registered line' $?
+grep -qxF "demo: {url: \"$curl\", default_branch: trunk, path: \"$clones/demo\", alias: DEM}" "$cstate/repos.yml"
+check 'repos.yml holds the URL, the remote default branch, the clone path and the alias' $?
+grep -qs 'dotnet build App.sln ' "$cstate/repos/demo/toolset.md"; check 'the toolset is seeded from the stack of the clone' $?
+j=$(aj demo)
+has "$j" '"state":"registered"' && has "$j" '"detail":""' && has "$j" "\"path\":\"$clones/demo\""; check 'the apply ends with json registered and an empty detail' $?
+
+# F3 on the success path: git clones with the token (an insteadOf rewrite serves it from file://), and the token
+# reaches no line, no json and nothing in the state repo
+mkorigin tokrepo
+out=$(GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="url.file://$tmp/origin/.insteadOf" \
+  GIT_CONFIG_VALUE_0='https://oauth2:glpat-SECRET4@example.test/g/' \
+  cadd --clone 'https://oauth2:glpat-SECRET4@example.test/g/tokrepo.git' --yes); rc=$?
+[ "$rc" = 0 ] && [ -f "$clones/tokrepo/App.sln" ]; check 'a URL with a token is cloned with it' $?
+grep -qE '^tokrepo: \{url: "https://example\.test/g/tokrepo\.git", ' "$cstate/repos.yml"; check 'repos.yml holds the URL without the token' $?
+! has "$out" SECRET && ! grep -q SECRET "$tmp/cerr" && ! has "$(aj tokrepo)" SECRET \
+  && ! grep -rqs SECRET "$cstate/repos.yml" "$cstate/repos" && ! git -C "$cstate" log -p | grep -q SECRET
+check 'the token is in no output, json, state file or state commit' $?
+
+# <clones>/<key> exists: a clone of the same origin (userinfo, .git and a trailing / aside) is reused, anything else
+# is refused
+mkorigin reuse
+git clone -q "file://$tmp/origin/reuse.git" "$clones/reuse"
+out=$(cadd --clone "file://$tmp/origin/reuse/" --yes); rc=$?
+[ "$rc" = 0 ] && has "$out" "note: $clones/reuse is already a clone of file://$tmp/origin/reuse/, reused"
+check 'an existing clone of the same origin is reused' $?
+! has "$out" 'cloned ' && grep -qE "^reuse: \{.*path: \"$clones/reuse\"" "$cstate/repos.yml"; check 'it is registered without a new clone' $?
+mkorigin taken
+mkdir -p "$clones/taken"
+: > "$clones/taken/notes.txt"
+out=$(cadd --clone "file://$tmp/origin/taken.git" --yes); rc=$?
+[ "$rc" = 1 ] && grep -qF "$clones/taken exists and is not a clone of file://$tmp/origin/taken.git: move it away" "$tmp/cerr"
+check 'an existing directory that is no clone of the URL exits 1' $?
+[ -f "$clones/taken/notes.txt" ] && ! grep -q '^taken:' "$cstate/repos.yml" && has "$(aj taken)" '"state":"failed"'
+check 'it is left alone, nothing is registered, and the json is failed' $?
+
 exit "$fail"
