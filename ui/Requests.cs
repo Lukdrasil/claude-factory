@@ -7,7 +7,11 @@ public sealed record MapLink(string Title, string File, string Gist);
 public sealed record Ticket(
     string Nn, string Title, string Type, string Status, List<string> BlockedBy, string Repo, string ClaimedBy, string Question, string Answer);
 
-public sealed record BlockInfo(string Id, string Status, string Goal, string Acceptance);
+/// <summary>
+/// A block of a parent in the Plan checklist; <c>SpecCritic</c> is the first line under its <c>## Spec critic</c>, the
+/// verdict spec-critic wrote for a red block (skills/spec-critic), "" when there is none.
+/// </summary>
+public sealed record BlockInfo(string Id, string Status, string Tier, string Goal, string Acceptance, string SpecCritic);
 
 public sealed record MapLinkHtml(string Title, string Gist);
 
@@ -198,8 +202,9 @@ public sealed partial class StateReader
                 byId.Values
                     .Where(b => BlockId().Match(b.Id) is { Success: true } m && m.Groups[1].Value == p.Id)
                     .Order(Comparer<Entry>.Create((a, b) => CompareIds(a.Id, b.Id)))
-                    .Select(b => new BlockInfo(b.Id, b.Fields.GetValueOrDefault("status", ""), Goal(Frontmatter.Body(b.Text)),
-                        Sections.Of(Frontmatter.Body(b.Text), "Acceptance")))
+                    .Select(b => new BlockInfo(b.Id, b.Fields.GetValueOrDefault("status", ""), b.Fields.GetValueOrDefault("tier", ""),
+                        Goal(Frontmatter.Body(b.Text)), Sections.Of(Frontmatter.Body(b.Text), "Acceptance"),
+                        Sections.Of(Frontmatter.Body(b.Text), "Spec critic").Split('\n')[0].Trim()))
                     .ToList()))
             .ToList();
         return new RequestDetail(id, map.Status, map.Destination, map.Notes, map.Terms, archived, map.Decisions, map.OutOfScope,
