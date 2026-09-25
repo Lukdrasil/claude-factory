@@ -31,8 +31,9 @@
 # list`, a unit lease older than 180 s (the agent start window) whose unit no live agent carries, and a subagent
 # lease whose session is no live agent's `agent_session.value`. A unit is carried by an agent named the lowercased
 # unit, `<step>_<unit tail>` for a step unit, `<role>_<unit tail>` for a block (plan 3.6: the tail drops the step
-# and, for an alias id, the leading `t-`), or whose title ends in the unit (the `claude --name` label). herdr not
-# answering drops nothing on its account.
+# and, for an alias id, the leading `t-`), `onboard_<key lowercased>` cut at 31 for an onboarding unit
+# `onboard-<key>`, or whose title ends in the unit (the `claude --name` label). herdr not answering drops nothing
+# on its account.
 set -u
 
 die() { printf 'capacity: %s\n' "$1" >&2; exit 2; }
@@ -177,6 +178,7 @@ const sids=new Set(a.map(x=>String((x.agent_session&&x.agent_session.value)||"")
 const ends=new Set(a.map(x=>String(x.terminal_title_stripped||"").trim().split(/\s+/).pop()));
 const live=u=>{
   if(ends.has(u)||names.includes(u.toLowerCase()))return true;
+  if(u.startsWith("onboard-"))return names.includes(("onboard_"+u.slice(8)).toLowerCase().slice(0,31));
   const m=/^(.*?)-([a-z].*)$/.exec(u),step=m?m[2]:"";
   let t=(m?m[1]:u).toLowerCase();if(!/^t-[0-9]/.test(t))t=t.replace(/^t-/,"");
   return names.some(n=>{const i=n.indexOf("_");return i>0&&n.slice(i+1)===t&&(!step||n.slice(0,i)===step)});
