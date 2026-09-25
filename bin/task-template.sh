@@ -138,6 +138,7 @@ TEMPLATE
 ---
 repo: <repo-key>
 task: <T-NNN or none>
+request: <R-YYYYMMDD-n or none>
 created: <YYYY-MM-DD>
 ---
 

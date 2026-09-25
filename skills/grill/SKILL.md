@@ -83,7 +83,8 @@ row again.
 2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
-4. Write the proposals and the plan, lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
+4. Write the proposals and the plan (its frontmatter carries `task:` and, when a `map.sh export` was prepended to
+   the spec, `request:` with that request id), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
    `references/output.md`.
 
 **Done when** `plan-ready.md` exists in the state repo, `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` passes over it, plan-check left a
