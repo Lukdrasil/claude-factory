@@ -338,6 +338,6 @@ lead=$(watch T-013-lead)
 check 'the CEO watcher sees the transition'       0 '^T-013-01 status in_progress -> review$' "$ceo"
 check 'the lead watcher sees it too'              0 '^T-013-01 status in_progress -> review$' "$lead"
 check 'each watcher has its own state file'       0 '^herd-watch-T-013-lead.state herd-watch-ceo.state $' \
-  "$(ls "$tmp/factory/demo/.harness/T-013" | grep '^herd-watch' | tr '\n' ' ')"
+  "$(ls "$tmp/factory/demo/.harness/T-013" | grep '^herd-watch' | LC_ALL=C sort | tr '\n' ' ')"
 
 exit $fail

@@ -10,8 +10,11 @@
 # agent states are `working`, `blocked` and `unknown` as herdr reads them, `ready` for herdr's idle and done
 # alike (done only means the human has not looked at the tab yet), `closed` for a unit whose recorded tab
 # herdr-tabs.sh closed, and `gone` for a unit no live agent carries, which is how a session that ended on its
-# own reads. What has already been reported is kept in `<root>/<key>/.harness/<T-NNN>/herd-watch.state`, one
-# `<id> <status> <phase> <agent> <mr> <ask>` per line, so a pass with nothing new prints nothing.
+# own reads. What has already been reported is kept in
+# `<root>/<key>/.harness/<T-NNN>/herd-watch-<FACTORY_UNIT>.state` (`herd-watch.state` without FACTORY_UNIT), one
+# `<id> <status> <phase> <agent> <mr> <ask>` per line, so a pass with nothing new prints nothing. One file per
+# watcher: the CEO's (`ceo`) and the lead's (`<T-id>-lead`) watchers of one parent would otherwise each consume
+# the other's transitions.
 #
 # The agent column comes from one `herdr agent list` per pass, through `herdr-tabs.sh agents`: a unit is the
 # agent that reports its recorded session id, or the one in its recorded pane (plan 3.7), never an `agent get`
@@ -86,7 +89,7 @@ key=${task#"$state/repos/"}
 key=${key%%/*}
 case "$state" in */state) root=${state%/state} ;; *) root=$(dirname -- "$state") ;; esac
 harness="$root/$key/.harness/$id"
-seen="$harness/herd-watch.state"
+seen="$harness/herd-watch${FACTORY_UNIT:+-$FACTORY_UNIT}.state"
 mrseen="$harness/mr-watch.state"
 ui=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
 # an archived parent is still watched to its end, its blocks with it
