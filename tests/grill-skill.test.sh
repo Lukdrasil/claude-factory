@@ -38,4 +38,8 @@ printf '%s' "$section" | grep -q 'references/output\.md'; check 'the grill file 
 iloop=$(awk '/^## / { on = ($0 == "## Interview loop"); next } on { print }' "$skill")
 printf '%s' "$iloop" | grep -q '_shared/ask\.md'; check 'the interview loop sends each round through _shared/ask.md' $?
 
+# F35 (sim, 2026-09-25): a grill spawned as its own step got only the task file, read the request map after five
+# rounds and reopened three answers; Steps item 1 seeds it from map.sh export when the task carries request:
+printf '%s' "$step1" | grep -q 'map\.sh export'; check 'Steps item 1 seeds a task with request: from map.sh export' $?
+
 exit "$fail"
