@@ -17,7 +17,8 @@ A Windows clone gets LF line endings by design: `.gitattributes` pins them, so t
 
 Some skills set `disable-model-invocation`, so the model never picks them on its own and they run only when
 invoked by name: `quality-kit` and its sub-skills `analyze-structure`, `setup-guardrails`, `architecture-tests`,
-`analyzer-fix-example`, `add-module`, `add-slice` and `write-analyzer`, and `solution-map`.
+`analyzer-fix-example`, `add-module`, `add-slice` and `write-analyzer`, `solution-map`, and `factory-start`,
+which starts the Factory UI and gives its link.
 
 ## Layout
 
