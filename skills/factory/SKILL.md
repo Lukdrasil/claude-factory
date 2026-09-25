@@ -1,6 +1,6 @@
 ---
 name: factory
-description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, approve and done for the human gates. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo or init against it.
+description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, onboard for the session that reports how ready an added repository is, approve and done for the human gates. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo, onboard or init against it.
 ---
 
 # factory
@@ -14,7 +14,8 @@ the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktre
 | subcommand | what it does | reference |
 |---|---|---|
 | `init` | the factory root, `state/`, `WORK_DIR` in the settings, then add-repo and doctor for this clone | `references/init.md` |
-| `add-repo` | registers a clone in `state/repos.yml` and seeds `repos/<key>/toolset.md` | `references/add-repo.md` |
+| `add-repo` | registers a clone in `state/repos.yml` and seeds `repos/<key>/toolset.md`; with `--clone <url>` it clones the repository into the clones directory first | `references/add-repo.md` |
+| `onboard` | the onboarding session the CEO starts in a registered clone (`FACTORY_ROLE=onboard`): a report of how ready the repository is, in `repos/<key>/onboarding.md`, with the proposals the human turns into requests; it changes nothing | `references/onboard.md` |
 | `doctor` | a report over registration, toolset, the tools on PATH and `docs/architecture/`, with a fix per missing line | `references/doctor.md` |
 | `list` | every task with its status, archetype, tier, repo and owner; `--repo` and `--status` narrow it | `references/list.md` |
 | `curate` | the proposal queues one proposal at a time, applied through `curate-apply.sh`, every decision a commit | `references/curate.md` |

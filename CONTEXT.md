@@ -17,3 +17,14 @@ The terms of this repo, one line each. A term here means exactly this in code, s
   context. Avoid: modal, sidebar.
 - **decision mode**: the drawer of a task with an open ask: at least 60% of the viewport wide, the asks first,
   everything else behind one collapsed "Task details". Avoid: ask mode, focus mode.
+
+## Repositories
+
+- **onboarding session**: the session `session-monitor.sh --step onboard --scope <key>` starts in a registered
+  clone (role `onboard`, unit `onboard-<key>`), which writes its onboarding report and changes nothing else.
+  Avoid: initialization lead, onboarding lead.
+- **onboarding report**: `<state>/repos/<key>/onboarding.md`, the onboarding session's one write: a status, a
+  summary, one line per check and the proposals the human turns into requests. Avoid: readiness report, audit.
+- **clones directory**: the absolute `clones:` directory of `<state>/factory.yml`, where `factory-add-repo.sh
+  --clone` puts `<clones>/<key>`; never inside `WORK_DIR`, which holds the task worktrees. Avoid: repos dir,
+  work dir.
