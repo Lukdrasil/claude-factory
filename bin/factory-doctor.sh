@@ -350,8 +350,11 @@ check_repo_mr_class() { # <key>
   else
     mb=$(yml_field "$1" default_branch); mb=${mb:-main}
     if ! gh api "repos/$mp" >/dev/null 2>&1; then step "$id" failing "MR class of $1 not read: gh api repos/$mp failed" "check that $mu exists and gh reaches it"; return 0; fi
+    # block-mr.sh's rule: a workflow its branch filter never starts reports nothing, so on GitHub a skipped run
+    # never counts (skipped_counts_as_success: false) and a required check makes the repo class C
     if gh api "repos/$mp/branches/$mb/protection/required_status_checks" >/dev/null 2>&1; then
-      step "$id" done "$1 is class B: $mb requires status checks, a skipped check counts"
+      step "$id" failing "$1 is class C: $mb requires status checks and a skipped run never counts on GitHub, so every block PR runs the full workflows" \
+        "filter the workflows of $1 on $mb (branches: [$mb]) so block PRs start none, or drop the required status check on the work branch (feat/*)"
     else
       step "$id" done "$1 is class A: $mb requires no status checks"
     fi
@@ -674,7 +677,14 @@ if [ -f "$plugin/bin/memory-budget.sh" ]; then
   if out=$(sh "$plugin/bin/memory-budget.sh" --all --state "$state" 2>&1); then
     over=$(printf '%s\n' "$out" | awk '$0 == "over budget" { print scope; next } { scope = $1 }')
     if [ -n "$over" ]; then
-      for scope in $over; do missing "memory over budget in $scope" "run factory consolidate $scope"; done
+      # consolidate takes repo:, global and agent: scopes; a repo-agent scope is judged by its daily pass
+      for scope in $over; do
+        case "$scope" in
+          repo-agent:*) missing "memory over budget in $scope" \
+            "run its daily pass, /claude-factory:memory-daily $scope, which the CEO offers" ;;
+          *) missing "memory over budget in $scope" "run factory consolidate $scope" ;;
+        esac
+      done
     else
       ok "memory within budget"
     fi
