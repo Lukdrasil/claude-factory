@@ -186,6 +186,16 @@ has "a rerun of init --from has nothing to do" '^nothing to do' "$out"
 out=$(sh "$bin/factory-init.sh" --root "$tmp/h" --settings "$settings3" --spawn manual --from "$tmp/other.git" 2>&1); rc=$?
 code "init --from over a state repo of another origin exits 1" 1 "$rc"
 has "it names the origin it found" "origin $tmp/remote\.git" "$out"
+# F12: the credentials of an http(s) --from url are never printed (git itself redacts them in its own messages)
+out=$(GIT_TERMINAL_PROMPT=0 sh "$bin/factory-init.sh" --root "$tmp/h" --settings "$settings3" --spawn manual \
+  --from "http://u:tok-SECRET1@127.0.0.1:1/x.git" 2>&1); rc=$?
+code "init --from a credentialed url over another origin exits 1" 1 "$rc"
+has "that refusal names the url without its credentials" 'not http://127\.0\.0\.1:1/x\.git$' "$out"
+out=$(GIT_TERMINAL_PROMPT=0 sh "$bin/factory-init.sh" --root "$tmp/k" --settings "$settings3" --spawn manual \
+  --from "https://tok-SECRET2@127.0.0.1:1/x.git" 2>&1); rc=$?
+code "init --from a credentialed url that cannot be cloned exits 1" 1 "$rc"
+has "that failure names the url without its credentials" 'cannot clone https://127\.0\.0\.1:1/x\.git:' "$out"
+case "$out" in *SECRET*) code "no credential of a --from url is printed" 0 1 ;; *) code "no credential of a --from url is printed" 0 0 ;; esac
 
 # --- init and add-repo refresh <ui home>/setup/doctor.json ----------------------------------------------------------
 rm -f "$FACTORY_UI_HOME/setup/doctor.json"
