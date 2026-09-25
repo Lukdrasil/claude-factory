@@ -394,9 +394,11 @@ is 'a parent has the fields of the contract, in order'        "$(j 'Object.keys(
 is 'the parents are the tasks of the request'                 "$(j 'b.parents.map(p=>p.id).join(" ")')" 'T-CF-1 T-ECS-1'
 is 'a parent carries its goal and acceptance'                 "$(j 'const p=b.parents[1];[p.repo,p.priority,p.status,p.goal,p.acceptance].join("|")')" \
   'ecs|P1|in_progress|feat(ecs): export invoices to the ledger|`make test` passes.'
-is 'a block has the fields of the contract, in order'         "$(j 'Object.keys(b.parents[1].blocks[0]).join(",")')" 'id,status,goal,acceptance'
+is 'a block has the fields of the contract, in order'         "$(j 'Object.keys(b.parents[1].blocks[0]).join(",")')" 'id,status,tier,goal,acceptance,specCritic'
 is 'the blocks carry their acceptance, empty when none'       "$(j 'b.parents[1].blocks.map(k=>k.id+":"+k.acceptance).join("|")')" \
   'T-ECS-1-01:The cursor test passes.|T-ECS-1-02:'
+is 'a red block carries its ## Spec critic line, a green one ""' "$(j 'b.parents[1].blocks.map(k=>k.id+":"+k.tier+":"+k.specCritic).join("|")')" \
+  'T-ECS-1-01:green:|T-ECS-1-02:red:OK - 0 blocking, 0 suggestions (2026-09-25)'
 is 'a parent without blocks has none'                         "$(j 'b.parents[0].blocks')" '[]'
 is 'GET /api/requests/R-20260920-1 (archived) is 200'         "$(api /api/requests/R-20260920-1)" 200
 is 'the archived request shows its archived parent and block' "$(j '[b.archived,b.parents[0].id,b.parents[0].acceptance,b.parents[0].blocks.map(k=>k.id).join("+")].join("|")')" \

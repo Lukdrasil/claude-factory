@@ -79,6 +79,7 @@ ul { margin: 0; padding-left: 18px; }
 .ck .mark { text-align: center; color: var(--muted); font-weight: 700; }
 .ck .mark.on { color: var(--ok); }
 .ck .acc { display: block; font: 11px/1.5 var(--mono); color: var(--muted); font-weight: 400; white-space: pre-wrap; }
+.ck .acc.warn { color: var(--warn); }
 .steps { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
 .steps li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
 .steps li.missing { border-color: var(--warn); }

@@ -146,6 +146,28 @@ public sealed class StateReaderTests : IDisposable
     }
 
     [Fact]
+    public void A_block_carries_its_tier_and_the_first_line_under_spec_critic_empty_without_one()
+    {
+        Fixture();
+        Write(_state, "repos/ecs/tasks/T-ECS-1-03-red.md",
+            "---\nid: T-ECS-1-03\nrepo: ecs\nstatus: draft\ntier: red\narchetype: feature\n---\n\n# Goal\nfeat: T-ECS-1-03\n\n"
+            + "## Spec critic\n\nneeds additions before approve - 2 blocking, 1 suggestions (2026-09-25)\nA second line is not the verdict.\n\n## Attempts\n");
+        Write(_state, "repos/ecs/tasks/T-ECS-1-04-red.md",
+            "---\nid: T-ECS-1-04\nrepo: ecs\nstatus: draft\ntier: red\narchetype: feature\n---\n\n# Goal\nfeat: T-ECS-1-04\n\n## Spec critic\n\n## Attempts\n");
+
+        var blocks = State.Request("R-20260925-1")!.Parents.Single(p => p.Id == "T-ECS-1").Blocks;
+
+        Assert.Equal(
+            [
+                ("T-ECS-1-01", "green", ""),
+                ("T-ECS-1-02", "green", ""),
+                ("T-ECS-1-03", "red", "needs additions before approve - 2 blocking, 1 suggestions (2026-09-25)"),
+                ("T-ECS-1-04", "red", ""),
+            ],
+            blocks.Select(b => (b.Id, b.Tier, b.SpecCritic)));
+    }
+
+    [Fact]
     public void A_request_carries_its_destination_notes_terms_and_fog_rendered()
     {
         Fixture();

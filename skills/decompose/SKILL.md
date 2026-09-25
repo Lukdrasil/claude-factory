@@ -50,12 +50,15 @@ human's job. Every question to the human, a refusal to resolve included, goes th
    plan has a `task:`, run `sh ${CLAUDE_PLUGIN_ROOT}/bin/dag-check.sh <task> --state <state clone>` over the
    written blocks before step 5: a refusal (a block that claims no path, two blocks claiming one path with no
    edge between them) is a plan edit and a rerun, never a cut shown to the human.
-5. Show the human one line per block: id, title, tier, archetype, depends_on, file path. For a `red` block,
-   say that `spec-critic` comes before the flip to `ready`.
+5. For each `red` block, run the `spec-critic` subagent with its file path and finish its steps 4 and 5
+   (`${CLAUDE_PLUGIN_ROOT}/skills/spec-critic/SKILL.md`) here: the report goes to the human through
+   `_shared/ask.md`, and its verdict line into the block's `## Spec critic`, written after any agreed edit.
+   Then show the human one line per block: id, title, tier, archetype, depends_on, file path, and for a red
+   block that line.
 6. Recommend closing the source task; that flip is a human's.
 
-**Done when** every block exists as `status: draft`, `repos/<repo-key>/verdicts/<slug>.md` is gone from the
-state repo, and the human has the list.
+**Done when** every block exists as `status: draft`, every `red` block has its `## Spec critic` line,
+`repos/<repo-key>/verdicts/<slug>.md` is gone from the state repo, and the human has the list.
 
 Never write `status: ready`, never fill `plan_hash`, `owner` or `mr_url`, never edit another task, never
 commit by hand, never change a proposal's tier, archetype, complexity, acceptance, docs or steps: the grill decided
