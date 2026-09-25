@@ -1,6 +1,6 @@
 #!/bin/sh
-# The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, five
-# more sessions, an ask of every kind, a grill ask of s6 filed under another task and one naming none, and a drawn
+# The pipeline page in a browser: the fixture of tests/ui-fixture.sh, extended with a block, two more tasks, seven
+# more sessions, an ask of every kind, a gone setup session, a grill ask of s6 filed under another task and one naming none, and a drawn
 # visual of s2, served through ui-up.sh and driven by tests/ui-page.test.js through the fixture's `browser`, as the
 # host uid so the asks it writes mid-run belong to the host.
 # The browser checks print their own PASS and FAIL lines. Without Docker it prints `SKIP ui-page: no docker`.
@@ -46,6 +46,9 @@ session --session s3 --flow solve --task T-003 --step 'Step 9 of 16: approve and
 session --session s4 --pane w1:p4 --flow doctor --task none --step 'doctor'
 session --session s5 --pane w1:p5 --flow solve --task T-003 --step 'Step 9 of 16: approve and claim T-003'
 session --session s6 --pane w1:p6 --flow grill --task T-001 --step 'Step 4 of 16: grill T-001'
+session --session s7 --pane w1:p7 --flow add-repo --task none --step 'add-repo ecs'
+session --session s8 --pane w1:p8 --flow init --task none --step 'Step 2 of 4: repos'
+printf 'gone\n' > "$ui/sessions/s7/agent"
 
 put() { # <sid> <ask> <task> <flow> <mtime>, stdin: the markdown
   { printf -- '---\nask: %s\ntask: %s\nflow: %s\nstep: fixture\nstatus: open\n---\n\n' "$2" "$3" "$4"; cat; } \

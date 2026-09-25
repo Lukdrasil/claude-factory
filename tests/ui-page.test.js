@@ -177,7 +177,7 @@ async function stage(q, button, text) {
     ok(text === 'This page needs its access link. Run ui-up.sh and open the link it prints.', `page: ${JSON.stringify(text)}`);
   });
 
-  await check('with no task in the state repo the grid reads No tasks yet. Start one with /claude-factory:factory new.', async () => {
+  await check('with no task in the state repo the grid reads No tasks yet. Start one with New request above.', async () => {
     const p = await context.newPage();
     await p.route('**/api/board', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
     await p.goto(`${BASE}/#${TOKEN}`);
@@ -186,7 +186,7 @@ async function stage(q, button, text) {
       return t && t;
     });
     await p.close();
-    ok(text === 'No tasks yet. Start one with /claude-factory:factory new.', `grid: ${JSON.stringify(text)}`);
+    ok(text === 'No tasks yet. Start one with New request above.', `grid: ${JSON.stringify(text)}`);
   });
 
   await check('with no state repo the setup chip reads No state repo: run factory init', async () => {
@@ -209,6 +209,15 @@ async function stage(q, button, text) {
       return ids.length >= 4 && ids;
     });
     ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003', `rows: ${ids.join(' ')}`);
+  });
+
+  await check('without a CEO session the New request box names the command that starts one, and its text, priority and Send are disabled', async () => {
+    const box = page.locator('[data-intake]');
+    await until('the New request box', () => box.isVisible());
+    const text = (await box.innerText()).replace(/\s+/g, ' ');
+    ok(text.includes("claude '/claude-factory:factory ceo'"), `box: ${text}`);
+    const controls = await box.locator('textarea, select, button').evaluateAll((els) => els.map((e) => `${e.tagName}${e.disabled ? '' : ' enabled'}`));
+    ok(controls.join(' ') === 'TEXTAREA SELECT BUTTON', `controls: ${controls.join(' ')}`);
   });
 
   await check('every /api request carries the token from the fragment as X-Factory-Token', async () => {
@@ -256,6 +265,19 @@ async function stage(q, button, text) {
   await check('the setup strip chip reads 1 to answer, the doctor notice d1', async () => {
     const text = await until('the setup chip', async () => (await page.locator('.strip .chip.warn', { hasText: /^\d+ (waiting|to answer)$/ }).innerText()).trim());
     ok(text === '1 to answer', `chip: ${JSON.stringify(text)}`);
+  });
+
+  await check('the setup strip labels each live setup session by its flow, task and step, not its id, and leaves out the gone s7', async () => {
+    const chips = await page.locator('.strip [data-session]').evaluateAll((cs) => cs.map((c) => `${c.dataset.session}=${c.textContent.trim()}`));
+    ok(chips.join(' | ') === 's4=doctor | s8=init · Step 2 of 4: repos', `chips: ${chips.join(' | ')}`);
+  });
+
+  await check('every step header of the grid carries a short title, 8 cut the check of the cut and its wave plan', async () => {
+    const titles = await page.locator('table thead th').evaluateAll((ths) => ths.slice(2).map((th) => `${th.textContent.trim().split(/\s+/)[0]}=${th.title}`));
+    const bare = titles.filter((t) => /=$/.test(t));
+    ok(titles.length && !bare.length, `without a title: ${bare.join(' ')}`);
+    const cut = titles.find((t) => t.startsWith('8='));
+    ok(/dag-check/.test(cut) && /wave plan/.test(cut), `8 cut: ${cut}`);
   });
 
   await check('the row of T-002 marks step 11 as current', async () => {
@@ -878,6 +900,49 @@ async function stage(q, button, text) {
     ok(!wide.length, wide.join(', '));
   });
   await org.close();
+
+  // --- the intake: a New request box on the Pipeline tab that sends the request to the CEO as a free message --------
+  const posted = [];
+  const intake = await context.newPage();
+  await intake.route('**/api/org', (r) => r.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ...ORG, ceo: { sid: 's-ceo', pane: 'w1:p9' } }) }));
+  await intake.route('**/api/answers/s-ceo', (r) => {
+    posted.push(r.request().postDataJSON());
+    return r.fulfill({ status: 201, contentType: 'application/json', body: '{}' });
+  });
+  await intake.goto(`${BASE}/#${TOKEN}`);
+  const box = intake.locator('[data-intake]');
+  const request = 'Export the invoices to the ledger, every night';
+
+  await check('with a CEO the New request box offers P0 to P3 with P2 selected, enabled, and no command to start the CEO', async () => {
+    await until('the enabled box', () => box.locator('textarea').isEnabled());
+    const options = await box.locator('select option').evaluateAll((os) => os.map((o) => `${o.textContent.trim()}${o.selected ? '*' : ''}`));
+    ok(options.join(' ') === 'P0 P1 P2* P3', `options: ${options.join(' ')}`);
+    ok(!(await box.innerText()).includes('factory ceo'), `box: ${await box.innerText()}`);
+  });
+
+  await check('the text typed in New request stays, focused, across a refresh of the page\'s data', async () => {
+    await box.locator('textarea').fill(request);
+    await box.evaluate((el) => { el.dataset.old = '1'; });
+    writeAtomic(path.join(UI, 'sessions/s1/relay'), '1 blocked\n');
+    await until('a re-render', async () => (await intake.locator('[data-intake]').getAttribute('data-old')) === null, 3000);
+    const got = await intake.evaluate(() => ({
+      value: document.querySelector('[data-intake] textarea').value,
+      focused: document.activeElement === document.querySelector('[data-intake] textarea'),
+    }));
+    ok(got.value === request && got.focused, `after the refresh: ${JSON.stringify(got)}`);
+  });
+
+  await check('Send of New request posts request: <text>, priority P1 to the CEO as a free message and says it was sent', async () => {
+    await box.locator('select').selectOption('P1');
+    await box.getByRole('button', { name: /^send$/i }).click();
+    await until('the post to the CEO', () => posted.length);
+    const want = { ask: '', text: `request: ${request}, priority P1` };
+    ok(JSON.stringify(posted) === JSON.stringify([want]), `posted: ${JSON.stringify(posted)}`);
+    await until('the sent note', async () => (await box.innerText()).includes(`Sent to the CEO: ${want.text}`));
+    ok((await box.locator('textarea').inputValue()) === '', 'the text stays after the send');
+  });
+  await intake.close();
 
   await browser.close();
   process.exit(failed);
