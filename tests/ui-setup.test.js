@@ -286,8 +286,28 @@ async function tabs(page) {
     ok(!posted.length, 'something was posted');
   });
 
-  await check('with /api/setup of a server before the wave-2 fields the Setup and Memory tabs render empty, with no error', async () => {
+  await check('the Setup tab over the real server lists the steps of the doctor.json init wrote, in its order and states', async () => {
+    const want = JSON.parse(fs.readFileSync(path.join(UI, 'setup', 'doctor.json'), 'utf8')).steps.map((s) => `${s.id}=${s.state}`);
     const p = await context.newPage();
+    await fresh(p);
+    await until('the Setup tab', () => p.getByRole('tab', { name: 'Setup' }).isVisible());
+    await p.getByRole('tab', { name: 'Setup' }).click();
+    const got = await until('the steps', async () => {
+      const s = await p.locator('[data-steps] [data-step]').evaluateAll((li) => li.map((l) => `${l.dataset.step}=${l.dataset.state}`));
+      return s.length && s;
+    }).finally(() => p.close());
+    ok(want.length > 0, 'doctor.json holds no step');
+    ok(got.join(' ') === want.join(' '), `steps: ${got.join(' ')}, doctor.json: ${want.join(' ')}`);
+  });
+
+  await check('with /api/setup of a server before the wave-2 fields and no /api/org the Setup and Memory tabs render empty, with no error', async () => {
+    const p = await context.newPage();
+    await p.route('**/api/setup', async (r) => {
+      const res = await r.fetch();
+      const { steps, doctorAt, capacity, passes, ...old } = await res.json();
+      await r.fulfill({ response: res, json: old });
+    });
+    await p.route('**/api/org', (r) => r.fulfill({ status: 404, body: '' }));
     await fresh(p);
     await until('the Setup tab', () => p.getByRole('tab', { name: 'Setup' }).isVisible());
     await p.getByRole('tab', { name: 'Setup' }).click();

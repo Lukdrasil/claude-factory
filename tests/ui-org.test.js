@@ -1,9 +1,13 @@
-// The browser half of tests/ui-org.test.sh, run by node in the Playwright container against BASE with TOKEN. The
-// /api/org answers are the browser's own routes in the shape of the wave-2 contract. Every check prints one PASS or
-// FAIL line; the exit code is 1 when any failed.
+// The browser half of tests/ui-org.test.sh, run by node in the Playwright container against BASE with TOKEN, the UI
+// home mounted at UI. Without UI/org-phase the /api/org answers are the browser's own routes in the shape of the
+// wave-2 contract; with `real` in it the page runs over the server of the fixture's org_state, unmocked. Every check
+// prints one PASS or FAIL line; the exit code is 1 when any failed.
 const { chromium } = require('playwright-core');
+const fs = require('fs');
+const path = require('path');
 
-const { BASE, TOKEN } = process.env;
+const { BASE, TOKEN, UI } = process.env;
+const REAL = fs.existsSync(path.join(UI, 'org-phase')) && fs.readFileSync(path.join(UI, 'org-phase'), 'utf8').trim() === 'real';
 let failed = 0;
 
 async function check(what, fn) {
@@ -66,11 +70,104 @@ async function orgTab(context, body) { // a new page whose /api/org answers body
 }
 
 const rows = (p, what) => p.locator(`[data-org] [data-${what}] tbody tr`).evaluateAll((trs) => trs.map((tr) => tr.textContent.replace(/\s+/g, ' ').trim()));
+const capacity = (p) => p.locator('[data-capacity] [data-role]').allInnerTexts().then((t) => t.map((s) => s.replace(/\s+/g, ' ').trim()).join(', '));
+
+async function tab(p, name) {
+  await p.getByRole('tab', { name }).click();
+  await until(`the ${name} tab`, async () => (await p.getByRole('tabpanel').getAttribute('aria-label')) === name);
+}
+
+async function real(context) {
+  const p = await context.newPage();
+  await p.goto(`${BASE}/#${TOKEN}`);
+
+  await check('real: the grid holds the tasks of R-20260925-1 under its header row, T-ECS-1 and its blocks before T-CF-1', async () => {
+    const seq = await until('the rows', async () => {
+      const s = await p.locator('table').first().evaluate((table) => [...table.querySelectorAll('tbody tr')].map((r) => (r.querySelector('th[scope="rowgroup"]')
+        ? `req:${(r.textContent.match(/R-\d+-\d+/) || ['none'])[0]}` : (r.querySelector('.id') || { textContent: '?' }).textContent.trim())));
+      return s.length >= 5 && s;
+    });
+    ok(seq.join(' ') === 'req:R-20260925-1 T-ECS-1 T-ECS-1-01 T-ECS-1-02 T-CF-1', `rows: ${seq.join(' ')}`);
+    const head = await p.locator('th[scope="rowgroup"]').first().innerText();
+    ok(head.includes('P1') && /grilling/.test(head) && head.includes('Invoices reach the ledger every night.'), `header: ${head}`);
+  });
+
+  await check('real: each parent row carries the priority and repo of /api/board, T-CF-1 without one at P2', async () => {
+    const got = await p.locator('table').first().evaluate((table) => {
+      const prio = [...table.querySelectorAll('thead th')].findIndex((th) => th.textContent.trim() === 'Prio');
+      return [...table.querySelectorAll('tbody tr')].filter((r) => !r.querySelector('th') && !r.classList.contains('sub'))
+        .map((r) => `${r.querySelector('.id').textContent.trim()}:${r.querySelector('.id').nextElementSibling?.textContent.trim()}:${r.children[prio]?.textContent.trim()}`);
+    });
+    ok(got.join(' ') === 'T-ECS-1:ecs:P1 T-CF-1:claude-factory:P2', `rows: ${got.join(' ')}`);
+  });
+
+  await check('real: the capacity strip counts the leases capacity.sh took, the uncapped architecture-auditor as 1/-', async () => {
+    const want = 'sessions 1/10, repo-lead 1/3, scout 1/8, implementer 1/4, architecture-auditor 1/-';
+    let got = '';
+    await until('the capacity strip', async () => (got = await capacity(p)) === want).catch(() => {});
+    ok(got === want, `strip: ${got}`);
+  });
+
+  await check('real: the Org tab shows the lead of T-ECS-1, every lease and the CEO session s-ceo in pane w1:p9', async () => {
+    await tab(p, 'Org');
+    const leads = await rows(p, 'leads');
+    ok(leads.length === 1 && ['T-ECS-1', 'ecs', 'R-20260925-1', 'P1', 'in_progress', 'T-ECS-1-lead'].every((s) => leads[0].includes(s)), `leads: ${leads.join(' | ')}`);
+    ok((await rows(p, 'leases')).length === 5, `leases: ${(await rows(p, 'leases')).join(' | ')}`);
+    const ceo = await p.locator('[data-org] [data-ceo]').innerText();
+    ok(/\bs-ceo\b/.test(ceo) && /w1:p9/.test(ceo), `ceo: ${ceo}`);
+  });
+
+  await check('real: a lease capacity.sh takes, which never reaches the event stream, shows in the Org tab within 10 s', async () => {
+    fs.writeFileSync(path.join(UI, 'lease-now'), 'go\n');
+    let got = '';
+    await until('scout 2/8', async () => (got = await capacity(p)).includes('scout 2/8'), 10000).catch(() => {});
+    ok(got.includes('scout 2/8'), `capacity: ${got}`);
+  });
+
+  await check('real: the Map tab shows the destination of R-20260925-1 and its open tickets 02, 04 and 05, 02 on the frontier', async () => {
+    await tab(p, 'Map');
+    const t = await until('the open tickets', async () => {
+      const x = await p.locator('[data-map] [data-col="open"] [data-ticket]').evaluateAll((ts) => ts.map((e) => `${e.dataset.ticket}${/frontier/.test(e.textContent) ? '*' : ''}`));
+      return x.length && x;
+    });
+    ok(t.join(' ') === '02* 04 05', `open: ${t.join(' ')}`);
+    ok((await p.locator('[data-map] .dest').innerText()).includes('Invoices reach the ledger every night.'), 'no destination');
+  });
+
+  await check('real: the Plan checklist lists T-CF-1 under claude-factory, then T-ECS-1 and its blocks with their acceptance under ecs', async () => {
+    await tab(p, 'Plan');
+    const got = await until('the checklist', async () => p.locator('[data-checklist]').evaluate((ck) => ({
+      repos: [...ck.querySelectorAll('[data-plan-repo]')].map((r) => r.dataset.planRepo).join(' '),
+      items: [...ck.querySelectorAll('[data-item]')].map((li) => li.dataset.item).join(' '),
+      block: ck.querySelector('[data-item="T-ECS-1-01"]')?.textContent || '',
+    })));
+    ok(got.repos === 'claude-factory ecs', `repos: ${got.repos}`);
+    ok(got.items === 'T-CF-1 T-ECS-1 T-ECS-1-01 T-ECS-1-02', `items: ${got.items}`);
+    ok(got.block.includes('The cursor test passes.'), `block: ${got.block}`);
+  });
+
+  await check('real: Start daily of global posts an empty ask the server writes as the message 1-msg.txt of s-ceo', async () => {
+    await tab(p, 'Memory');
+    const row = p.locator('[data-passes] tbody tr', { has: p.locator('td:first-child', { hasText: /^\s*global\s*$/ }) });
+    await until('the row of global', () => row.isVisible());
+    await row.getByRole('button', { name: /start daily/i }).click();
+    const file = path.join(UI, 'sessions', 's-ceo', 'answers', '1-msg.txt');
+    const text = await until('the message file', () => fs.existsSync(file) && fs.readFileSync(file, 'utf8'));
+    ok(text === 'start the daily pass for global', `message: ${JSON.stringify(text)}`);
+    await until('the sent note', async () => /Sent to the CEO: start the daily pass for global/.test(await p.locator('[data-memory-tab]').innerText()));
+  });
+  await p.close();
+}
 
 (async () => {
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   context.setDefaultTimeout(3000);
+  if (REAL) {
+    await real(context);
+    await browser.close();
+    process.exit(failed);
+  }
 
   await check('the page module org.js exports renderOrg', async () => {
     const p = await context.newPage();
