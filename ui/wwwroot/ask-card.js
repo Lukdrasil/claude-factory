@@ -44,6 +44,22 @@ export function stateOf(ask) {
   return ask.sent ? 'sent' : 'open';
 }
 
+const PARSED = [[/^explore (Q\d+)$/, 'explore'], [/^(Q\d+) more$/, 'more'], [/^(Q\d+) defer$/, 'defer'], [/^(Q\d+) \? (.*)$/, 'discuss'], [/^(Q\d+) (.*)$/, 'own']];
+
+/** The items of a sent answer, `compose` read back, an option's key a pick; null for a line of no question of the view. */
+function itemsOf(view, text) {
+  if (view.kind === 'notice') return { notice: { kind: 'own', text } };
+  const items = {};
+  for (const line of text.split('\n').filter((l) => l.trim())) {
+    const [m, kind] = PARSED.map(([re, k]) => [line.match(re), k]).find(([hit]) => hit) ?? [];
+    const q = m && view.questions.find((x) => x.q === m[1]);
+    if (!q) return null;
+    const t = m[2] ?? '';
+    items[q.q] = kind === 'own' && q.options.some((o) => o.key === t) ? { kind: 'pick', text: t } : { kind, text: t };
+  }
+  return items;
+}
+
 /** The text the relay types for the staged items: one item per line in question order, or a notice's own answer, else `ok`. */
 export function compose(view, items) {
   if (view.kind === 'notice') return items.notice?.text || 'ok';
@@ -107,13 +123,16 @@ function preview(view, items) {
 /**
  * One ask as a card from its ask view: a round, a confirm or a notice in its one state of `stateOf`, with the relay's
  * held reason while it waits. Only an open ask of a session in herdr can be answered, every other card is read-only:
- * staged items show in words and compose into the `<output>` that Send posts.
+ * staged items show in words and compose into the `<output>` that Send posts. A sent or answered card shows the
+ * `answer` it was sent in words, its picks pressed, or as text when it does not read back.
  */
 export function renderAsk(ask, given) {
   const { view } = ask;
   const state = stateOf(ask);
   const live = state === 'open' && !!ask.pane;
-  const staged = live ? given : { items: {}, editing: {}, drafts: {} };
+  const answer = (state === 'sent' || state === 'answered') && ask.answer ? ask.answer : null;
+  const sent = answer && itemsOf(view, answer);
+  const staged = live ? given : { items: sent || {}, editing: {}, drafts: {} };
   const n = view.questions.length;
   const el = document.createElement('article');
   el.className = `ask ${state}`;
@@ -127,6 +146,7 @@ export function renderAsk(ask, given) {
   if (!ask.pane) h += '<p class="note">This session runs outside herdr, so answer it in its terminal.</p>';
   if (view.preamble) h += `<div class="md">${view.preamble}</div>`;
   h += view.questions.map((q) => question(q, view.kind, staged, live)).join('');
+  if (answer) h += `<div class="note" data-sent><b>Sent:</b><ul class="preview">${sent ? preview(view, sent) : `<li><code>${esc(answer)}</code></li>`}</ul></div>`;
   if (live && view.kind === 'notice') h += `<section class="q" data-q="notice">${answerBox('notice', staged, [['own', 'Write my answer']])}</section>`;
   if (live) {
     const text = compose(view, staged.items);

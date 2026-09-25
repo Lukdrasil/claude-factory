@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -6,7 +7,7 @@ public sealed record DoctorFile(string? At, string? Root, List<DoctorFileStep>? 
 
 public sealed record DoctorFileStep(string? Id, string? State, string? Detail, string? Fix);
 
-public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Held, AskView View);
+public sealed record AskInfo(string Ask, string Task, string Flow, string Step, string Status, DateTime Modified, string Body, bool Sent, string? Answer, string? Held, AskView View);
 
 public sealed record VisualInfo(string Row, string Version, string Status);
 
@@ -175,37 +176,47 @@ public sealed partial class UiHome(string root)
 
     public static bool IsId(string? value) => value is not null && Id().IsMatch(value);
 
-    static List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> AnswerFiles(string answers) =>
+    static List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen, string Text)> AnswerFiles(string answers) =>
         Directory.Exists(answers)
             ? Directory.EnumerateFiles(answers, "*.txt")
                 .Select(f => (File: f, Match: Answer().Match(Path.GetFileName(f))))
                 .Where(a => a.Match.Success)
+                .Select(a => (File: a.File, a.Match, Text: File.ReadAllText(a.File)))
                 .Select(a => (
                     a.Match.Groups[1].Value,
                     a.Match.Groups[2].Value,
                     File.GetLastWriteTimeUtc(a.File),
-                    KeepsOpen().IsMatch(File.ReadAllText(a.File).Trim())))
+                    KeepsOpen().IsMatch(a.Text.Trim()),
+                    a.Text))
                 .ToList()
             : [];
 
     /// <summary>One ask of a session; its <c>task</c> is its own, or its session's <paramref name="task"/> when it names none,
-    /// so the grid and the drawer count it under one task.</summary>
-    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen)> answers, string[] held, string task)
+    /// so the grid and the drawer count it under one task. Its <c>answer</c> is the text of its last answer that closes it:
+    /// of those newer than the ask while it is open, of all that name it once its session closed it, since closing rewrites the ask.</summary>
+    static AskInfo ReadAsk(string file, List<(string Seq, string Ask, DateTime Modified, bool KeepsOpen, string Text)> answers, string[] held, string task)
     {
         var text = File.ReadAllText(file);
         var fields = Frontmatter.Parse(text);
         var id = fields.GetValueOrDefault("ask", Path.GetFileNameWithoutExtension(file));
         var modified = File.GetLastWriteTimeUtc(file);
         var mine = answers.Where(a => a.Ask == id && a.Modified > modified).ToList();
+        var status = fields.GetValueOrDefault("status", "");
+        var answer = (status == "open" ? mine : answers.Where(a => a.Ask == id))
+            .Where(a => !a.KeepsOpen)
+            .OrderBy(a => long.Parse(a.Seq, CultureInfo.InvariantCulture))
+            .Select(a => a.Text)
+            .LastOrDefault();
         return new AskInfo(
             id,
             fields.GetValueOrDefault("task", "") is { Length: > 0 } own ? own : task,
             fields.GetValueOrDefault("flow", ""),
             fields.GetValueOrDefault("step", ""),
-            fields.GetValueOrDefault("status", ""),
+            status,
             modified,
             Frontmatter.Body(text),
             mine.Any(a => !a.KeepsOpen),
+            answer,
             held is [var seq, var reason] && mine.Any(a => a.Seq == seq) ? reason : null,
             AskParser.Parse(Frontmatter.Body(text)));
     }

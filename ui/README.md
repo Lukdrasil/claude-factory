@@ -21,7 +21,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 |---|---|
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh`, with its `request`, `priority` and `steps` (the solve steps its state records as done, read the way `bin/solve-next.sh` decides them) |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
-| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
+| `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, `answer` (the text of its last answer that closes it, null without one), the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes`: every scope with a `passes.yml`, or with work for a pass and none yet (`daily` and `weekly` read `never`), and the pass it is `due` for, `daily`, `weekly`, `both` or `none`, by the rule of `pass-stamp.sh --due` |
 | `GET /api/org` | the `capacity` of sessions and of every role, `used` and `cap`, the `leases` under `.capacity/`, one of the `leads` per `repo-lead` lease, and the `ceo` session or null |
 | `GET /api/requests` | every request map, live and archived, newest first: `id`, `status`, `destination`, `priority`, `parents`, `archived` |
@@ -105,7 +105,8 @@ exactly as the answer file will. Staged answers and drafts stay in the tab's `se
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
 the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is
-read-only, its options disabled, with no answer box and no Send. The relay's other held reasons show as a note
+read-only, its options disabled, with no answer box and no Send. A sent or answered card shows under Sent: the
+`answer` it was sent, in words like Will be sent:, its picked options pressed. The relay's other held reasons show as a note
 under the header of an open or sent card. The card of a session outside herdr shows no answer box.
 
 A drawer with an open ask opens in decision mode: at least 60% of the viewport wide, the asks first with the
