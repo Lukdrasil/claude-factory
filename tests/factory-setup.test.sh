@@ -326,7 +326,10 @@ printf 'on:\n  pull_request:\n    branches: [main]\n  push:\n    branches:\n    
 djson
 has "a workflow filtered on the default branch is done" '^done ' "$(step repo:beta:workflows)"
 GHSTUB_REQUIRED=1 djson
-has "a GitHub repo with required checks is class B" '^done .*class B' "$(step repo:beta:mr-class)"
+# block-mr.sh writes skipped_counts_as_success: false for every GitHub repo, so required checks make it class C
+has "a GitHub repo with required checks is class C, failing" '^failing .*class C' "$(step repo:beta:mr-class)"
+has "its fix filters the workflows or drops the required check on the work branch" \
+  '\| .*filter .*workflows.* on main.*drop the required .*check.* work branch' "$(step repo:beta:mr-class)"
 
 sed -i 's/^gamma: \(.*\)}$/gamma: \1, alias: ALP}/' "$st/repos.yml"
 djson
@@ -353,6 +356,20 @@ has "the text report has python3" '^ok: python3' "$out"
 has "the text report has the herdr version" '^ok: herdr 0\.8\.2' "$out"
 has "the text report has the toast delivery" '^ok: .*toast' "$out"
 has "the text report has this clone's alias" '^ok: .*alias ALP' "$out"
+
+# --- memory over budget: consolidate takes repo: and global scopes, a repo-agent scope gets the daily pass -----------
+for d in repos/alpha/memory repos/alpha/agents/scout/memory; do
+  mkdir -p "$st/$d"
+  i=0; while [ "$i" -lt 41 ]; do : > "$st/$d/l$i.md"; i=$((i + 1)); done
+done
+out=$(HOME="$dhome" sh "$bin/factory-doctor.sh" --root "$w" --repo "$tmp/alpha" 2>&1)
+has "a repo scope over budget is told to consolidate" '^missing: memory over budget in repo:alpha, run factory consolidate repo:alpha' "$out"
+has "a repo-agent scope over budget is told the daily pass" \
+  '^missing: memory over budget in repo-agent:alpha/scout, .*/claude-factory:memory-daily repo-agent:alpha/scout.*CEO' "$out"
+if printf '%s\n' "$out" | grep -q 'consolidate repo-agent:'; then
+  printf 'FAIL no consolidate for a repo-agent scope\n'; fail=1
+else printf 'PASS no consolidate for a repo-agent scope\n'; fi
+rm -rf "$st/repos/alpha/memory" "$st/repos/alpha/agents"
 
 # --- doctor --json from inside a state clone, no --root ------------------------------------------------------------
 rm -rf "$uih"
