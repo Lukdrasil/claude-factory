@@ -116,6 +116,22 @@ public sealed partial class UiHome(string root)
         }
     }
 
+    /// <summary>Whether notify.sh plays no sound while the UI runs: the file <c>mute-sound</c> in the UI home.</summary>
+    public bool MuteSound() => File.Exists(Path.Combine(root, "mute-sound"));
+
+    public void SetMuteSound(bool on)
+    {
+        var file = Path.Combine(root, "mute-sound");
+        if (on)
+        {
+            File.WriteAllText(file, "on\n");
+        }
+        else
+        {
+            File.Delete(file);
+        }
+    }
+
     // why: these flows are the human's gates, whatever shape their ask takes
     static readonly HashSet<string> Gates = ["approve", "done", "add-repo"];
 

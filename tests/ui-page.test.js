@@ -1243,6 +1243,17 @@ async function stage(q, button, text) {
       await until('Auto answer off', async () => (await toggle.getAttribute('aria-pressed')) === 'false');
       ok(!fs.existsSync(path.join(UI, 'auto-answer')), 'the auto-answer file is still there');
     });
+
+    const mute = auto.getByRole('button', { name: 'Mute sound' });
+    await check('Mute sound in the top bar reads off, a click writes mute-sound in the UI home and a second removes it', async () => {
+      ok(await mute.getAttribute('aria-pressed') === 'false', 'Mute sound reads on');
+      await mute.click();
+      await until('Mute sound on', async () => (await mute.getAttribute('aria-pressed')) === 'true');
+      ok(fs.existsSync(path.join(UI, 'mute-sound')), 'no mute-sound file in the UI home');
+      await mute.click();
+      await until('Mute sound off', async () => (await mute.getAttribute('aria-pressed')) === 'false');
+      ok(!fs.existsSync(path.join(UI, 'mute-sound')), 'the mute-sound file is still there');
+    });
   } finally {
     await auto.close();
   }

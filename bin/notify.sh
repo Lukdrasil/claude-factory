@@ -13,7 +13,8 @@
 # (`disabled`, `rate_limited`, `no_foreground_client`, `busy`) leaves no stamp, so the next call tries again, and
 # its reason goes to stderr. herdr caps the body at 240 characters, so the question is cut to keep the URL whole.
 # A `#token=` fragment of the URL is dropped: herdr keeps the body in its notification store and the desktop
-# history, and the UI token does not belong there.
+# history, and the UI token does not belong there. With the file `mute-sound` in the UI home, the Mute sound switch
+# of the UI, and the UI container running, the notification plays `--sound none`.
 #
 # Exit 0 whether or not herdr showed it, and without herdr on PATH. Exit 1 with the reason on stderr on bad
 # usage or a unit that resolves to no task file.
@@ -74,7 +75,12 @@ url=${url%%#token=*}
 where=${url:-tab $label}
 room=$((239 - ${#where}))
 question=$(printf '%s\n' "$question" | awk -v n="$room" '{ print (length($0) > n ? substr($0, 1, n - 3) "..." : $0) }')
-reply=$(herdr notification show "$label waits" --body "$question $where" --sound request 2>&1) || :
+sound=request
+if [ -f "${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}/mute-sound" ] \
+  && [ "$(docker inspect -f '{{.State.Running}}' "${FACTORY_UI_CONTAINER:-claude-factory-ui}" 2>/dev/null)" = true ]; then
+  sound=none
+fi
+reply=$(herdr notification show "$label waits" --body "$question $where" --sound "$sound" 2>&1) || :
 case "$reply" in
   *'"shown":true'*) mkdir -p "$dir"; touch "$stamp" ;;
   *)

@@ -34,6 +34,12 @@ app.MapPost("/api/auto-answer", (AutoAnswerState req, UiHome home) =>
     home.SetAutoAnswer(req.On);
     return Results.Ok(new AutoAnswerState(home.AutoAnswer()));
 });
+app.MapGet("/api/mute-sound", (UiHome home) => Results.Ok(new MuteSoundState(home.MuteSound())));
+app.MapPost("/api/mute-sound", (MuteSoundState req, UiHome home) =>
+{
+    home.SetMuteSound(req.On);
+    return Results.Ok(new MuteSoundState(home.MuteSound()));
+});
 app.MapGet("/visual", (HttpContext ctx, UiHome home) => Api.Visual(ctx, home));
 // why: auto answer works with no page open, so the server itself answers once a second while it is on
 var autoHome = app.Services.GetRequiredService<UiHome>();
@@ -60,6 +66,9 @@ public sealed record AnswerWritten(string File);
 
 /// <summary>Whether the server answers rounds with their recommended options (<c>/ui/auto-answer</c>).</summary>
 public sealed record AutoAnswerState(bool On);
+
+/// <summary>Whether notify.sh shows a waiting ask with no sound while the UI runs (<c>/ui/mute-sound</c>).</summary>
+public sealed record MuteSoundState(bool On);
 
 static class Api
 {
@@ -181,6 +190,7 @@ static class Api
 [JsonSerializable(typeof(AnswerRequest))]
 [JsonSerializable(typeof(AnswerWritten))]
 [JsonSerializable(typeof(AutoAnswerState))]
+[JsonSerializable(typeof(MuteSoundState))]
 [JsonSerializable(typeof(List<TaskRow>))]
 [JsonSerializable(typeof(TaskDetail))]
 [JsonSerializable(typeof(SetupInfo))]

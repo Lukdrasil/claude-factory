@@ -35,7 +35,7 @@ ul { margin: 0; padding-left: 18px; }
 .toggle::before { content: ""; width: 26px; height: 14px; border-radius: 7px; background: var(--sunk) radial-gradient(circle at 7px 50%, var(--muted) 4px, transparent 5px); border: 1px solid var(--line); }
 .toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 .toggle[aria-pressed="true"]::before { background: var(--accent) radial-gradient(circle at 19px 50%, var(--accent-ink) 4px, transparent 5px); border-color: var(--accent); }
-.toggle + .counter { margin-left: 0; }
+.toggle + .toggle, .toggle + .counter { margin-left: 0; }
 .btn.sending:disabled { opacity: .7; cursor: progress; }
 .btn.sending::after { content: "…"; }
 .btn.sent:disabled { opacity: 1; cursor: default; border-color: var(--ok); background: var(--ok-soft); color: var(--ok); }

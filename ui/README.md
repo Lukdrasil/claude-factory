@@ -29,6 +29,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
 | `GET /api/auto-answer`, `POST /api/auto-answer` | `{"on": <bool>}`: whether auto answer is on, the file `/ui/auto-answer`; the POST sets it and answers the new state |
+| `GET /api/mute-sound`, `POST /api/mute-sound` | `{"on": <bool>}`: whether the sound is muted, the file `/ui/mute-sound`; the POST sets it and answers the new state |
 
 `POST /api/answers/{sid}` answers 201 when written, 400 for a `sid` or `ask` outside `[A-Za-z0-9-]+`, 404 for
 an unknown session or ask, and 409 for an ask whose status is not `open`. The seq runs per session, and the
@@ -118,6 +119,10 @@ kept in `/ui/auto-answer`. While it is on the server itself, once a second and w
 unsent round of a session in herdr whose agent is not gone and whose every question has a recommended option, one
 `Q<n> <key>` per line through the same answer files. A confirm, a notice, an ask of the `approve`, `done` or
 `add-repo` flow, and a round with any question lacking a recommended option are always left to the human.
+
+Mute sound, the switch next to it (hidden when the server has no `/api/mute-sound`), is kept in `/ui/mute-sound`.
+While it is on and the UI container runs, `bin/notify.sh` shows a waiting ask with `--sound none`. herdr's own
+sounds on an agent's state change are herdr's `[ui.sound]` setting and stay as they are.
 
 A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
 the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or

@@ -136,9 +136,11 @@ const setupLabel = (s) => [...new Set([s.flow, s.task, s.step].filter((v) => v &
 const AUTO = 'On: the server answers a round with its recommended options as it arrives. Confirm asks, notices, the approve, '
   + 'done and add-repo flows, and a round with any question lacking a recommended option always wait for you.';
 
-/** The top of every tab: the tabs, the Auto answer switch (none when the server has no such route, `auto` null), the
- * to-answer counter and the setup strip, with its live sessions, that opens the setup drawer. */
-export function renderTop(sessions, tab, auto = null) {
+const MUTE = 'On: while the UI runs, a session waiting on an answer shows its herdr notification with no sound.';
+
+/** The top of every tab: the tabs, the Auto answer and Mute sound switches (none when the server has no such route,
+ * `auto` or `mute` null), the to-answer counter and the setup strip, with its live sessions, that opens the setup drawer. */
+export function renderTop(sessions, tab, auto = null, mute = null) {
   const setup = sessions.filter((s) => groupOf(s.task) === 'setup' && s.agent !== 'gone');
   const list = waiting(sessions);
   const all = list.length;
@@ -149,6 +151,7 @@ export function renderTop(sessions, tab, auto = null) {
   el.innerHTML = '<header class="top"><h1>Factory</h1><div class="tabs" role="tablist" aria-label="Views">'
     + `${TABS.map((t) => `<button role="tab" data-tab="${t}" aria-selected="${t === tab}">${t}</button>`).join('')}</div>`
     + `${auto === null ? '' : `<button class="toggle" data-act="auto" aria-pressed="${auto}" title="${AUTO}">Auto answer</button>`}`
+    + `${mute === null ? '' : `<button class="toggle" data-act="mute" aria-pressed="${mute}" title="${MUTE}">Mute sound</button>`}`
     + `<button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}${gone ? `<small>, ${gone} whose session ended</small>` : ''}</button></header>`
     + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip" data-session="${esc(s.sid)}" title="session ${esc(s.sid)}">${esc(setupLabel(s))}</span>`).join('')}`
     + `${setupWaiting ? `<span class="chip warn">${setupWaiting} to answer</span>` : ''}</button>`;

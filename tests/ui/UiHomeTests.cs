@@ -60,6 +60,18 @@ public sealed class UiHomeTests : IDisposable
     }
 
     [Fact]
+    public void Mute_sound_is_off_until_switched_on_and_is_the_file_notify_reads()
+    {
+        var home = new UiHome(_ui);
+
+        Assert.False(home.MuteSound());
+        home.SetMuteSound(true);
+        Assert.True(File.Exists(Path.Combine(_ui, "mute-sound")));
+        home.SetMuteSound(false);
+        Assert.False(home.MuteSound());
+    }
+
+    [Fact]
     public void Auto_answer_sends_the_recommended_option_of_every_question_of_an_open_round_once()
     {
         var dir = Ask("s1", "r1", "grill", Round);

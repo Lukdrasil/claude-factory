@@ -336,6 +336,17 @@ check 'notify.sh passes no token to herdr'        1 'token' "$(cat "$log")"
 notify 'Q3 - No page?'
 check 'without a URL the body names the tab'      0 '^notification show "L T-012-grill waits" --body "Q3 - No page? tab L T-012-grill" ' "$(cat "$log")"
 check 'the ask without a URL is stamped too'      0 '^3$' "$(stamps)"
+# Mute sound: the file mute-sound in the UI home silences the notification only while the UI container runs
+printf '#!/bin/sh\nprintf "%%s\\n" "${DOCKER_STUB_RUNNING:-}"\n' > "$tmp/stub/bin/docker"
+chmod +x "$tmp/stub/bin/docker"
+: > "$FACTORY_UI_HOME/mute-sound"
+DOCKER_STUB_RUNNING=true notify 'Q5 - Muted?' "$url"
+check 'a muted UI that runs shows it with no sound' 0 '"Q5 - Muted? .*" --sound none $' "$(cat "$log")"
+DOCKER_STUB_RUNNING=false notify 'Q6 - UI down?' "$url"
+check 'a muted UI that is down keeps the sound'   0 '"Q6 - UI down? .*" --sound request $' "$(cat "$log")"
+rm -f "$FACTORY_UI_HOME/mute-sound"
+DOCKER_STUB_RUNNING=true notify 'Q7 - Unmuted?' "$url"
+check 'an unmuted UI keeps the sound'             0 '"Q7 - Unmuted? .*" --sound request $' "$(cat "$log")"
 
 # two watchers of one parent, the CEO's and the lead's, each keep their own state: both see every transition
 task T-013 in_progress null

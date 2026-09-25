@@ -13,7 +13,7 @@ const KEPT = 'factory-staged';
 const S = {
   board: [], sessions: [], setup: null, raw: '', drawer: null, shown: new Set(), staged: kept(), cursor: null, detail: null,
   tab: 'Pipeline', org: null, requests: [], request: '', map: null, passNote: null, intakeNote: null, repoNote: null, stale: false,
-  busy: new Map(), auto: null,
+  busy: new Map(), auto: null, mute: null,
 };
 let linked = new URLSearchParams(location.search).get('ask');
 
@@ -87,17 +87,18 @@ async function soft(path) {
 
 async function load() {
   const id = S.drawer;
-  const [board, sessions, setup, org, requests, detail, auto] = await Promise.all([
+  const [board, sessions, setup, org, requests, detail, auto, mute] = await Promise.all([
     ...['/api/board', '/api/sessions', '/api/setup'].map((p) => api(p).then((r) => r.text())),
     soft('/api/org'),
     soft('/api/requests'),
     loadDetail(id).then((d) => d && JSON.stringify(d)),
     soft('/api/auto-answer'),
+    soft('/api/mute-sound'),
   ]);
   const list = [JSON.parse(requests)].flat().filter(Boolean);
   const rid = (S.tab === 'Map' || S.tab === 'Plan') && pickRequest(list, S.request);
   const map = rid ? await soft(`/api/requests/${encodeURIComponent(rid)}`) : 'null';
-  const raw = [board, sessions, setup, org, requests, detail, map, auto].join('\n');
+  const raw = [board, sessions, setup, org, requests, detail, map, auto, mute].join('\n');
   if (raw === S.raw) return;
   S.raw = raw;
   S.board = JSON.parse(board);
@@ -108,6 +109,7 @@ async function load() {
   S.map = JSON.parse(map);
   S.detail = detail && JSON.parse(detail);
   S.auto = JSON.parse(auto)?.on ?? null;
+  S.mute = JSON.parse(mute)?.on ?? null;
   render();
   const a = linked && allAsks().find((w) => keyOf(w) === linked);
   linked = null;
@@ -195,7 +197,7 @@ function render() {
   const down = app.querySelector('.grid-wrap')?.scrollTop ?? 0;
   const top = app.querySelector('aside')?.scrollTop ?? 0;
   const details = app.querySelector('aside .details')?.open;
-  const page = renderTop(S.sessions, S.tab, S.auto);
+  const page = renderTop(S.sessions, S.tab, S.auto, S.mute);
   page.querySelector('.strip').append(renderSetupStrip(S.setup));
   page.append(renderTab());
   app.replaceChildren(page);
@@ -406,6 +408,21 @@ app.addEventListener('click', (e) => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ on: !S.auto }),
+        })).json()).on;
+        return true;
+      } catch (err) {
+        showError(err);
+        return false;
+      }
+    }, false);
+  }
+  if (act === 'mute') {
+    return track(b, async () => {
+      try {
+        S.mute = (await (await api('/api/mute-sound', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ on: !S.mute }),
         })).json()).on;
         return true;
       } catch (err) {
