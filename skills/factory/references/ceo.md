@@ -211,7 +211,9 @@ below goes through `_shared/ask.md` with flow `add-repo` and task `none`.
    - Exit 0 (`nothing to do` for a key registered with the same URL, or what it still lacked): step 4.
    - Exit 1, or exit 4 (the remote unreachable or its auth refused): the notice ask `add-repo-<key>-error` with
      the error line and the fix the script printed. Stop.
-3. On yes: the same command with `--yes`; exit 0 goes on to step 4. Another alias: the preview again with
+3. On yes: the same command with `--yes`; exit 0 goes on to step 4. A stderr `note: stack <s> has
+   no toolsets/<stack>.md yet` also goes on to step 4, with no toolset offer or doctor run of add-repo.md:
+   the onboarding's toolset check reports it and proposes the file. Another alias: the preview again with
    `--alias <ALIAS>`, under the same ask id. Any other exit is the error notice of step 2. On no: stop; the
    page reads the answered ask as not confirmed.
 4. `sh <plugin-root>/bin/session-monitor.sh --step onboard --scope <key> --spawn herdr` starts the onboarding
