@@ -79,7 +79,7 @@ The rule behind the split: anything that writes the change is a session, anythin
 5. `<id> agent <state> -> blocked` means that session is at an approval or question dialog. Read it with
    `herdr agent read <name> --source recent-unwrapped --lines 120`, ask the human with
    an ask (`_shared/ask.md`), and answer with `herdr agent send-keys <name> <keys>` (a digit, arrows,
-   `enter`, `esc`): a blocked agent refuses `herdr agent prompt`, which is only for an idle session. The name
+   `enter`, `esc`): a blocked agent refuses `herdr agent prompt`, which is for an idle or working session. The name
    is `<role>_<unit>` (`skills/herdr/SKILL.md`). Never answer for the human. With `ui: docker` the monitor
    relays nothing: it tells the human which worker is at a dialog and its pane id, the wave panel of the
    task's drawer shows the same, and the human answers in that pane. The monitor writes no ask for the dialog
