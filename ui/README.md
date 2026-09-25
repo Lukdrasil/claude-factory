@@ -25,7 +25,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes` of every `passes.yml` |
 | `GET /api/org` | the `capacity` of sessions and of every role, `used` and `cap`, the `leases` under `.capacity/`, one of the `leads` per `repo-lead` lease, and the `ceo` session or null |
 | `GET /api/requests` | every request map, live and archived, newest first: `id`, `status`, `destination`, `priority`, `parents`, `archived` |
-| `GET /api/requests/{id}` | one map: its destination, notes, terms, decisions, out of scope, fog, tickets and frontier, and its parents with their blocks, status and acceptance |
+| `GET /api/requests/{id}` | one map: its destination, notes, terms, decisions, out of scope, fog, tickets and frontier, its parents with their blocks, status and acceptance, and `html`: the destination, notes, terms and fog rendered, and the `title` and `gist` of every line of decisions and out of scope rendered inline |
 | `GET /api/stream` | `text/event-stream`, one `data: /state/<path>` or `data: /ui/<path>` line per changed file |
 | `POST /api/answers/{sid}` | body `{"ask": "<ask>", "text": "<shorthand>"}`: writes `answers/<seq>-<ask>.txt` |
 
@@ -67,7 +67,9 @@ holds any answer file of the ask newer than the ask, a `Q<n> redraw` or `Q<n> mo
 `/#token=<token>`, the URL `ui-up.sh` prints, serves the pipeline page from `wwwroot/`: plain JS modules, system fonts, nothing from another origin
 and no build step. The token in the URL fragment goes into the `X-Factory-Token` header of every `/api` call, the
 change stream included, so the page reads `/api/stream` with `fetch`, not `EventSource`. Without a token it shows
-no task.
+no task. A token the server refuses reads `The UI token is not valid any more: open the URL ui-up.sh printed.`
+While the change stream is down, retried every second, a cue in the corner reads that what you see may be out of
+date; it clears once the stream is back.
 
 | module | what |
 |---|---|
@@ -76,32 +78,40 @@ no task.
 | `org.js` | `renderOrg(org)`: the CEO, capacity, leads and leases of `/api/org`; `capacityStrip(capacity)`, `prio(p)` and `when(stamp)` |
 | `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope and their start buttons |
 | `setup.js` | `renderSetupStrip(setup)`: the machine checklist in the strip; `renderSetupTab(setup)`: the doctor steps and Start the CEO |
-| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, its sessions' visuals and its context, in decision mode with an open ask |
-| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view, and `compose(view, items)`, the answer Send posts |
+| `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, open ones first, its sessions' visuals and its context, in decision mode with an open ask |
+| `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view; `stateOf(ask)`, its one state; and `compose(view, items)`, the answer Send posts |
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
-| `app.js` | state, the calls, the stream and the clicks |
+| `app.js` | state, the calls, the stream, the clicks and Esc, the focus kept across renders and the staged answers in `sessionStorage` |
 
 The counter counts the open asks nobody has sent an answer for, of sessions in herdr whose `agent` is not
-`gone`; a gone session's asks still show in their drawer, since the relay queues answers. Each click opens the next
-one, oldest first by mtime, in its drawer. A drawer keeps an ask it opened with even after its session closes
-it, so the card shows answered.
+`gone`; a gone session's asks still show in their drawer, read-only. Each click opens the next one, oldest first
+by mtime, in its drawer, and marks its card current with `aria-current="true"` and an outline, as `?ask=` does. A
+drawer keeps an ask it opened with even after its session closes it, so the card shows answered.
 
 The card renders the ask view of `/api/sessions`, the server's reading of the ask, and parses no markdown. An ask
 with no `❓ **Qn**` is a notice. One question with the options yes and no is a confirm. Anything else is a round.
 The header shows the ask's step and its question count, the session id sits in a small line at the bottom. Each
-option is a full-width button holding its rendered label, and the recommendation reads `Why B: ...`. A card
+option is a full-width button holding its rendered label, `aria-pressed` and a check mark once picked, and the
+recommendation reads `Why B: ...`. A card
 stages one item per question until Send: an option (`Q1 B`), Explain more (`Q2 more`), Compare options
 (`explore Q3`), Write my answer (`Q4 <text>`), Ask a question (`Q5 ? <text>`) or Decide later (`Q6 defer`).
 Every card, a notice included, has Write my answer: a notice posts that text verbatim, or `ok` without one.
-Send posts the staged items one answer per line in question order, since free text may hold commas, and the
-`<output>` under Will be sent: shows them exactly as the answer file will hold them. A card needs your answer,
-is sent and waiting for the session, or is answered, and shows the relay's held reason whenever the ask is held.
-The card of a session outside herdr shows no answer box.
+Send posts the staged items one answer per line in question order, since free text may hold commas. Under Will be
+sent: the staged items read in words, the picked option with its label, and the `<output>` below them holds them
+exactly as the answer file will. Staged answers and drafts stay in the tab's `sessionStorage` across a reload.
+
+A card has one state, `stateOf`, shown as one chip in its header: open (Needs your answer), sent (Sent, waiting for
+the session), answered, or gone (Not delivered: the session has ended) once the relay holds its answer as `gone` or
+the session's `agent` is `gone`. Only an open ask of a session in herdr takes an answer: every other card is
+read-only, its options disabled, with no answer box and no Send. The relay's other held reasons show as a note
+under the header of an open or sent card. The card of a session outside herdr shows no answer box.
 
 A drawer with an open ask opens in decision mode: at least 60% of the viewport wide, the asks first with the
 question text at about 70ch, and the blocked question, wave, panels, visuals and context in one "Task details",
-collapsed on open and kept as you left it across refreshes. A card's footer, Will be sent: and Send, sticks to the
-bottom of the drawer. The approve and done asks render with the other asks, once. Without an open ask the drawer
+collapsed on open and kept as you left it across refreshes. The open asks come first, each group oldest first.
+One card's footer, Will be sent: and Send, sticks to the bottom of the drawer: the first card with a Send not
+scrolled above the drawer header, so one Send shows at a time. Esc closes the drawer and puts the focus on its
+row; every render keeps the focus on the control you used. The approve and done asks render with the other asks, once. Without an open ask the drawer
 shows all of it in one column. The panels render the task's markdown from its `html` twin, so no panel shows a
 `<pre>` of markdown.
 
