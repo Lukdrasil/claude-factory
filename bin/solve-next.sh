@@ -18,8 +18,8 @@
 # cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
 # the human's yes). Step 14 is then the task MR the human reviews and merges.
 #
-# A parent with `request:` is charted first: while `map.sh clear <R-id>` does not exit 0 and no plan-ready file
-# exists, the step is 3b, the request map of skills/wayfinder; the grill of step 4 is then seeded by
+# A parent with `request:` is charted first: while no plan-ready file exists and `map.sh clear <R-id>` does not
+# exit 0 or the map is not yet `planned` or later, the step is 3b, the request map of skills/wayfinder; the grill of step 4 is then seeded by
 # `map.sh export <R-id> <key>`.
 #
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
@@ -28,8 +28,9 @@
 # the session worktree, `<root>/<key>/T-NNN-NN` a block worktree, `<root>/<key>/.harness/T-NNN` the scratch
 # directory of the run.
 #
-# The state a step is read off, in the order the steps are tried: no `tier` is step 3, no plan-ready file is
-# step 3b while the parent's request map is not clear, else step 4 (the plan-ready file is the one whose
+# The state a step is read off, in the order the steps are tried: no `tier` is step 3, and so is no plan-ready
+# file on a feature, bugfix or refactor with no `## Related issues`; no plan-ready file is step 3b while the
+# parent's request map is not clear or its `Status:` is still charting or grilling, else step 4 (the plan-ready file is the one whose
 # frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
 # and a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
 # wave plan in the progress file is step 8, a parent that is not `in_progress` is step 9, no session worktree
@@ -133,13 +134,14 @@ branch=$(fm "$task" branch)
 mr_url=$(fm "$task" mr_url)
 request=$(fm "$task" request)
 
-if [ -z "$tier" ] || [ -z "$archetype" ]; then
-  emit "Step 3 of 16: triage $id" "tier and archetype are set on $id."
+triage_step() {
+  emit "Step 3 of 16: triage $id" "tier and archetype are set on $id and ## Related issues is written for a feature, bugfix or refactor."
   cmd "cat $task"
   cmd "cat $plugin/skills/_shared/investigate.md"
   cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): triaged'"
   exit 0
-fi
+}
+[ -n "$tier" ] && [ -n "$archetype" ] || triage_step
 
 slug=''
 for f in "$state/repos/$key/plans/"*-plan-ready.md; do
@@ -150,10 +152,25 @@ done
 [ -n "$slug" ] || slug=$(grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' "$task" 2>/dev/null | head -n1 | sed 's|^plans/||; s|-plan-ready\.md$||' || :)
 plan="$state/repos/$key/plans/$slug-plan-ready.md"
 
+# why: task-new.sh requires tier: of every draft, so before the plan triage is done only once investigate.md
+# why: step 4 has written ## Related issues (feature, bugfix and refactor only), and charting only once the chart
+# why: session has moved the map past charting and grilling, which it does when the map is clear
+triaged() {
+  case "$archetype" in feature|bugfix|refactor) grep -q '^## Related issues[[:space:]]*$' "$task" ;; esac
+}
+charted() {
+  sh "$bin/map.sh" clear "$request" --state "$state" >/dev/null 2>&1 || return 1
+  case "$(awk '/^Status:/ { print $2; exit }' "$state/requests/$request/map.md")" in
+    planned|queued|running|done) ;;
+    *) return 1 ;;
+  esac
+}
+
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
+  triaged || triage_step
   # why: the request map is one per request and decides what every parent of it shares, so no grill starts on
   # why: a parent while a ticket of the map is open or fog is left on it
-  if [ -n "$request" ] && ! sh "$bin/map.sh" clear "$request" --state "$state" >/dev/null 2>&1; then
+  if [ -n "$request" ] && ! charted; then
     emit "Step 3b of 16: chart $request" "$bin/map.sh clear $request exits 0: no ticket of $state/requests/$request/map.md is open or claimed and nothing is left under Not yet specified."
     cmd "cat $plugin/skills/wayfinder/SKILL.md"
     if [ -f "$state/requests/$request/map.md" ]; then

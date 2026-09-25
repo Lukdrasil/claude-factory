@@ -90,7 +90,7 @@ state shows its output:
 | step | done when the state shows |
 |---|---|
 | `triage` | the parent's `tier:` set and `## Related issues` written |
-| `chart` | `sh <plugin-root>/bin/map.sh clear <R-id>` exits 0 |
+| `chart` | `sh <plugin-root>/bin/map.sh clear <R-id>` exits 0 and the map's `Status:` is `planned` or later |
 | `grill` | `repos/<key>/plans/<slug>-plan-ready.md` with `task:` and `request:` |
 | `plan-check` | the verdict of that plan under `repos/<key>/verdicts/` |
 | `decompose` | the blocks, `sh <plugin-root>/bin/dag-check.sh <T-id>` exit 0, spec-critic's line for every red block |
@@ -102,8 +102,8 @@ state shows its output:
 - Chart: one chart session per request at a time, `--step chart` on the first parent whose triage is done; its
   prompt is `/claude-factory:wayfinder chart <R-id> <T-id>`. One map covers every repository of the request,
   and research tickets run in it as subagents. Charting asks the human nothing itself: an unclear destination
-  becomes the first grilling ticket. When the chart session ends and `map.sh clear <R-id>` still exits non-zero,
-  dispatch the chart step again; the other parents wait for the clear map. You always try to chart (W3); a map
+  becomes the first grilling ticket. When the chart session ends and `map.sh clear <R-id>` still exits non-zero or
+  the map is not yet `planned`, dispatch the chart step again; the other parents wait for the clear map. You always try to chart (W3); a map
   with no fog continues straight into the plain grill.
 - Grilling rounds are the human's: the map's tickets and the grill rounds reach the tab and the UI through
   `_shared/ask.md`. Their transitions (`grilling`, `planned`) are `map.sh status` calls of the session that

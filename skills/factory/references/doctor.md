@@ -44,7 +44,7 @@ registered repo and writes `<ui home>/setup/doctor.json` (`steps: [{id, state: d
 fix}]`; the UI home is `$FACTORY_UI_HOME`, default `~/.claude-factory/ui`). `factory-init.sh` and
 `factory-add-repo.sh` run it after every run, so the Setup tab is current after each. The steps, in order:
 `git`, `node`, `python3`, `docker`, `herdr`, `herdr-server`, `forge-login`, `claude`, `state-repo`,
-`state-remote`, `state-push`, `work-dir`, `prompt-suggestion`, `herdr-integration`, `herdr-toast`, `repos`,
+`state-remote`, `state-push`, `work-dir`, `prompt-suggestion`, `permissions`, `herdr-integration`, `herdr-toast`, `repos`,
 `aliases`, then per repo `repo:<key>:path`, `repo:<key>:alias`, `repo:<key>:toolset`, `repo:<key>:mr-class`
 (forge urls only) and `repo:<key>:workflows` (GitHub only), then `capacity`, `doctor` (green when every step
 before it is done) and `ceo` (the command that starts the CEO). A fix is text: the session applies one only

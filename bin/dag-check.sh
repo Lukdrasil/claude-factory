@@ -10,9 +10,10 @@
 # listed under its `## Docs`. Ownership is over files, not members, and it comes from the body of the task
 # file, not from the frontmatter.
 #
-# A backticked token counts as a claimed path only when it contains a `/`. Every path this repo names in a
-# task body is repo-relative and so has a directory component, while a Docs sentence naming a symbol, a flag
-# or a command in backticks is ordinary prose: `#!`, `--state` and `depends_on` are not files and are ignored.
+# A design heading always names a file, at the repo root or below it. A backticked Docs token counts as a
+# claimed path only when it contains a `/` or ends in a file extension (`README.md`), while a Docs sentence
+# naming a symbol, a flag or a call in backticks is ordinary prose: `#!`, `--state`, `depends_on` and
+# `remove(file, id)` are not files and are ignored.
 #
 # Block 00, when a cut has one, is the additive skeleton: it declares surface that other blocks implement, so
 # its paths take no part in the overlap computation and it is planned alone in the first wave. A block 00 that
@@ -70,12 +71,12 @@ mkdir -p "$tmp/paths" "$tmp/deps" "$tmp/integration"
 # invariant: a claim comes out of the body: every design heading of the file plus every backticked token of
 # invariant: the `## Docs` section, which ends at the next `## ` heading. A Docs section reading `none` has no
 # invariant: backticks and so claims nothing.
-# invariant: a token is a claim only when it carries a `/`; without one it is prose, not a repo-relative path.
+# invariant: a Docs token is a claim only when it carries a `/` or a file extension; else it is prose.
 claimed_paths() { # <task file>
   awk '
-    function claim(p) { if (p != "" && index(p, "/") > 0) print p }
+    function claim(p) { if (p != "" && (index(p, "/") > 0 || p ~ /^[^[:space:]()]*\.[A-Za-z][A-Za-z0-9]*$/)) print p }
     /^## / { docs = ($0 ~ /^## Docs([[:space:]]*)$/) }
-    /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); claim(p); next }
+    /^### `/ { p = $0; sub(/^### `/, "", p); sub(/`.*$/, "", p); if (p != "") print p; next }
     docs {
       line = $0
       while (match(line, /`[^`]+`/)) {

@@ -276,6 +276,17 @@ check_prompt_suggestion() {
   fi
 }
 
+check_permissions() {
+  pm=$(factory_allow_rules "$root" "$plugin" | node -e '
+    let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
+      let o = {}; try { o = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) {}
+      const allow = (o.permissions && o.permissions.allow) || [];
+      process.stdout.write(s.split("\n").filter(r => r && !allow.includes(r)).join(" "));
+    });' "$settings" 2>/dev/null || :)
+  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings"
+  else step permissions missing "no allow rule $pm in $settings, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
+}
+
 check_repos() {
   rn=$(repo_keys | wc -l | tr -d ' ')
   if [ "$rn" -gt 0 ]; then step repos done "$rn repositories registered"
@@ -432,6 +443,7 @@ if [ "$json" = 1 ]; then
   check_state_push
   check_work_dir
   check_prompt_suggestion
+  check_permissions
   check_herdr_integration
   check_herdr_toast
   check_repos

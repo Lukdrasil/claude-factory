@@ -82,7 +82,9 @@
 #
 # The agent starts with `herdr agent start --timeout 120000`. A start that answers `agent_not_ready` stopped at a
 # dialog (plan 3.7): the monitor waits for the agent with `herdr agent wait <name> --until idle --until done
-# --timeout 120000` and then prompts; a wait that times out leaves the session up, unprompted, exit 2.
+# --timeout 120000` and then prompts; a wait that times out leaves the session up, unprompted, exit 2. The
+# prompt waits for the session to start working; a prompt that changes nothing is typed a second time, and a
+# second one that changes nothing leaves the session up, exit 2.
 #
 # A herdr spawn first runs `herdr-tabs.sh close` over the unit and the step units of its T-id, before the
 # claim: a recorded tab whose agent is idle closes, and a unit whose own tab is kept (focused, the caller's,
@@ -467,6 +469,17 @@ lease() { # <id> <role>
 }
 unlease() { sh "$bin/capacity.sh" release "$1" --state "$state" </dev/null || :; }
 
+# a fresh session can drop the first prompt while its TUI is still coming up: herdr then sees no state change
+# within 5 s and answers agent_prompt_stalled, and the prompt goes in once more
+prompted() { # <herdr name> <prompt>
+  for _ in 1 2; do
+    err=$(herdr agent prompt "$1" "$2" --wait --until working --until blocked --until done --timeout 60000 2>&1 >/dev/null) \
+      && return 0
+    case "$err" in *agent_prompt_stalled*) ;; *) return 1 ;; esac
+  done
+  return 1
+}
+
 # --- dispatch ------------------------------------------------------------------------------------------------
 rc=0 n=0
 while IFS='	' read -r id cwd model claimid role name prompt; do
@@ -568,7 +581,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
         rc=2; continue ;;
     esac
   fi
-  if ! herdr agent prompt "$name" "$prompt" >/dev/null; then
+  if ! prompted "$name" "$prompt"; then
     echo "session-monitor: herdr agent prompt failed for $id; the session is up, prompt it by hand" >&2
     rc=2; continue
   fi

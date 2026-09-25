@@ -89,6 +89,18 @@ has "the state repo has its first commit" 'chore: init state repo' "$(git -C "$t
 out=$(sh "$bin/factory-init.sh" --root "$tmp/f" --settings "$settings" --spawn manual 2>&1); rc=$?
 code "a rerun exits 0" 0 "$rc"
 has "a rerun has nothing to do" '^nothing to do' "$out"
+plug=$(dirname -- "$bin")
+allow=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).permissions.allow.join("\n"))' "$settings" 2>&1)
+for r in "Read(/$tmp/f/**)" "Read(/$plug/**)" "Edit(/$tmp/f/state/**)" "Write(/$tmp/f/state/**)" "Bash(sh $plug/bin/*)"; do
+  if printf '%s\n' "$allow" | grep -qxF -- "$r"; then printf 'PASS init --yes allows %s\n' "$r"
+  else printf 'FAIL init --yes allows %s\n' "$r"; fail=1; fi
+done
+node -e 'const f=process.argv[1],fs=require("fs"),o=JSON.parse(fs.readFileSync(f,"utf8"));o.permissions.allow=["Bash(ls)",o.permissions.allow[0]];fs.writeFileSync(f,JSON.stringify(o,null,2))' "$settings"
+out=$(sh "$bin/factory-init.sh" --root "$tmp/f" --settings "$settings" --spawn manual 2>&1); rc=$?
+code "a missing allow rule is pending" 3 "$rc"
+has "the diff adds the missing rule" "^\+ +\"Bash\(sh $plug/bin/\*\)\"" "$out"
+sh "$bin/factory-init.sh" --root "$tmp/f" --settings "$settings" --spawn manual --yes >/dev/null 2>&1
+has "an allow rule of the user's own is kept" '"Bash\(ls\)"' "$(cat "$settings")"
 
 # --- factory-init.sh --ui over an existing factory.yml: a missing or differing ui: and a missing ui_port: are pending
 settings2="$tmp/settings2.json"
@@ -242,7 +254,7 @@ shape=$(node -e '
   console.log(ok ? "shape ok" : "shape bad");
   console.log("ids " + j.steps.map(s => s.id).join(" "));' "$dj" 2>&1)
 has "every step has id, state done|missing|failing, detail and fix" '^shape ok$' "$shape"
-has "the steps walk the Setup tab in order" "^ids git node python3 docker herdr herdr-server forge-login claude state-repo state-remote state-push work-dir prompt-suggestion herdr-integration herdr-toast repos aliases repo:alpha:path repo:alpha:alias repo:alpha:toolset repo:alpha:mr-class repo:beta:path repo:beta:alias repo:beta:toolset repo:beta:mr-class repo:beta:workflows repo:gamma:path repo:gamma:alias repo:gamma:toolset repo:gamma:mr-class capacity doctor ceo$" "$shape"
+has "the steps walk the Setup tab in order" "^ids git node python3 docker herdr herdr-server forge-login claude state-repo state-remote state-push work-dir prompt-suggestion permissions herdr-integration herdr-toast repos aliases repo:alpha:path repo:alpha:alias repo:alpha:toolset repo:alpha:mr-class repo:beta:path repo:beta:alias repo:beta:toolset repo:beta:mr-class repo:beta:workflows repo:gamma:path repo:gamma:alias repo:gamma:toolset repo:gamma:mr-class capacity doctor ceo$" "$shape"
 
 # --- each check done over the fixture -----------------------------------------------------------------------------
 has "python3 is done" '^done ' "$(step python3)"
@@ -255,6 +267,8 @@ has "a login on gl.test and github.com is done" '^done ' "$(step forge-login)"
 has "the state repo is done" '^done ' "$(step state-repo)"
 has "WORK_DIR in the settings is done" '^done ' "$(step work-dir)"
 has "promptSuggestionEnabled false is done" '^done ' "$(step prompt-suggestion)"
+has "settings without the allow rules are missing permissions" '^missing .*allow' "$(step permissions)"
+has "the permissions fix is init" "\\| .*factory-init\\.sh --root $w" "$(step permissions)"
 has "nothing unpushed is done" '^done ' "$(step state-push)"
 has "unique aliases are done" '^done ' "$(step aliases)"
 has "an alias is done" '^done .*ALP' "$(step repo:alpha:alias)"
@@ -270,6 +284,13 @@ has "the CEO is not running" '^missing ' "$(step ceo)"
 has "the ceo fix is the command" "\| .*$st.*claude.*/claude-factory:factory ceo" "$(step ceo)"
 HSTUB_CEO=1 djson
 has "a live ceo agent is done" '^done ' "$(step ceo)"
+dplug=$(dirname -- "$bin")
+cp "$dhome/.claude/settings.json" "$tmp/dsettings.bak"
+printf '{\n  "env": {"WORK_DIR": "%s"},\n  "promptSuggestionEnabled": false,\n  "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)"]}\n}\n' \
+  "$w" "$w" "$dplug" "$w" "$w" "$dplug" > "$dhome/.claude/settings.json"
+djson
+has "the five allow rules are done" '^done ' "$(step permissions)"
+cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
 # --- each check missing or failing ----------------------------------------------------------------------------------
 sys="$tmp/sys"

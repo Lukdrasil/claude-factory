@@ -21,6 +21,7 @@
 #   agent read <target> ...    $HERDR_STUB_READ as plain text
 #   agent send-keys <target> <key>...
 #   agent start ...            no output; `HERDR_STUB_START=<code>` makes it that error, e.g. agent_not_ready
+#   agent prompt ...           no output; the first `HERDR_STUB_STALLS=<n>` prompts answer agent_prompt_stalled
 #   workspace create ...       `.result.workspace` ws-1, `.result.tab` tab-1, `.result.root_pane` pane-1
 #   tab create ...             `.result.tab` tab-1 in the --workspace (default ws-1), `.result.root_pane` pane-1
 #   tab get <tab>, tab close <tab>
@@ -136,6 +137,10 @@ case "$verb" in
     printf '{"id":"%s","result":{"type":"ok"}}\n' "$id" ;;
   'agent start')
     [ -z "${HERDR_STUB_START:-}" ] || err "$HERDR_STUB_START" "agent $1 is not ready" ;;
+  'agent prompt')
+    n=$(cat "$d/stalls" 2>/dev/null || echo 0)
+    echo $((n + 1)) > "$d/stalls"
+    [ "$n" -ge "${HERDR_STUB_STALLS:-0}" ] || err agent_prompt_stalled "agent $1 did not change state" ;;
   'workspace create')
     create_flags "$@"
     if [ -n "${HERDR_STUB_WORKSPACE+x}" ]; then printf '%s\n' "$HERDR_STUB_WORKSPACE"; exit 0; fi
