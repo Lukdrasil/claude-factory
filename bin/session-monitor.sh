@@ -277,7 +277,7 @@ step_unit() { # <T-id> <step>
     triage)
       su_model=$(sh "$bin/model-for.sh" triage "$(field "$su_task" tier)" '' 0 \
         "$(field "$su_task" complexity)" 2>/dev/null || echo sonnet)
-      su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, write ## Context into the task; for a feature, bugfix or refactor also write ## Related issues as its own section after ## Context (the issue-finder lines, or none), never inside ## Investigation, since solve-next.sh reads triage as done by that heading; set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
+      su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, file the investigation report at $state/repos/$su_key/research/$1-investigation.md, in the state clone and never in this product clone, write ## Context into the task; for a feature, bugfix or refactor also write ## Related issues as its own section after ## Context (the issue-finder lines, or none), never inside ## Investigation, since solve-next.sh reads triage as done by that heading; set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
     chart)
       su_req=$(field "$su_task" request)
       case "$su_req" in ''|null) die "$1 has no request:, so there is no request map to chart" ;; esac

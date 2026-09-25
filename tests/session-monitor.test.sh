@@ -622,6 +622,7 @@ sm --task T-ECS-14 --step chart --dry-run >/dev/null 2>&1
 absent 'a dry run leases nothing'                   "$lease/sessions/T-ECS-14-chart"
 out=$(sm --task T-ECS-14 --step triage --dry-run 2>/dev/null)
 check 'the triage prompt asks for ## Related issues as its own section' 'write ## Related issues as its own section after ## Context'
+check 'the triage prompt names the report path in the state clone' "file the investigation report at $ostate/repos/ecs-core/research/T-ECS-14-investigation.md, "
 
 # agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
 herdr_agent chart_ecs-13 idle pane-13
