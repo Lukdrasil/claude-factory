@@ -120,7 +120,8 @@ is 'first block of a session' 2 "$(rc "$(stop "$state" s10 '[]')")"
 is 'second block of the same session' 2 "$(rc "$(stop "$state" s10 '[]')")"
 is 'a third Stop of the same session passes' 0 "$(rc "$(stop "$state" s10 '[]')")"
 is 'another session starts its own count' 2 "$(rc "$(stop "$state" s11 '[]')")"
-is 'the counter sits next to the state clone, not in it' 2 "$(cat "$work/.harness-rearm-s10" 2>/dev/null)"
+is 'the CEO counter sits in the git dir of the state clone' 2 "$(cat "$state/.git/.harness-rearm-s10" 2>/dev/null)"
+is 'and nothing lands in the factory root' '' "$(ls -A "$work" | grep 'harness-rearm')"
 is 'the state clone stays clean' '' "$(git -C "$state" status --porcelain)"
 
 # --- a parent worktree: that herd only ---------------------------------------------------
