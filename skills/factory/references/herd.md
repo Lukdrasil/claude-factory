@@ -48,7 +48,7 @@ back in a return value, so every claim is one you rerun.
 | 9 approve and claim | monitor | the human gate is yours, never a session's; in the org the CEO asks it once per request |
 | 10 session worktree | monitor | `worktree-add.sh` |
 | 11 block work | sessions | `session-monitor.sh --task <id> --wave N`, one tab per block, each cut from the work branch |
-| 11 block gates | monitor | the red rerun, `block-verify.sh`, `code-reviewer` and `architecture-auditor` on the block diff, `block-mr.sh`, then the automatic merge `block-mr-merge.sh` (a high-risk block waits for the human's yes and `--confirmed`) |
+| 11 block gates | monitor | the red rerun, `block-verify.sh`, `code-reviewer` and `architecture-auditor` on the block diff, `block-mr.sh`, then the automatic merge `block-mr-merge.sh`, a high-risk block too, recorded as `## Merged` for the human |
 | 12, 12b acceptance, duplication | monitor | the full `test` binding on the work branch, the parent's acceptance verbatim; `git diff origin/<base>...<branch> > <harness>/review.diff`, then `dup-check.sh <harness>/review.diff <worktree>`, never a task id |
 | 13 review | monitor | `code-reviewer` over the whole diff and the `architecture-auditor` once on the whole task diff, as subagents, because their verdicts belong in your context |
 | 14 task MR | monitor, then the human | `mr-open.sh` into the base branch with its `## Blocks`; the human reviews and merges it |
@@ -100,8 +100,8 @@ A herd ends at `done` or `closed`, and at nothing else. On 2026-09-22 the monito
 blocks reached `review` and missed both the merges and a `need_rebase` on !412.
 
 A block MR goes into the task's work branch with its pipeline skipped and is merged by you through
-`block-mr-merge.sh <block>` once its gates are green (`references/lead.md`); only a block rated high risk
-waits for the human. The one MR the human reviews is the task MR into the base branch, and a task stacked
+`block-mr-merge.sh <block>` once its gates are green (`references/lead.md`); no block waits for the human,
+its risk is recorded as `## Merged` in its progress file. The one MR the human reviews is the task MR into the base branch, and a task stacked
 before this flow keeps its block MRs into each other (`references/solve.md`, `restack.sh`).
 
 After the last unit reaches `review`, keep the same loop running. `herd-watch.sh` runs

@@ -1,9 +1,11 @@
 #!/bin/sh
 # The lead's merge of one block MR into the work branch (3.4 step 5 of the agent-org plan): the MR block-mr.sh
 # opened is merged on the forge, the parent worktree follows with a fast-forward pull, the block's worktree and
-# local branch are removed and the block is set done through state-report.sh.
+# local branch are removed and the block is set done through state-report.sh. No human waits on it: what was merged
+# is written as `## Merged` into the block's progress file in the state repo (the MR, the risk with its reason from
+# `.harness/<block>/arch.md`, the review verdict), which the UI's task drawer shows; the human gates only the task MR.
 #
-#   block-mr-merge.sh <block-id> [--confirmed] [--dry-run] [--state <dir>]
+#   block-mr-merge.sh <block-id> [--dry-run] [--state <dir>]
 #
 # The MR is the block's `mr_url:`, the forge its host (github.com goes to gh, every other host to glab), the
 # class the task's `.harness/<T-id>/forge.json` that block-mr.sh wrote:
@@ -15,14 +17,12 @@
 # the work branch once the first one lands, so an MR the forge reports as `need_rebase` is rebased first with
 # `glab mr rebase <url> --skip-ci`, and the merge waits until the rebase is through.
 #
-# Two things stop a merge before the forge is called. A block whose `.harness/<block>/arch.md` rates it `risk:
-# high` exits 3: the lead asks the human, and runs this again with --confirmed after the yes. A block whose
-# `.harness/<block>/review.md` verdict is `changes needed` exits 1: its blocking findings are a fix round first.
+# A block whose `.harness/<block>/review.md` verdict is `changes needed` exits 1 before the forge is called: its
+# blocking findings are a fix round first. A high risk does not stop the merge; it is in the `## Merged` record.
 # An MR the forge already reports merged is not merged again, so a run that stopped halfway is finished by the
 # next one. --dry-run prints the commands a run would make and changes nothing.
 #
-# Exit 0 with `<block> merged <url>` (or `<block> auto-merge <url>` in class C) on stdout. Exit 3 for a high
-# risk block without --confirmed. Exit 1 with the reason on stderr for a misuse, a block with no mr_url, no
+# Exit 0 with `<block> merged <url>` (or `<block> auto-merge <url>` in class C) on stdout. Exit 1 with the reason on stderr for a misuse, a block with no mr_url, no
 # review, a review asking for changes, no forge.json, no parent worktree, a merge the forge refused, a pull that
 # is not a fast-forward, or a done the state clone refused. A worktree or branch that could not be removed is a
 # note on stderr and does not fail the run.
@@ -33,17 +33,16 @@ die() { printf 'block-mr-merge: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-id='' confirmed='' dry='' state=''
+id='' dry='' state=''
 while [ $# -gt 0 ]; do
   case "$1" in
-    --confirmed) confirmed=1; shift ;;
     --dry-run) dry=1; shift ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one block id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: block-mr-merge.sh <block-id> [--confirmed] [--dry-run] [--state <dir>]"
+[ -n "$id" ] || die "usage: block-mr-merge.sh <block-id> [--dry-run] [--state <dir>]"
 is_block_id "$id" || die "'$id' is not a block id of the shape T-<n>-<NN> or T-<ALIAS>-<n>-<NN>"
 
 # see: block-mr.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to
@@ -91,15 +90,11 @@ case "$verdict" in
 esac
 
 arch="$harness/$id/arch.md"
-risk=''
+risk='not rated' why=''
 if [ -f "$arch" ]; then
   risk=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && /^---$/ { exit } sub(/^risk:[[:space:]]*/, "") { print; exit }' "$arch")
-fi
-if [ "$risk" = high ] && [ -z "$confirmed" ]; then
   why=$(awk '/^###[[:space:]]*Risk[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && NF { print; exit }' "$arch" | tr -d '`')
-  printf 'block-mr-merge: block %s is rated high risk (%s) and is not merged: ask the human with the MR %s and the risk in %s, and after their yes run block-mr-merge.sh %s --confirmed\n' \
-    "$id" "${why:-see arch.md}" "$url" "$arch" "$id" >&2
-  exit 3
+  case "$risk" in low|medium|high) ;; *) risk='not rated' ;; esac
 fi
 
 fjson="$harness/$parent/forge.json"
@@ -185,6 +180,12 @@ if git -C "$pwt" show-ref --verify --quiet "refs/heads/$branch"; then
   git -C "$pwt" branch -D "$branch" >/dev/null 2>"$tmp/br.err" \
     || printf 'block-mr-merge: %s is merged, but its branch %s could not be deleted: %s\n' "$id" "$branch" "$(cat "$tmp/br.err")" >&2
 fi
+
+# the record the human reads instead of a confirm: replaced when a rerun writes it again, committed with the done
+progress="$state/repos/$key/progress/$id.md"
+[ -f "$progress" ] || printf '# %s\n' "$id" > "$progress"
+awk '/^## Merged[[:space:]]*$/ { skip = 1; next } skip && /^## / { skip = 0 } !skip { print }' "$progress" > "$tmp/progress"
+{ cat "$tmp/progress"; printf '\n## Merged\n- mr: %s\n- risk: %s%s\n- review: %s\n' "$url" "$risk" "${why:+ - $why}" "${verdict:-none}"; } > "$progress"
 
 # invariant: state-report.sh is the one writer of task frontmatter; it resolves the state clone from the cwd,
 # invariant: so the report is made from the parent worktree

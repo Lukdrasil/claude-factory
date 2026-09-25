@@ -3,7 +3,8 @@
 # stubs on PATH that merge on the "forge" by merging the block branch into the work branch on origin (3.4 step 5
 # of the agent-org plan): the MR is merged with `glab mr merge` or `gh pr merge --merge --delete-branch`, the
 # parent worktree follows with `pull --ff-only`, the block's worktree is removed and the block is set done. A
-# high risk block is refused until --confirmed, a sibling MR of a class B task is rebased before its merge, a
+# high risk block is merged without a confirm, its MR, risk and review recorded as `## Merged` in its progress
+# file, a sibling MR of a class B task is rebased before its merge, a
 # class C MR is left to auto-merge, and --dry-run changes nothing.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
@@ -176,20 +177,16 @@ gone "the block's worktree is removed" "$tmp/demo/T-700-01"
 check "the block's local branch is deleted" '' "$(git -C "$clone" branch --list block/T-700-01)"
 check 'the block is set done in the state clone' done "$(status T-700-01)"
 
-# --- high risk waits for the human ------------------------------------------------------
+# --- high risk is merged without waiting, and recorded for the human ------------------------
 block T-700-02 glab high '`ok`: clean.'
 url2=https://gitlab.example/o/demo/-/merge_requests/2
 run T-700-02
-check 'high risk without --confirmed exits 3' 3 "$rc"
-has 'the refusal says to ask the human' 'human' "$err"
-has 'the refusal names --confirmed' '--confirmed' "$err"
-hasnt 'high risk: nothing is merged' "[merge] [$url2]" "$(cat "$STUB_LOG")"
-there 'high risk: the worktree stays' "$tmp/demo/T-700-02"
-check 'high risk: the block stays review' review "$(status T-700-02)"
-run T-700-02 --confirmed
-check 'high risk with --confirmed exits 0' 0 "$rc"
+check 'high risk exits 0' 0 "$rc"
 [ "$rc" = 0 ] || printf '  stderr: %s\n' "$err"
-check 'high risk with --confirmed is done' done "$(status T-700-02)"
+has 'high risk: the MR is merged' "[merge] [$url2]" "$(cat "$STUB_LOG")"
+check 'high risk: the block is done' done "$(status T-700-02)"
+merged=$(git -C "$state" show HEAD:repos/demo/progress/T-700-02.md 2>/dev/null | sed -n '/^## Merged$/,$p')
+check 'the committed progress file records the merge' "$(printf '## Merged\n- mr: %s\n- risk: high - high: why.\n- review: ok: clean.' "$url2")" "$merged"
 
 # --- gh -------------------------------------------------------------------------------------
 block T-700-03 gh medium '`ok`: clean.'

@@ -358,7 +358,7 @@ if [ -n "$pending" ]; then
 fi
 
 if [ -n "$waiting" ] && [ -z "$stacked" ]; then
-  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done; exit 3 is a block whose MR rates the risk high, merged only after the human's yes (_shared/ask.md) by the same line with --confirmed; a class C forge prints <block> auto-merge <url>, and the line runs again once the forge has merged it. The next wave is cut from the work branch once this one is merged."
+  emit "Step 11 of 16: merge the block MRs of $id" "every block below is done: block-mr-merge.sh has merged its MR into ${branch:-the work branch}, pulled the parent worktree and set the block done, a high risk too, recorded as ## Merged in its progress file for the human; a class C forge prints <block> auto-merge <url>, and the line runs again once the forge has merged it. The next wave is cut from the work branch once this one is merged."
   for b in $waiting; do
     cmd "$bin/block-mr-merge.sh $b"
   done

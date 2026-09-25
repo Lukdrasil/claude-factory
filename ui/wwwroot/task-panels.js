@@ -66,6 +66,21 @@ function blockList(blocks) {
     : '<p class="muted">No blocks.</p>';
 }
 
+const RISK = { low: 'ok', medium: 'warn', high: 'bad' };
+
+/** Every block with what its `## Merged` record says: the risk as a chip, the MR, the risk's reason and the review,
+ * then what changed from its `## Done`; a block not merged yet shows its status only. */
+function blockMerges(blocks) {
+  if (!blocks.length) return '<p class="muted">No blocks.</p>';
+  return blocks.map((b) => {
+    const merged = section(b.html.progress, 'Merged');
+    const risk = (/risk: (low|medium|high|not rated)/.exec(merged.map((n) => n.textContent).join(' ')) || [])[1];
+    return `<div data-block-merge="${esc(b.task.id)}"><h4><span class="id">${esc(b.task.id)}</span> <span class="chip">${esc(b.task.status)}</span>`
+      + `${risk ? ` <span class="chip ${RISK[risk] || ''}">risk ${esc(risk)}</span>` : ''} ${esc(b.task.goal)}</h4>`
+      + (merged.length ? md(merged) + md(section(b.html.progress, 'Done')) : '') + '</div>';
+  }).join('');
+}
+
 /**
  * The step rail of a solve task, ticked from its recorded steps and current at the step its session reports, and one `[data-panel]` per step from
  * triage to done, each markdown section rendered from `task.html`. `task` is its `/api/tasks/{id}` detail with
@@ -84,7 +99,7 @@ export function renderTaskPanels(task) {
     + panel('grill', 'Grill', md(['Terms', 'Program design', 'Gap ledger'].flatMap((head) => section(grill, head))))
     + panel('decompose', 'Decompose', blockList(blocks) + md(section(h.progress, 'Wave plan')) + md(section(h.verdicts, 'cut-check')))
     + panel('approve', 'Approve', baseLine(task) + md(parse(h.body)) + blockList(blocks))
-    + panel('blocks', 'Blocks', blockList(blocks))
+    + panel('blocks', 'Blocks', blockMerges(blocks))
     + panel('verdicts', 'Verify and review', blocks.map((b) => `<h4>${esc(b.task.id)}</h4>${md(section(b.html.progress, 'Evidence'))}`).join('')
       + `<h4>Review</h4>${md(section(h.progress, 'Review'))}`)
     + panel('mr', 'MRs', mrs ? `<ul>${mrs}</ul>` : '<p class="muted">No MR yet.</p>')

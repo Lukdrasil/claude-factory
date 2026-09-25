@@ -77,8 +77,8 @@ another block's branch and nothing is stacked.
    --mr-url`.
 3. `<plugin-root>/bin/block-mr-merge.sh <block-id>` merges it, pulls the parent worktree `--ff-only`, removes
    the block's worktree and sets the block done: step 11's automatic merges. It needs the block in `review` and
-   refuses a `changes needed` verdict (exit 1). Exit 3 is a block rated high risk, not merged: ask the human
-   first (`_shared/ask.md`) and rerun with `--confirmed` only after the yes. Class C prints `<block> auto-merge
+   refuses a `changes needed` verdict (exit 1). A high risk does not stop it: the MR, the risk and the review
+   are recorded as `## Merged` in the block's progress file. Class C prints `<block> auto-merge
    <url>`; rerun it once the forge merged.
 
 `<plugin-root>/bin/block-merge.sh <block-id> --verify` still proves a merge without committing. A task whose

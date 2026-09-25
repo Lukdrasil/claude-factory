@@ -287,6 +287,13 @@ async function confirmYes(page, name, key) {
       'block one of T-020', 'block two of T-020']);
   });
 
+  await check('the blocks panel of T-020 shows the merge record of T-020-01: a high risk chip, its reason, the review and what changed', async () => {
+    const b = page.locator('aside [data-panel="blocks"] [data-block-merge="T-020-01"]');
+    ok(await b.locator('.chip.bad', { hasText: 'risk high' }).count() === 1, 'no risk high chip');
+    holds(await b.innerText(), ['it rewrites the store.', 'review: ok: clean.', 'the fixture widget stored']);
+    ok(await page.locator('aside [data-panel="blocks"] [data-block-merge="T-020-02"] .chip', { hasText: 'risk' }).count() === 0, 'T-020-02, not merged, shows a risk');
+  });
+
   await check('the verdicts panel of T-020 shows each block\'s verify evidence and the review verdict', async () => {
     holds(await panelText(page, 'verdicts'), ['tests: 3 run, 3 passed, 0 failed', 'tests: 5 run, 5 passed, 0 failed',
       'changes needed']);

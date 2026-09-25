@@ -53,9 +53,9 @@ answer with `herdr agent send-keys <name> <keys>`, never `herdr agent prompt`.
    that ran, the review verdict. The block reads `review` from here on.
 5. `sh <plugin-root>/bin/block-mr-merge.sh <block>` merges it, pulls the parent worktree `--ff-only`, removes
    the block's worktree and sets the block done. It refuses a block that is not in `review` and a `changes
-   needed` verdict (exit 1: the fix round of step 3). Exit 3 is a block rated high risk, not merged: ask the
-   human with one confirm ask naming the MR and the reasons, and only on a yes run `block-mr-merge.sh <block>
-   --confirmed`; a no leaves the block in review, and the human's answer is a fix round or a blocked question.
+   needed` verdict (exit 1: the fix round of step 3). Nobody waits on a block MR, a high risk included: the
+   script records the MR, the risk with its reason and the review as `## Merged` in the block's progress file,
+   which the human reads in the task's drawer. The human's one gate is the task MR.
    A repository of MR class C prints `<block> auto-merge <url>`: the forge merges once the pipeline is green,
    and a rerun of `block-mr-merge.sh <block>` after that finishes the job.
 

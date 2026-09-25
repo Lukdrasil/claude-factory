@@ -917,10 +917,6 @@ gate_role_check() { # <the command segments>
           *)
             gr_owner='ceo repo-lead' gr_msg="task-done.sh is the lead's or the CEO's, after the human says the task MR is merged (references/lead.md, done.md)" ;;
         esac ;;
-      block-mr-merge.sh)
-        case " $* " in *" --confirmed "*)
-          gr_owner=repo-lead gr_msg="block-mr-merge.sh --confirmed is the lead's, after the human's yes in the high-risk confirm ask (references/lead.md)" ;;
-        esac ;;
       curate-apply.sh)
         if [ "${1:-}" = approve ]; then
           gr_owner='ceo weekly' gr_msg="curate-apply.sh approve is the CEO's or the weekly pass's, after the human's yes in its round (references/curate.md, memory-weekly)"

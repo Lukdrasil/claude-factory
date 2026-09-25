@@ -112,7 +112,7 @@ No candidates.
 ## Review
 `code-reviewer` over the integrated diff at `abc1234`, verdict `changes needed`, 1 blocking, 2 suggestions.
 EOF
-printf '# T-020-01\n\n## Evidence\n- block-verify.sh T-020-01 -> green, tests: 3 run, 3 passed, 0 failed\n' > "$st/progress/T-020-01.md"
+printf '# T-020-01\n\n## Done\n- the fixture widget stored\n\n## Evidence\n- block-verify.sh T-020-01 -> green, tests: 3 run, 3 passed, 0 failed\n\n## Merged\n- mr: https://example.invalid/mr/201\n- risk: high - high: it rewrites the store.\n- review: ok: clean.\n' > "$st/progress/T-020-01.md"
 printf '# T-020-02\n\n## Evidence\n- block-verify.sh T-020-02 -> green, tests: 5 run, 5 passed, 0 failed\n' > "$st/progress/T-020-02.md"
 session --session s20 --pane w2:p20 --flow solve --task T-020 --step 'Step 16 of 16: knowledge review for T-020'
 confirm s20 dn1 T-020 done 'done T-020' 'Close T-020 as done?'
