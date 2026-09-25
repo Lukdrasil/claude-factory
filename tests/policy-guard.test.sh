@@ -33,10 +33,12 @@ printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
 home=$H
 role=''
+proj=''
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u HOME -u FACTORY_ROLE ${home:+HOME=$home} ${role:+FACTORY_ROLE=$role} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u HOME -u FACTORY_ROLE -u CLAUDE_PROJECT_DIR ${home:+HOME=$home} ${role:+FACTORY_ROLE=$role} \
+    ${proj:+CLAUDE_PROJECT_DIR=$proj} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -350,5 +352,15 @@ try 0 'no role: task-approve.sh' "$S" coord "sh $P/task-approve.sh T-900 --state
 try 0 'no role: task-done.sh --close' "$S" coord "sh $P/task-done.sh T-900 --close ${q}no MR${q} --state $S"
 try 0 'no role: block-mr-merge.sh --confirmed' "$S" coord "sh $P/block-mr-merge.sh T-900-01 --confirmed"
 try 0 'no role: curate-apply.sh approve' "$S" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
+
+# a lead whose shell cd'ed into the state clone keeps the posture of the worktree it was launched in
+# (CLAUDE_PROJECT_DIR), so it can cd back and read its blocks; the state clone as launch dir changes nothing
+role=repo-lead proj=$PAR
+try 0 'launched in the parent worktree, cwd the state clone: cd back to the worktree' "$W/state" coord "cd $PAR && pwd"
+try 0 'launched in the parent worktree, cwd the state clone: git -C <own block> log' "$W/state" coord "git -C $BLK log --oneline -3"
+try 2 'launched in the parent worktree, cwd the state clone: a write into another parent stays denied' "$W/state" coord "touch $W/cf/T-901/x"
+proj=$W/state
+try 2 'launched in the state clone: git -C <a block> log stays denied' "$W/state" coord "git -C $BLK log --oneline -3"
+role='' proj=''
 
 exit $fail
