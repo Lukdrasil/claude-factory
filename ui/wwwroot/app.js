@@ -1,4 +1,4 @@
-import { groupOf, intake, renderPipeline, renderTop, waiting } from './pipeline.js';
+import { groupOf, intake, renderPipeline, renderTop, view, waiting } from './pipeline.js';
 import { renderDrawer } from './drawer.js';
 import { compose } from './ask-card.js';
 import { renderSetupStrip, renderSetupTab } from './setup.js';
@@ -207,7 +207,7 @@ function render() {
   // why: every render replaces the page; the focus goes back to the same control, else to the first one of its question
   const to = app.querySelector(focus.at) || (focus.question && app.querySelector(`${focus.question} button:not(:disabled)`));
   to?.focus({ preventScroll: true });
-  if (to?.tagName === 'TEXTAREA' || (to?.tagName === 'INPUT' && to.type === 'text')) to.setSelectionRange(focus.caret, focus.caret);
+  if (to?.tagName === 'TEXTAREA' || (to?.tagName === 'INPUT' && ['text', 'search'].includes(to.type))) to.setSelectionRange(focus.caret, focus.caret);
 }
 
 /** Closes the drawer and gives the focus back to the row that opens it. */
@@ -383,6 +383,12 @@ app.addEventListener('click', (e) => {
 });
 
 app.addEventListener('input', (e) => {
+  const act = e.target.dataset.act;
+  if (act === 'find' || act === 'finished') {
+    if (act === 'find') view.q = e.target.value;
+    else view.finished = e.target.checked;
+    return render();
+  }
   const box = e.target.closest('[data-ask] textarea');
   if (!box) return;
   stagedFor(box.closest('[data-ask]').dataset.ask).drafts[box.closest('[data-q]').dataset.q] = box.value;

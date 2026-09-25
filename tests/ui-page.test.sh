@@ -36,6 +36,8 @@ task() { # <id> <status> <goal>
 }
 task T-001-01 in_progress 'Block one of the fixture.'
 task T-002 in_progress 'The second fixture task.'
+task T-004 done 'The finished fixture task.'
+task T-005 closed 'The dropped fixture task.'
 # T-002 is triaged and approved and nothing else, while its session reports step 11
 printf '\n## Related issues\nnone\n' >> "$state1/repos/claude-factory/tasks/T-002-fixture.md"
 # T-003 is a draft nobody triaged yet: the template's placeholders stand in tier, archetype and complexity

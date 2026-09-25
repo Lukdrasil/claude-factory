@@ -24,6 +24,10 @@ const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
 /** The New request box's draft, kept across the page's re-renders; app.js empties `text` once the CEO has it. */
 export const intake = { text: '', priority: 'P2' };
 
+/** The grid's filter, kept across the page's re-renders: the done and closed tasks shown or not, and the search text. */
+export const view = { finished: false, q: '' };
+const FINISHED = new Set(['done', 'closed']);
+
 /** The drawer a task id or an ask's task belongs to: the parent task (`T-<n>` or `T-<ALIAS>-<n>`) of a block or
  * step, or setup for none. */
 export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-(?:[A-Z]{2,4}-)?\d+/) || [task])[0]);
@@ -135,18 +139,27 @@ function intakeBox(ceo, note) {
  */
 export function renderPipeline(board, sessions, requests = [], capacity = null, ceo = null, note = null) {
   const ids = new Set(board.map((t) => t.id));
-  const roots = board.filter((t) => groupOf(t.id) === t.id || !ids.has(groupOf(t.id)));
+  const all = board.filter((t) => groupOf(t.id) === t.id || !ids.has(groupOf(t.id)));
+  const blocksOf = (t) => board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id));
+  const q = view.q.trim().toLowerCase();
+  const hit = (t) => [t.id, t.goal, t.repo, t.request].some((v) => v && v.toLowerCase().includes(q));
+  const finished = all.filter((t) => FINISHED.has(t.status)).length;
+  const roots = all.filter((t) => (view.finished || !FINISHED.has(t.status)) && (!q || hit(t) || blocksOf(t).some(hit)));
   const groups = byRequest(roots, requests);
   const heads = groups.some(([k]) => k);
   const bodies = groups.map(([k, ts]) => `<tbody>${heads ? requestRow(k, requests.find((r) => r.id === k)) : ''}${ts.map((t) => taskRow(t, sessions)
-    + board.filter((b) => b !== t && groupOf(b.id) === t.id && t.id === groupOf(t.id)).map((b) => blockRow(b, t.id, sessions)).join('')).join('')}</tbody>`);
+    + blocksOf(t).map((b) => blockRow(b, t.id, sessions)).join('')).join('')}</tbody>`);
+  // why: the filter sits in the Task header, so on a phone the rows still start right under the page header
+  const filter = all.length ? '<span class="grid-filter">'
+    + `<input type="search" data-act="find" aria-label="Search tasks" placeholder="Search tasks" value="${esc(view.q)}">`
+    + `<label><input type="checkbox" data-act="finished"${view.finished ? ' checked' : ''}> Show done and closed (${finished})</label></span>` : '';
   const el = document.createElement('div');
   el.className = 'pipeline';
   // why: with tasks the grid comes first, so on a phone it starts right under the header; an empty grid points to the box
   const box = intakeBox(ceo, note);
-  el.innerHTML = (capacity ? capacityStrip(capacity) : '') + (bodies.length ? '' : box)
-    + `<div class="grid-wrap"><table><thead><tr><th class="task">Task</th><th>Prio</th>${STEPS.map(([n, label, title]) => `<th title="${title}">${n} <small>${label}</small></th>`).join('')}</tr></thead>`
-    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">No tasks yet. Start one with New request above.</td></tr></tbody>`}</table></div>${bodies.length ? box : ''}`;
+  el.innerHTML = (capacity ? capacityStrip(capacity) : '') + (all.length ? '' : box)
+    + `<div class="grid-wrap"><table><thead><tr><th class="task">Task${filter}</th><th>Prio</th>${STEPS.map(([n, label, title]) => `<th title="${title}">${n} <small>${label}</small></th>`).join('')}</tr></thead>`
+    + `${bodies.join('') || `<tbody><tr><td colspan="${STEPS.length + 2}" class="muted">${all.length ? 'No task matches.' : 'No tasks yet. Start one with New request above.'}</td></tr></tbody>`}</table></div>${all.length ? box : ''}`;
   el.addEventListener('input', (e) => {
     if (e.target.matches('[data-intake] textarea')) intake.text = e.target.value;
     if (e.target.matches('[data-intake] select')) intake.priority = e.target.value;

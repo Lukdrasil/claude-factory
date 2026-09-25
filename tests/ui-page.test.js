@@ -228,6 +228,47 @@ async function stage(q, button, text) {
     ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003', `rows: ${ids.join(' ')}`);
   });
 
+  await check('the grid hides the done T-004 and the closed T-005, and Show done and closed reads their count', async () => {
+    const box = page.getByRole('checkbox', { name: 'Show done and closed (2)' });
+    await until('the Show done and closed box', () => box.isVisible());
+    ok(!(await box.isChecked()), 'the box is ticked by default');
+    ok(!(await taskRowIds(page)).some((id) => id === 'T-004' || id === 'T-005'), `rows: ${(await taskRowIds(page)).join(' ')}`);
+  });
+
+  await check('ticking Show done and closed lists T-004 and T-005 after T-003, unticking hides them again', async () => {
+    await page.getByRole('checkbox', { name: /^Show done and closed/ }).check();
+    const ids = await until('six task rows', async () => {
+      const ids = await taskRowIds(page);
+      return ids.length >= 6 && ids;
+    });
+    ok(ids.join(' ') === 'T-001 T-001-01 T-002 T-003 T-004 T-005', `rows: ${ids.join(' ')}`);
+    await page.getByRole('checkbox', { name: /^Show done and closed/ }).uncheck();
+    await until('T-004 hidden', async () => !(await taskRowIds(page)).includes('T-004'));
+  });
+
+  await check('typing second in Search tasks keeps only T-002, the focus and caret stay in the box', async () => {
+    const find = page.getByRole('searchbox', { name: 'Search tasks' });
+    await find.click();
+    await page.keyboard.type('second');
+    await until('only T-002', async () => (await taskRowIds(page)).join(' ') === 'T-002');
+    const at = await find.evaluate((el) => document.activeElement === el && el.selectionStart);
+    ok(at === 6, `focus or caret lost: ${at}`);
+  });
+
+  await check('Search tasks matches a block\'s goal and keeps its parent, and finds a done task only with Show done and closed', async () => {
+    const find = page.getByRole('searchbox', { name: 'Search tasks' });
+    await find.fill('block one');
+    await until('T-001 with its block', async () => (await taskRowIds(page)).join(' ') === 'T-001 T-001-01');
+    await find.fill('finished');
+    await until('no row', async () => (await taskRowIds(page)).length === 0);
+    const text = (await page.locator('.grid-wrap tbody').innerText()).trim();
+    ok(text === 'No task matches.', `grid: ${JSON.stringify(text)}`);
+    await page.getByRole('checkbox', { name: /^Show done and closed/ }).check();
+    await until('T-004', async () => (await taskRowIds(page)).join(' ') === 'T-004');
+    await fresh(page);
+    await until('four task rows again', async () => (await taskRowIds(page)).length === 4);
+  });
+
   await check('without a CEO session the New request box names the command that starts one, and its text, priority and Send are disabled', async () => {
     const box = page.locator('[data-intake]');
     await until('the New request box', () => box.isVisible());

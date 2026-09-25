@@ -122,7 +122,10 @@ shows all of it in one column. The panels render the task's markdown from its `h
 The header holds six tabs, and every tab keeps the counter, the setup strip and the drawer:
 - Pipeline: the New request box (a text, a priority P0 to P3, P2 by default), which posts `request: <text>,
   priority <P>` as a free message to the CEO's session and is disabled with the command that starts the CEO when
-  there is none; the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid. A step is
+  there is none; the capacity strip, `used/cap` per role or `used/-` without a cap, then the grid, with Search
+  tasks and Show done and closed in its Task header. The grid hides the tasks at `done` or `closed` until that box
+  is ticked, and Search tasks keeps the tasks whose id, goal, repo or request, or a block's id or goal, holds the
+  text, any case; with nothing left the grid reads No task matches. Both last until a reload. A step is
   ticked from the `steps` the state records, the step a session reports is only marked current. The tasks of one
   request sit under its header row (id, priority, status, destination), the request with the best priority first,
   then the newest, the tasks without a request last; without any request there is no header row. Each task shows
