@@ -335,6 +335,16 @@ for f in skills/factory/SKILL.md skills/factory/references/approve.md skills/fac
 done
 grep -Eq 'solve-next\.sh .*--ui' "$repo/skills/factory/references/solve.md" \
   && pass "solve.md passes --ui to solve-next.sh" || flunk "solve.md passes --ui to solve-next.sh"
+# F9: a ui suite run inside a factory wrote its fixture session into that factory's UI home, so every ui suite and
+# the fixture clear the caller's FACTORY_UI_HOME, FACTORY_UI_CONTAINER and WORK_DIR before their first scratch dir
+for f in "$repo"/tests/ui-*.test.sh "$repo/tests/ui-fixture.sh"; do
+  unsets=$(awk '/mktemp|\$tmp/ { exit } /^unset / { print }' "$f")
+  miss=''
+  for v in FACTORY_UI_HOME FACTORY_UI_CONTAINER WORK_DIR; do
+    printf '%s\n' "$unsets" | grep -Eq "[[:space:]]$v([[:space:]]|\$)" || miss="$miss $v"
+  done
+  [ -z "$miss" ] && pass "${f##*/} unsets the caller's UI env first" || flunk "${f##*/} unsets the caller's UI env first:$miss"
+done
 for term in ask 'answer file' relay 'UI home'; do
   grep -qi "\*\*$term\*\*" "$repo/CONTEXT.md" 2>/dev/null && pass "CONTEXT.md defines $term" || flunk "CONTEXT.md defines $term"
 done
