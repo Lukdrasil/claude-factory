@@ -91,7 +91,7 @@ code "a rerun exits 0" 0 "$rc"
 has "a rerun has nothing to do" '^nothing to do' "$out"
 plug=$(dirname -- "$bin")
 allow=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).permissions.allow.join("\n"))' "$settings" 2>&1)
-for r in "Read(/$tmp/f/**)" "Read(/$plug/**)" "Edit(/$tmp/f/state/**)" "Write(/$tmp/f/state/**)" "Bash(sh $plug/bin/*)"; do
+for r in "Read(/$tmp/f/**)" "Read(/$plug/**)" "Edit(/$tmp/f/state/**)" "Write(/$tmp/f/state/**)" "Bash(sh $plug/bin/*)" "Bash($plug/bin/*)"; do
   if printf '%s\n' "$allow" | grep -qxF -- "$r"; then printf 'PASS init --yes allows %s\n' "$r"
   else printf 'FAIL init --yes allows %s\n' "$r"; fail=1; fi
 done
@@ -286,10 +286,10 @@ HSTUB_CEO=1 djson
 has "a live ceo agent is done" '^done ' "$(step ceo)"
 dplug=$(dirname -- "$bin")
 cp "$dhome/.claude/settings.json" "$tmp/dsettings.bak"
-printf '{\n  "env": {"WORK_DIR": "%s"},\n  "promptSuggestionEnabled": false,\n  "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)"]}\n}\n' \
-  "$w" "$w" "$dplug" "$w" "$w" "$dplug" > "$dhome/.claude/settings.json"
+printf '{\n  "env": {"WORK_DIR": "%s"},\n  "promptSuggestionEnabled": false,\n  "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)", "Bash(%s/bin/*)"]}\n}\n' \
+  "$w" "$w" "$dplug" "$w" "$w" "$dplug" "$dplug" > "$dhome/.claude/settings.json"
 djson
-has "the five allow rules are done" '^done ' "$(step permissions)"
+has "the six allow rules are done" '^done ' "$(step permissions)"
 cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
 # --- each check missing or failing ----------------------------------------------------------------------------------
