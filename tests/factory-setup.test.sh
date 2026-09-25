@@ -292,6 +292,19 @@ djson
 has "the five allow rules are done" '^done ' "$(step permissions)"
 cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
 
+# a factory run with `claude --settings <file>`: WORK_DIR comes from the environment and the rest from the file
+# FACTORY_CLAUDE_ARGS names, so the user settings of this machine say nothing about it
+node -e 'const f=process.argv[1],fs=require("fs"),o=JSON.parse(fs.readFileSync(f,"utf8"));delete o.env.WORK_DIR;delete o.promptSuggestionEnabled;o.permissions={allow:["Bash(ls)"]};fs.writeFileSync(f,JSON.stringify(o))' "$dhome/.claude/settings.json"
+printf '{"env": {"WORK_DIR": "%s"}, "promptSuggestionEnabled": false, "permissions": {"allow": ["Read(/%s/**)", "Read(/%s/**)", "Edit(/%s/state/**)", "Write(/%s/state/**)", "Bash(sh %s/bin/*)"]}}\n' \
+  "$w" "$w" "$dplug" "$w" "$w" "$dplug" > "$tmp/fsettings.json"
+WORK_DIR=$w FACTORY_CLAUDE_ARGS="--plugin-dir $dplug --settings $tmp/fsettings.json" djson
+has "WORK_DIR from the environment is done" '^done ' "$(step work-dir)"
+has "promptSuggestionEnabled from the --settings file is done" '^done ' "$(step prompt-suggestion)"
+has "the allow rules of the --settings file are done" '^done ' "$(step permissions)"
+djson
+has "without them the user settings decide: no WORK_DIR" '^missing ' "$(step work-dir)"
+cp "$tmp/dsettings.bak" "$dhome/.claude/settings.json"
+
 # --- each check missing or failing ----------------------------------------------------------------------------------
 sys="$tmp/sys"
 mkdir -p "$sys"

@@ -93,6 +93,22 @@ fi
 herdr_min=0.8.2
 settings="${HOME:-/nonexistent}/.claude/settings.json"
 init_fix="run factory-init.sh --root $root"
+# a factory run with `claude --settings <file>` in FACTORY_CLAUDE_ARGS reads that file over the user settings
+fsettings=$(printf '%s\n' "${FACTORY_CLAUDE_ARGS:-}" | awk '{ for (i = 1; i <= NF; i++) {
+  if ($i == "--settings" && i < NF) { print $(i + 1); exit }
+  if (index($i, "--settings=") == 1) { print substr($i, 12); exit } } }')
+settings_label=$settings
+[ -z "$fsettings" ] || settings_label="$fsettings over $settings"
+# the effective value of WORK_DIR or promptSuggestionEnabled, the first file that sets it; allow is the union
+settings_value() { # WORK_DIR|promptSuggestionEnabled|allow
+  node -e '
+    const fs = require("fs"), [what, ...files] = process.argv.slice(1);
+    const os = files.map(f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { return {}; } });
+    const first = get => { for (const o of os) { const v = get(o); if (v !== undefined) return v; } return ""; };
+    if (what === "allow") process.stdout.write(os.flatMap(o => (o.permissions && o.permissions.allow) || []).join("\n"));
+    else if (what === "WORK_DIR") process.stdout.write(String(first(o => o.env && o.env.WORK_DIR)));
+    else process.stdout.write(String(first(o => o[what])));' "$1" $fsettings "$settings" 2>/dev/null || :
+}
 
 version_ge() { # <a> <b>: a >= b, both x.y.z
   printf '%s %s\n' "$1" "$2" | awk '{
@@ -260,31 +276,31 @@ check_state_push() {
 }
 
 check_work_dir() {
-  wd=$(sed -n 's/.*"WORK_DIR"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$settings" 2>/dev/null | head -n1 || :)
+  wd=${WORK_DIR:-} wd_in='the environment'
+  [ -n "$wd" ] || wd=$(settings_value WORK_DIR) wd_in=$settings_label
   wd=${wd%/}
-  if [ "$wd" = "$root" ]; then step work-dir done "WORK_DIR=$root in $settings"
-  elif [ -z "$wd" ]; then step work-dir missing "no WORK_DIR in $settings" "$init_fix"
-  else step work-dir failing "WORK_DIR is $wd in $settings, not $root" "$init_fix"; fi
+  if [ "$wd" = "$root" ]; then step work-dir done "WORK_DIR=$root in $wd_in"
+  elif [ -z "$wd" ]; then step work-dir missing "no WORK_DIR in $wd_in" "$init_fix"
+  else step work-dir failing "WORK_DIR is $wd in $wd_in, not $root" "$init_fix"; fi
 }
 
 check_prompt_suggestion() {
-  if grep -Eq '"promptSuggestionEnabled"[[:space:]]*:[[:space:]]*false' "$settings" 2>/dev/null; then
-    step prompt-suggestion done "promptSuggestionEnabled: false in $settings"
+  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
+    step prompt-suggestion done "promptSuggestionEnabled: false in $settings_label"
   else
-    step prompt-suggestion missing "promptSuggestionEnabled is not false in $settings, a suggestion would be typed into a UI answer" \
+    step prompt-suggestion missing "promptSuggestionEnabled is not false in $settings_label, a suggestion would be typed into a UI answer" \
       "$init_fix --ui docker"
   fi
 }
 
 check_permissions() {
-  pm=$(factory_allow_rules "$root" "$plugin" | node -e '
-    let s = ""; process.stdin.on("data", d => s += d).on("end", () => {
-      let o = {}; try { o = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) {}
-      const allow = (o.permissions && o.permissions.allow) || [];
-      process.stdout.write(s.split("\n").filter(r => r && !allow.includes(r)).join(" "));
-    });' "$settings" 2>/dev/null || :)
-  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings"
-  else step permissions missing "no allow rule $pm in $settings, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
+  allow=$(settings_value allow)
+  pm=$(factory_allow_rules "$root" "$plugin" | while IFS= read -r r; do
+    printf '%s\n' "$allow" | grep -qxF -- "$r" || printf ' %s' "$r"
+  done)
+  pm=${pm# }
+  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings_label"
+  else step permissions missing "no allow rule $pm in $settings_label, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
 }
 
 check_repos() {
@@ -581,10 +597,10 @@ if [ "$ui" = docker ]; then
   else missing "ui: docker, but the Docker daemon does not answer" 'install and start Docker, or set ui: off in factory.yml'; fi
   if command -v herdr >/dev/null 2>&1; then ok "ui: docker, herdr on PATH"
   else missing "ui: docker, but herdr is not on PATH" 'install herdr from https://herdr.dev, or set ui: off in factory.yml'; fi
-  if grep -Eq '"promptSuggestionEnabled"[[:space:]]*:[[:space:]]*false' "${HOME:-/nonexistent}/.claude/settings.json" 2>/dev/null; then
-    ok "ui: docker, promptSuggestionEnabled: false in ~/.claude/settings.json"
+  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
+    ok "ui: docker, promptSuggestionEnabled: false in $settings_label"
   else
-    missing "ui: docker, but promptSuggestionEnabled is not false in ~/.claude/settings.json" \
+    missing "ui: docker, but promptSuggestionEnabled is not false in $settings_label" \
       "run factory-init.sh --root $root --ui docker"
   fi
 fi
