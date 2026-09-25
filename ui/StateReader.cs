@@ -3,7 +3,8 @@ using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 public sealed record TaskRow(
-    string Id, string Status, string Archetype, string Tier, string Repo, string Owner, string Goal, string Request, string Priority);
+    string Id, string Status, string Archetype, string Tier, string Repo, string Owner, string Goal, string Request, string Priority,
+    List<string> Steps);
 
 public sealed record TaskDetail(
     TaskRow Task,
@@ -50,7 +51,8 @@ public sealed partial class StateReader(string root)
     {
         var live = Entries(archive: false);
         var byId = ById(live);
-        return live.Select(e => Row(e, byId)).ToList();
+        var maps = MapStatuses();
+        return live.Select(e => Row(e, byId, maps)).ToList();
     }
 
     public TaskDetail? Task(string id)
@@ -63,20 +65,19 @@ public sealed partial class StateReader(string root)
         }
         var file = entry.File;
         var body = Frontmatter.Body(entry.Text);
-        var home = Path.GetDirectoryName(Path.GetDirectoryName(file))!;
-        var repoDir = entry.Archived ? Path.GetDirectoryName(Path.GetDirectoryName(home))! : home;
-        string[] dirs = entry.Archived ? [home, repoDir] : [repoDir];
+        var (repoDir, dirs) = Dirs(entry);
         var slug = PlanSlug().Match(body) is { Success: true } m ? m.Groups[1].Value : null;
         var plan = slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-plan-ready.md");
         var grill = (slug is null ? null : ReadOrNull(repoDir, "plans", $"{slug}-grill.md")) ?? GrillOf(repoDir, id);
         var verdicts = slug is null ? null : FirstOrNull(dirs, "verdicts", $"{slug}.md");
         var progress = FirstOrNull(dirs, "progress", $"{id}.md");
-        var row = Row(entry, byId);
+        var maps = MapStatuses();
+        var row = Row(entry, byId, maps);
         return new TaskDetail(
             row,
             entry.Fields,
             body,
-            byId.Values.Where(e => e.Id.StartsWith(id + "-", StringComparison.Ordinal)).Select(e => Row(e, byId)).ToList(),
+            byId.Values.Where(e => e.Id.StartsWith(id + "-", StringComparison.Ordinal)).Select(e => Row(e, byId, maps)).ToList(),
             plan,
             grill,
             verdicts,
@@ -166,7 +167,7 @@ public sealed partial class StateReader(string root)
         return byId;
     }
 
-    static TaskRow Row(Entry e, Dictionary<string, Entry> byId)
+    static TaskRow Row(Entry e, Dictionary<string, Entry> byId, Dictionary<string, string> maps)
     {
         var f = e.Fields;
         var owner = f.GetValueOrDefault("owner", "");
@@ -179,7 +180,94 @@ public sealed partial class StateReader(string root)
             owner is "" or "null" ? "-" : owner,
             Goal(Frontmatter.Body(e.Text)),
             RequestOf(f),
-            PriorityOf(e, byId));
+            PriorityOf(e, byId),
+            Steps(e, byId, maps));
+    }
+
+    /// <summary>The repo folder of a task file and the folders its progress and verdicts are read from: an archived
+    /// task's month first, then the repo.</summary>
+    static (string RepoDir, string[] Dirs) Dirs(Entry e)
+    {
+        var home = Path.GetDirectoryName(Path.GetDirectoryName(e.File))!;
+        var repoDir = e.Archived ? Path.GetDirectoryName(Path.GetDirectoryName(home))! : home;
+        return (repoDir, e.Archived ? [home, repoDir] : [repoDir]);
+    }
+
+    /// <summary>The <c>Status:</c> of every request map, live or archived, by request id.</summary>
+    Dictionary<string, string> MapStatuses() =>
+        RequestDirs().ToDictionary(r => r.Id, r => RequestMap.Parse(Frontmatter.Load(Path.Combine(r.Dir, "map.md")).Text).Status,
+            StringComparer.Ordinal);
+
+    /// <summary>
+    /// The solve steps of a parent that its state records as done, each read off the state bin/solve-next.sh decides it
+    /// by: 3 a tier and archetype that are not the draft's placeholders and a <c>## Related issues</c>, 3b its request
+    /// map planned or later, 4 its plan-ready file, 5 that plan's verdict or the blocks decompose wrote once it was
+    /// spent, 6 blocks, 8 a wave plan in the progress file, 9 a plan_hash or a status of ready or later, 10 a block past
+    /// ready, 11 every block done, 12 <c>## Evidence</c>, 13 <c>## Review</c>, 14 an mr_url, 15 review or done, 16 done.
+    /// The step a session reports ticks none of them. A block records none.
+    /// </summary>
+    static List<string> Steps(Entry e, Dictionary<string, Entry> byId, Dictionary<string, string> maps)
+    {
+        if (!ParentId().IsMatch(e.Id))
+        {
+            return [];
+        }
+        var f = e.Fields;
+        var status = f.GetValueOrDefault("status", "");
+        var body = Frontmatter.Body(e.Text);
+        var (repoDir, dirs) = Dirs(e);
+        var slug = PlanReady(repoDir, e.Id, body);
+        var progress = FirstOrNull(dirs, "progress", $"{e.Id}.md") ?? "";
+        var blocks = byId.Values
+            .Where(b => BlockId().Match(b.Id) is { Success: true } m && m.Groups[1].Value == e.Id)
+            .Select(b => b.Fields.GetValueOrDefault("status", ""))
+            .ToList();
+        (string Step, bool Done)[] steps =
+        [
+            ("3", Set(f, "tier") && Set(f, "archetype") && Heading(body, "Related issues")),
+            ("3b", maps.TryGetValue(RequestOf(f), out var map) && map is "planned" or "queued" or "running" or "done"),
+            ("4", slug is not null),
+            ("5", slug is not null && (blocks.Count > 0 || FirstOrNull(dirs, "verdicts", $"{slug}.md") is not null)),
+            ("6", blocks.Count > 0),
+            ("8", Wave().IsMatch(progress)),
+            ("9", Set(f, "plan_hash") || status is "ready" or "claimed" or "in_progress" or "review" or "done"),
+            ("10", blocks.Any(b => b is not ("" or "draft" or "triaged" or "ready"))),
+            ("11", blocks.Count > 0 && blocks.All(b => b is "done" or "closed")),
+            ("12", Heading(progress, "Evidence")),
+            ("13", Heading(progress, "Review")),
+            ("14", Set(f, "mr_url")),
+            ("15", status is "review" or "done"),
+            ("16", status == "done"),
+        ];
+        return steps.Where(s => s.Done).Select(s => s.Step).ToList();
+    }
+
+    /// <summary>A frontmatter value that is there: not empty, not <c>null</c> and not a template placeholder <c>&lt;...&gt;</c>.</summary>
+    static bool Set(Dictionary<string, string> fields, string key) =>
+        fields.GetValueOrDefault(key, "") is var v && v is not ("" or "null") && !v.StartsWith('<');
+
+    static bool Heading(string text, string head) =>
+        text.Split('\n').Any(l => l.StartsWith("## " + head, StringComparison.Ordinal));
+
+    /// <summary>The slug of a parent's plan-ready file: the one whose frontmatter says <c>task: &lt;id&gt;</c>, else the one
+    /// its body names, while that file exists.</summary>
+    static string? PlanReady(string repoDir, string id, string body)
+    {
+        var plans = Path.Combine(repoDir, "plans");
+        if (!Directory.Exists(plans))
+        {
+            return null;
+        }
+        var own = Directory.EnumerateFiles(plans, "*-plan-ready.md")
+            .Order(StringComparer.Ordinal)
+            .FirstOrDefault(f => Frontmatter.Read(f).GetValueOrDefault("task") == id);
+        if (own is not null)
+        {
+            return Path.GetFileName(own)[..^"-plan-ready.md".Length];
+        }
+        return PlanSlug().Match(body) is { Success: true } m && File.Exists(Path.Combine(plans, $"{m.Groups[1].Value}-plan-ready.md"))
+            ? m.Groups[1].Value
+            : null;
     }
 
     static string RequestOf(Dictionary<string, string> fields) =>
@@ -284,6 +372,9 @@ public sealed partial class StateReader(string root)
 
     [GeneratedRegex(@"plans/([A-Za-z0-9._-]+)-plan-ready\.md")]
     private static partial Regex PlanSlug();
+
+    [GeneratedRegex(@"wave[ \t]*[0-9]+[ \t]*:")]
+    private static partial Regex Wave();
 
     [GeneratedRegex(@"^P[0-3]\z")]
     private static partial Regex Priority();

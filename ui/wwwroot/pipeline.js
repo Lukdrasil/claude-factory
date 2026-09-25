@@ -1,7 +1,8 @@
 import { esc } from './ask-card.js';
 import { capacityStrip, prio } from './org.js';
 
-const STEPS = [['3', 'triage'], ['3b', 'chart'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut'], ['9', 'approve'],
+/** The solve steps of bin/solve-next.sh: the grid's columns and the task drawer's rail, number and label. */
+export const STEPS = [['3', 'triage'], ['3b', 'chart'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut'], ['9', 'approve'],
   ['10', 'worktree'], ['11', 'blocks'], ['12', 'acceptance'], ['13', 'review'], ['14', 'MR'], ['15', 'report'], ['16', 'knowledge']];
 const TABS = ['Pipeline', 'Map', 'Plan', 'Org', 'Memory', 'Setup'];
 const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
@@ -10,10 +11,12 @@ const rank = (p) => ({ P0: 0, P1: 1, P2: 2, P3: 3 })[p] ?? 2;
  * step, or setup for none. */
 export const groupOf = (task) => (!task || task === 'none' ? 'setup' : (task.match(/^T-(?:[A-Z]{2,4}-)?\d+/) || [task])[0]);
 
-/** The open, unsent asks of live sessions in herdr, oldest first: what the counter counts and walks. */
+/** The open, unsent asks of sessions in herdr, oldest first: what the counter counts and walks. A gone session's asks
+ * count too, marked `gone`, since the relay queues their answers. An ask counts under its own task, which the server
+ * fills from its session's when the ask names none, the key its drawer groups it by. */
 export function waiting(sessions) {
-  return sessions.filter((s) => s.pane && s.agent !== 'gone')
-    .flatMap((s) => s.asks.filter((a) => a.status === 'open' && !a.sent).map((a) => ({ ...a, sid: s.sid, pane: s.pane })))
+  return sessions.filter((s) => s.pane)
+    .flatMap((s) => s.asks.filter((a) => a.status === 'open' && !a.sent).map((a) => ({ ...a, sid: s.sid, pane: s.pane, gone: s.agent === 'gone' })))
     .sort((a, b) => Date.parse(a.modified) - Date.parse(b.modified));
 }
 
@@ -25,20 +28,26 @@ function stepAt(session) {
   return i >= 0 ? i : STEPS.findIndex(([n]) => n === k.replace(/\D+$/, ''));
 }
 
+/** The index in STEPS of the furthest step the sessions of task `id` or of its blocks report, -1 for none. */
+export const currentStep = (sessions, id) => Math.max(-1, ...sessions.filter((s) => groupOf(s.task) === id).map(stepAt));
+
 const sessionChip = (s) => `<span class="chip ${s.pane ? 'accent' : ''}" title="${s.pane ? `pane ${esc(s.pane)}` : 'outside herdr'}">${esc(s.sid)}</span>`;
 
+/** One task's row: a step ticked only when the state records it done (`steps` of /api/board), the step its sessions
+ * report marked current apart from that, and its open asks counted where they are. */
 function taskRow(t, sessions) {
   const mine = sessions.filter((s) => groupOf(s.task) === t.id);
-  const at = Math.max(-1, ...mine.map(stepAt));
-  const open = waiting(mine).length;
-  const cells = STEPS.map((_, i) => {
-    if (i === at) {
-      return `<td class="cur" aria-current="step">${open ? `<span class="chip warn">${open} to answer</span>` : ''}${mine.map(sessionChip).join('')}</td>`;
-    }
-    return t.status === 'done' || i < at ? '<td class="done">✓</td>' : '<td></td>';
+  const at = currentStep(sessions, t.id);
+  const done = new Set(t.steps || []);
+  const open = waiting(sessions).filter((a) => groupOf(a.task) === t.id).length;
+  const count = open ? `<span class="chip warn">${open} to answer</span>` : '';
+  const cells = STEPS.map(([n], i) => {
+    const tick = done.has(n) ? '✓' : '';
+    if (i === at) return `<td class="cur${tick ? ' done' : ''}" aria-current="step">${tick}${count}${mine.map(sessionChip).join('')}</td>`;
+    return tick ? `<td class="done">${tick}</td>` : '<td></td>';
   });
   return `<tr><td class="task"><button data-drawer="${esc(t.id)}"><span class="id">${esc(t.id)}</span> ${t.repo ? `<span class="chip repo">${esc(t.repo)}</span>` : ''}`
-    + `<span class="chip">${esc(t.status)}</span><span class="goal">${esc(t.goal)}</span></button></td><td>${prio(t.priority)}</td>${cells.join('')}</tr>`;
+    + `<span class="chip">${esc(t.status)}</span><span class="goal">${esc(t.goal)}</span>${at < 0 ? count : ''}</button></td><td>${prio(t.priority)}</td>${cells.join('')}</tr>`;
 }
 
 function blockRow(b, parent, sessions) {
@@ -68,13 +77,15 @@ function byRequest(roots, requests) {
 /** The top of every tab: the tabs, the to-answer counter and the setup strip that opens the setup drawer. */
 export function renderTop(sessions, tab) {
   const setup = sessions.filter((s) => groupOf(s.task) === 'setup');
-  const all = waiting(sessions).length;
-  const setupWaiting = waiting(setup).length;
+  const list = waiting(sessions);
+  const all = list.length;
+  const gone = list.filter((a) => a.gone).length;
+  const setupWaiting = list.filter((a) => groupOf(a.task) === 'setup').length;
   const el = document.createElement('div');
   el.className = 'page';
   el.innerHTML = '<header class="top"><h1>Factory</h1><div class="tabs" role="tablist" aria-label="Views">'
     + `${TABS.map((t) => `<button role="tab" data-tab="${t}" aria-selected="${t === tab}">${t}</button>`).join('')}</div>`
-    + `<button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}</button></header>`
+    + `<button class="btn counter ${all ? 'primary' : ''}" data-act="next" ${all ? '' : 'disabled'}>${all ? `${all} to answer` : 'All answered'}${gone ? `<small>, ${gone} whose session ended</small>` : ''}</button></header>`
     + `<button class="strip" data-drawer="setup"><b>Setup</b>${setup.map((s) => `<span class="chip">${esc(s.flow || s.sid)}</span>`).join('')}`
     + `${setupWaiting ? `<span class="chip warn">${setupWaiting} to answer</span>` : ''}</button>`;
   return el;

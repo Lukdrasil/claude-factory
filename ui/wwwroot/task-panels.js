@@ -1,8 +1,8 @@
 import { esc } from './ask-card.js';
+import { STEPS, currentStep } from './pipeline.js';
 
-const RAIL = [['3', 'triage'], ['3b', 'chart'], ['4', 'grill'], ['5', 'plan-check'], ['6', 'decompose'], ['8', 'cut check'], ['9', 'approve'],
-  ['10', 'worktree'], ['11', 'blocks'], ['12', 'acceptance'], ['12b', 'duplication'], ['13', 'review'], ['14', 'MR'],
-  ['15', 'self-report'], ['16', 'knowledge review'], ['', 'done']];
+// why: an inline SVG and not a character, so the rail's text stays the grid's labels while a step shows its tick
+const TICK = '<svg role="img" aria-label="done" viewBox="0 0 12 12" width="10" height="10"><path d="M2 6.5l2.5 2.5L10 3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 
 const parse = (html) => {
   const t = document.createElement('template');
@@ -19,7 +19,8 @@ export const section = (html, head) => {
   return nodes.slice(i + 1, end < 0 ? undefined : end);
 };
 
-const stepOf = (s) => (s.step.match(/^Step (\w+) of 16/) || [])[1];
+/** A frontmatter value the draft still holds as its template placeholder, `<green|yellow|red>`, or none at all. */
+const placeholder = (v) => !v || v === 'null' || v.startsWith('<');
 const md = (nodes) => {
   const d = document.createElement('div');
   d.className = 'md';
@@ -29,12 +30,21 @@ const md = (nodes) => {
 const panel = (name, title, html) => `<section data-panel="${name}"><h3>${title}</h3>${html}</section>`;
 const mrLink = (t) => (/^https?:\/\//.test(t.fields.mr_url || '') ? `<li><a href="${esc(t.fields.mr_url)}">${esc(t.task.id)}</a></li>` : '');
 
+/** The grid's steps with its labels, each ticked only when the state records it done, the step the task's sessions
+ * report current apart from that, then the done gate. */
 function rail(task) {
   const id = task.task.id;
-  const now = Math.max(-1, ...task.sessions.filter((s) => s.task === id)
-    .map((s) => RAIL.findIndex(([n]) => n && n === stepOf(s))));
-  return `<nav aria-label="Solve steps of ${esc(id)}"><ol class="rail">${RAIL.map(([n, label], i) =>
-    `<li${i === now ? ' aria-current="step"' : ''}>${n ? `${n} ` : ''}${label}</li>`).join('')}</ol></nav>`;
+  const now = currentStep(task.sessions, id);
+  const done = new Set(task.task.steps || []);
+  const li = (text, tick, current) => `<li${tick ? ' class="done"' : ''}${current ? ' aria-current="step"' : ''}>${text}${tick ? TICK : ''}</li>`;
+  return `<nav aria-label="Solve steps of ${esc(id)}"><ol class="rail">${STEPS.map(([n, label], i) => li(`${n} ${label}`, done.has(n), i === now)).join('')}`
+    + `${li('done', task.task.status === 'done', false)}</ol></nav>`;
+}
+
+/** Triage's result: the tier, archetype and complexity it set, or Not triaged yet while the draft's placeholders stand. */
+function triaged(f) {
+  if (placeholder(f.tier) || placeholder(f.archetype)) return '<p class="muted">Not triaged yet.</p>';
+  return `<p>${[f.tier, f.archetype, f.complexity].filter((v) => !placeholder(v)).map((v) => `<span class="chip">${esc(v)}</span>`).join(' ')}</p>`;
 }
 
 function blockList(blocks) {
@@ -44,7 +54,7 @@ function blockList(blocks) {
 }
 
 /**
- * The step rail of a solve task, current at the step its session reports, and one `[data-panel]` per step from
+ * The step rail of a solve task, ticked from its recorded steps and current at the step its session reports, and one `[data-panel]` per step from
  * triage to done, each markdown section rendered from `task.html`. `task` is its `/api/tasks/{id}` detail with
  * `blockDetails` and `sessions`.
  */
@@ -57,7 +67,7 @@ export function renderTaskPanels(task) {
   const el = document.createElement('div');
   el.className = 'panels';
   el.innerHTML = rail(task)
-    + panel('triage', 'Triage', `<p><span class="chip">${esc(f.tier)}</span> <span class="chip">${esc(f.archetype)}</span> <span class="chip">${esc(f.complexity)}</span></p>${md(section(h.body, 'Context'))}`)
+    + panel('triage', 'Triage', `${triaged(f)}${md(section(h.body, 'Context'))}`)
     + panel('grill', 'Grill', md(['Terms', 'Program design', 'Gap ledger'].flatMap((head) => section(grill, head))))
     + panel('decompose', 'Decompose', blockList(blocks) + md(section(h.progress, 'Wave plan')) + md(section(h.verdicts, 'cut-check')))
     + panel('approve', 'Approve', md(parse(h.body)) + blockList(blocks))
