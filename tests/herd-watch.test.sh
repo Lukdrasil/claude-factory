@@ -340,4 +340,21 @@ check 'the lead watcher sees it too'              0 '^T-013-01 status in_progres
 check 'each watcher has its own state file'       0 '^herd-watch-T-013-lead.state herd-watch-ceo.state $' \
   "$(ls "$tmp/factory/demo/.harness/T-013" | grep '^herd-watch' | LC_ALL=C sort | tr '\n' ' ')"
 
+# a lead whose session ended has its record closed, so queue-next.sh hands its parent to a new lead; the record
+# of a lead dispatched again, whose agent is not up yet, is left alone
+task T-014 in_progress null
+lrec="$tmp/factory/demo/.harness/T-014/herdr-tabs"
+recs T-014 T-014-lead tab-141 sid-141
+herdr_agent lead_t-014 working pane-141 sid-141
+sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state" >/dev/null
+rm -f "$HERDR_STUB_DIR/panes/pane-141"
+out=$(sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state")
+check 'the ended lead reads gone'                 0 '^T-014-lead agent working -> gone$' "$out"
+check 'the ended lead has its record closed'      0 '^T-014-lead tab-141 closed$' "$(tail -n1 "$lrec")"
+out=$(sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state")
+check 'the next pass reads the lead closed'       0 '^T-014-lead agent gone -> closed$' "$out"
+recs T-014 T-014-lead tab-142 sid-142
+sh "$bin/herd-watch.sh" T-014 --once --no-mr --state "$state" >/dev/null
+check 'a lead starting again keeps its record'    0 '^T-014-lead tab-142 pane-142 sid-142$' "$(tail -n1 "$lrec")"
+
 exit $fail
