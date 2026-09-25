@@ -22,7 +22,7 @@ request, is answered 403 before anything else. Every `/api/*` request needs the 
 | `GET /api/board` | every task's frontmatter in the columns of `factory-list.sh`, with its `request`, `priority` and `steps` (the solve steps its state records as done, read the way `bin/solve-next.sh` decides them) |
 | `GET /api/tasks/{id}` | the task's body, its blocks, plan, grill file, verdicts, progress and `git log` timeline, and `html`: each of the markdown fields rendered |
 | `GET /api/sessions` | every session's `session.md` fields, its asks: frontmatter, body, mtime, `sent`, `answer` (the text of its last answer that closes it, null without one), the relay's `held` reason and the ask `view`, and its `visual`: `row`, `version`, `status` of `visual.md`, null without `visual.md` and `visual.html` |
-| `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes`: every scope with a `passes.yml`, or with work for a pass and none yet (`daily` and `weekly` read `never`), and the pass it is `due` for, `daily`, `weekly`, `both` or `none`, by the rule of `pass-stamp.sh --due` |
+| `GET /api/setup` | the factory root, `repos.yml`, the toolsets, the last doctor notice, the `steps` and `doctorAt` of `setup/doctor.json`, the `capacity` in use and the `passes`: every scope with a `passes.yml`, or with work for a pass and none yet (`daily` and `weekly` read `never`), and the pass it is `due` for, `daily`, `weekly`, `both` or `none`, by the rule of `pass-stamp.sh --due`; `addRepos`, every `setup/add-repo/<key>.json` factory-add-repo.sh wrote (`key`, `url`, `path`, `state`, `detail`, `at`, a missing field `""`, an unreadable file skipped), newest `at` first; `onboarding`, every `repos/<key>/onboarding.md` in key order: `repo`, `status`, `at`, `stack`, `summaryHtml` (its `## Summary` rendered), and the lines of `## Checks` and `## Proposals` the regexes of the design's C5 match, as text: `checks` (`state`, `id`, `detail`, `fix`, split at the last ` Fix: `) and `proposals` (`id`, `area`, `text`) |
 | `GET /api/org` | the `capacity` of sessions and of every role, `used` and `cap`, the `leases` under `.capacity/`, one of the `leads` per `repo-lead` lease, and the `ceo` session or null |
 | `GET /api/requests` | every request map, live and archived, newest first: `id`, `status`, `destination`, `priority`, `parents`, `archived` |
 | `GET /api/requests/{id}` | one map: its destination, notes, terms, decisions, out of scope, fog, tickets and frontier, its parents with their blocks, status and acceptance, and `html`: the destination, notes, terms and fog rendered, and the `title` and `gist` of every line of decisions and out of scope rendered inline |
@@ -77,7 +77,8 @@ date; it clears once the stream is back.
 | `requests.js` | `renderMap(list, id, detail)` and `renderPlan(list, id, detail)`: the request list and the map, or the final plan with its read-only checklist, of the request shown |
 | `org.js` | `renderOrg(org)`: the CEO, capacity, leads and leases of `/api/org`; `capacityStrip(capacity)`, `prio(p)` and `when(stamp)` |
 | `memory.js` | `renderMemory(passes, ceo, note)`: the pass dates of every scope, the pass it is due for and their start buttons |
-| `setup.js` | `renderSetupStrip(setup)`: the machine checklist in the strip; `renderSetupTab(setup)`: the doctor steps and Start the CEO |
+| `setup.js` | `renderSetupStrip(setup)`: the machine checklist in the strip; `renderSetupTab(setup, sessions, ceo, note)`: the Repositories section, the doctor steps and Start the CEO |
+| `repos.js` | `renderRepos(setup, sessions, ceo, note)`: the Repositories section; `repoRowState(key, setup, sessions)`, a row's one state; `urlProblem(url)`, `aliasProblem(alias)`, `keyOf(url)` and the lines it sends, `addRepoLine`, `onboardLine` and `proposalLine` |
 | `drawer.js` | `renderDrawer(group)`: the drawer of one task or of setup, its asks, open ones first, its sessions' visuals and its context, in decision mode with an open ask |
 | `ask-card.js` | `renderAsk(ask, staged)`: one ask as a card from its ask view; `stateOf(ask)`, its one state; and `compose(view, items)`, the answer Send posts |
 | `visual.js` | `renderVisual(visual)`: a session's drawn visual in an iframe with `sandbox="allow-scripts"` on `/visual`, its row, version and out-of-date mark, and Redraw, which posts `Q<row> redraw` to the session's newest open ask |
@@ -137,8 +138,21 @@ The header holds six tabs, and every tab keeps the counter, the setup strip and 
   due, work in its `drafts/` or `proposals/` and no `passes.yml` yet, reads never twice. With a CEO session each scope offers Start daily and
   Start weekly, which post `{"ask": "", "text": "start the <daily|weekly> pass for <scope>"}` to
   `/api/answers/<ceo sid>`, a free message the relay types into the CEO's pane. The page runs no pass itself.
-- Setup: the steps of `doctor.json` in order, each done, missing or failing with its detail and fix, then Start
-  the CEO with the fix of the `ceo` step. Every fix runs in a terminal or through a session's confirm ask.
+- Setup: the Repositories section, then the steps of `doctor.json` in order, each done, missing or failing with its
+  detail and fix, then Start the CEO with the fix of the `ceo` step. Every fix runs in a terminal or through a
+  session's confirm ask. The Repositories section has one row per repos.yml key, then one per key only an add-repo
+  file names. Add repository opens a form of a URL and an optional alias; Send posts `add repo <url>[ alias <ALIAS>]`
+  as a free message to the CEO, only for an https, http, ssh or `user@host:path` URL of the add-repo charset, not
+  starting with `-`, without a user or token, and an alias of 2 to 4 capital letters. A row reads, in this order:
+  Waiting for your confirm while the ask `add-repo-<key>` is open in any session, with a button to it; Not confirmed.
+  Send again. for a pending add-repo file without it; Cloning since; Onboarding runs while a live session's step is
+  `Onboarding <key>`; Onboarding waits for a free session while the notice `add-repo-<key>-wait` is open; Onboarding
+  ended without a report for a report still running; the report, done or failed; otherwise Not onboarded. A failed
+  add-repo file is a banner above the row. The report shows its counts, and in Report its summary, its checks as
+  text and its proposals, each with Make it a request, which posts `request: <key>: <text> (onboarding <Pn>),
+  priority <P>` at the priority picked for the report, P3 unless picked. Start onboarding, Start again and Run again
+  post `onboard repo <key>`. Without a CEO session every button of the section is disabled and it names the command
+  that starts the CEO.
 
 The page reads `/api/org`, `/api/requests` and `/api/requests/{id}` so that any answer but 200 counts as no data,
 and treats a missing field as empty, so it runs against a server that lacks them. Besides every stream event it
