@@ -201,6 +201,11 @@ arrives() { # <what> <file under the state dir>: its data: line reaches the stre
 }
 ctype=$(curl -s -m 2 -o /dev/null -w '%{content_type}' -H "X-Factory-Token: $token" "http://127.0.0.1:$port1/api/stream" 2>/dev/null)
 has 'the stream is text/event-stream'                         '^text/event-stream' "$ctype"
+# a rebuilt image must reach an open browser without a hard reload: the page and its modules revalidate every time
+for f in / /app.js /pipeline.js /page.css; do
+  cc=$(curl -s -m 2 -o /dev/null -D - "http://127.0.0.1:$port1$f" 2>/dev/null | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: *//p')
+  has "GET $f says Cache-Control: no-cache"                    'no-cache' "$cc"
+done
 arrives 'a new task file under /state reaches the stream within 1 s' repos/claude-factory/tasks/T-002-new.md
 arrives 'a changed task file reaches the stream within 1 s'   repos/claude-factory/tasks/T-001-fixture.md
 mkdir -p "$state1/locked-late"; echo secret > "$state1/locked-late/inside.md"; chmod 000 "$state1/locked-late"
