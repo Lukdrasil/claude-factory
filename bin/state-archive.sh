@@ -3,7 +3,8 @@
 # which no open task depends (neither on it nor on one of its blocks) moves with its blocks, their progress files
 # and their verdicts to repos/<key>/archive/<YYYY-MM>/{tasks,progress,verdicts}/, one `git mv` commit per parent
 # under the state lock. Only a whole parent moves, never a lone block. A request whose map.md says `Status: done`
-# under the frontmatter moves to requests/archive/<YYYY-MM>/<R-id>/ the same way, with --all.
+# under the frontmatter moves to requests/archive/<YYYY-MM>/<R-id>/ the same way, with --all, once no live task
+# carries `request: <R-id>` any more.
 #
 #   state-archive.sh <T-id>|--all [--dry-run] [--state <dir>]
 #
@@ -227,6 +228,15 @@ requests_done() { # -> the ids of the requests whose map says Status: done
   done
 }
 
+# the live tasks that still carry `request: <R-id>`, one id per line: a done request waits for them, or the
+# archived request and a live parent of it would coexist
+request_holders() { # <R-id>
+  task_files | while IFS= read -r rh_f; do
+    grep -qx "request:[[:space:]]*$1[[:space:]]*" "$rh_f" 2>/dev/null || continue
+    sed -n 's/^id:[[:space:]]*//p' "$rh_f" | head -n1
+  done
+}
+
 if [ -n "$target" ]; then
   line=$(families "$target")
   case "$line" in
@@ -273,9 +283,16 @@ done || exit 2
 
 for R in $(requests_done); do
   moves=$(request_moves "$R")
+  live=$(request_holders "$R" | tr '\n' ' ' | sed 's/ $//')
+  if [ -n "$live" ]; then printf 'skipped: %s the live %s still carries request: %s\n' "$R" "$live" "$R"; continue; fi
   if [ "$dry" = 1 ]; then printf '%s\n' "$moves" | sed 's/ / -> /'; continue; fi
   state_lock "$state" && rc=0 || rc=$?
   [ "$rc" = 0 ] || die2 "another session holds the state lock of $state; $R was not archived"
+  # again under the lock: a parent may have been written since
+  live=$(request_holders "$R" | tr '\n' ' ' | sed 's/ $//')
+  if [ -n "$live" ]; then
+    state_unlock; printf 'skipped: %s the live %s still carries request: %s\n' "$R" "$live" "$R"; continue
+  fi
   why=$(apply "$R" "$moves" "chore($R): archive to ${moves#* }") && rc=0 || rc=$?
   state_unlock
   case "$rc" in
