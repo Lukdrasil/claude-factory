@@ -73,8 +73,11 @@ for a session no longer live.
    unchanged is a session that stopped without its report: prompt it once, `herdr agent prompt <name> "Finish
    your delivery and report your status through state-report.sh"`; still nothing on the next line, set it
    `failed` with `state-report.sh --task <block> --set-status failed --attempts "<why>"`, and the loop takes it
-   through the human and back to `ready`. `<id> agent <state> -> closed` is no dead session: the scripts closed
-   a tab whose work was over.
+   through the human and back to `ready`. A step, `<T-id>-<step> agent <state> -> ready` with its
+   Completion unmet, may be a round waiting on its human, or a turn that ended short: prompt it once, and if
+   that ends short too, `solve-next.sh --herd` prints the dispatch that starts it again. `-> unknown` is herdr
+   not answering: `factory doctor` names the herdr server. `<id> agent <state> -> closed` is no dead session: the
+   scripts closed a tab whose work was over.
 4. `<block> status -> tests_ready` or `-> review`: its session finished its phase and reported it, with its own
    `## Evidence`, a claim. `solve-next.sh --herd` gives you the gate that reruns it: at `tests_ready` its red
    tests at the commit its `## Handoff` names, then `phase: implement` and the implement session; at `review`

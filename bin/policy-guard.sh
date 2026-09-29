@@ -889,7 +889,8 @@ lost_inplace() { deny "a relative in-place write target after a 'cd' the guard c
 # without their quoted spans, so a quoted `(` or `;` in a commit message or a grep pattern starts none; a segment
 # that runs code of its own (`sh -c`, `bash -c`, `eval`, `$(`, a backtick) is read once more with its quotes
 # dropped and split at a bracket, `;`, `&`, `|` and a backtick, so a gate hidden inside it still counts. The script
-# is the first word after assignments, options (and the value of `-u`, `-g`, `-C`) and wrappers.
+# is the first word after an opening bracket, assignments, options (and the value of `-u`, `-g`, `-C`) and wrappers
+# (sh, bash, env, sudo, nice, setsid, ...).
 gate_role_check() { # <the command segments>
   gr_role=${FACTORY_ROLE:-}
   [ -n "$gr_role" ] || return 0
@@ -906,12 +907,14 @@ gate_role_check() { # <the command segments>
 '
   for gr_line in $gr_lines; do
     IFS=$gr_ifs
+    # a subshell or a group opens with its bracket: `(sh task-approve.sh)`, `{ sh task-approve.sh; }`
+    gr_line=$(printf '%s' "$gr_line" | sed 's/^[[:space:]({]*//')
     # shellcheck disable=SC2086
     set -- $gr_line
     while [ $# -gt 0 ]; do
       case "$1" in
         -u|-g|-C) shift; [ $# -eq 0 ] || shift ;;
-        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|nice|setsid|stdbuf|ionice|chrt|taskset|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
         *) break ;;
       esac
     done

@@ -263,6 +263,13 @@ no 'herd: the grill skill is not read here' 'skills/grill/SKILL\.md' "$out"
   printf '%s\n' "$out" | grep -q 'T-010-grill runs in its tab (agent blocked)' \
     && printf 'PASS herd: a live grill session is a wait on its tab\n' \
     || { printf 'FAIL herd: a live grill session is a wait on its tab\n'; exit 1; }
+  # an idle step may wait on its human or have ended short: a note, and the dispatch that starts it again
+  herdr_agent grill_010 idle pane-7 sess-g
+  out=$(sh "$bin/solve-next.sh" T-010 --herd --state "$state" 2>&1)
+  printf '%s\n' "$out" | grep -q 'T-010-grill is idle in its tab' \
+    && printf '%s\n' "$out" | grep -q 'session-monitor\.sh --task T-010 --step grill' \
+    && printf 'PASS herd: an idle step gets the note and the dispatch that starts it again\n' \
+    || { printf 'FAIL herd: an idle step gets the note and the dispatch that starts it again\n'; exit 1; }
   rm -f "$root/demo/.harness/T-010/herdr-tabs"
 ) || fail=1
 sed -i '/^## Related issues$/,$d' "$state/repos/demo/tasks/T-010.md"
@@ -288,6 +295,10 @@ block T-006-02 tests_ready null
 out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
 check 'herd: a block of the wave ready for its gate comes before the one at work' \
   'state-report\.sh --task T-006-02 --set-phase implement' "$out"
+block T-006-02 blocked null
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a blocked block goes back through the human' 'task-approve\.sh T-006-02 --state' "$out"
+no 'herd: and its retry is no subagent' 'model-for\.sh' "$out"
 block T-006-02 draft null
 out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
 check 'a draft block written after the approval is approved first' '^## Step 11 of 16: approve T-006-02$' "$out"
@@ -298,5 +309,10 @@ out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
 check 'herd: a block its session reported review gets the gates' '^## Step 11 of 16: verify, review and open the MR for T-006-01$' "$out"
 check 'herd: block-verify.sh reruns its claim' 'block-verify\.sh T-006-01' "$out"
 check 'herd: and its MR' 'block-mr\.sh T-006-01' "$out"
+mv "$root/demo/T-006-01" "$root/demo/T-006-01.away"
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a review block whose worktree is gone still gets its gates' '^## Step 11 of 16: verify, review and open the MR for T-006-01$' "$out"
+check 'herd: with its worktree made again' 'worktree-add\.sh T-006-01' "$out"
+mv "$root/demo/T-006-01.away" "$root/demo/T-006-01"
 
 exit $fail

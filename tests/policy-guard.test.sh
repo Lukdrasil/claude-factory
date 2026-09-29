@@ -345,6 +345,10 @@ for role in triage implementer; do
   try 0 "$role: state-report.sh --set-status review" "$S" coord "sh $P/state-report.sh --task T-900-01 --set-status review"
   try 0 "$role: gh pr view" "$C/cf" coord 'gh pr view 12'
   try 2 "$role: env -u before task-approve.sh" "$S" coord "env -u FOO sh $P/task-approve.sh T-900"
+  try 2 "$role: task-approve.sh in a subshell" "$S" coord "(sh $P/task-approve.sh T-900)"
+  try 2 "$role: task-approve.sh in a group" "$S" coord "{ sh $P/task-approve.sh T-900; }"
+  try 2 "$role: task-approve.sh behind nice" "$S" coord "nice sh $P/task-approve.sh T-900"
+  try 2 "$role: task-approve.sh behind setsid" "$S" coord "setsid sh $P/task-approve.sh T-900"
 done
 role=''
 try 0 'no role: block-mr-merge.sh' "$S" coord "sh $P/block-mr-merge.sh T-900-01"
