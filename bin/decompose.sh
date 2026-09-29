@@ -145,14 +145,35 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
     }
   }
 
+  function more(v, s,   i) {
+    if (v == "") return s
+    for (i = 0; i < nb; i++) v = v "\n"
+    return v "\n" s
+  }
+
   NR == 1 && /^---[ \t]*$/ { infm = 1; next }
   infm && /^---[ \t]*$/ { infm = 0; next }
   infm { next }
 
+  # invariant: cf names the field whose key line came last; an indented line continues it verbatim, a blank
+  # invariant: line is kept only when an indented one follows, and any other line closes it
+  cf != "" && /^[ \t]*$/ { nb++; next }
+  cf != "" && /^[ \t]+/ {
+    if (cf == "acc") pacc[np] = more(pacc[np], $0)
+    else if (cf == "docs") pdocs[np] = more(pdocs[np], $0)
+    else if (cf == "ctx") pctx[np] = more(pctx[np], $0)
+    else if (cf == "oos") poos[np] = more(poos[np], $0)
+    else if (cf == "term") term[nt] = more(term[nt], $0)
+    else if (cf == "dec") dec[nd] = more(dec[nd], $0)
+    nb = 0
+    next
+  }
+  { cf = ""; nb = 0 }
+
   /^## / { sec = trim(substr($0, 4)); design_file = ""; next }
 
-  sec == "Decisions" && /^[-*][ \t]/ { dec[++nd] = $0; next }
-  sec == "Terms" && /^[-*][ \t]/ { term[++nt] = $0; next }
+  sec == "Decisions" && /^[-*][ \t]/ { dec[++nd] = $0; cf = "dec"; next }
+  sec == "Terms" && /^[-*][ \t]/ { term[++nt] = $0; cf = "term"; next }
 
   sec == "Program design" && /^### / {
     hline[++nh] = $0
@@ -201,12 +222,12 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
     if (key == "tier") ptier[np] = first_word(value)
     else if (key == "archetype") parch[np] = first_word(value)
     else if (key == "complexity") pcomp[np] = first_word(value)
-    else if (key == "acceptance") pacc[np] = value
-    else if (key == "docs") pdocs[np] = value
+    else if (key == "acceptance") { pacc[np] = value; cf = "acc" }
+    else if (key == "docs") { pdocs[np] = value; cf = "docs" }
     else if (key == "design") pdesign[np] = value
     else if (key == "goal") pgoal[np] = value
-    else if (key == "context") pctx[np] = value
-    else if (key == "out of scope") poos[np] = value
+    else if (key == "context") { pctx[np] = value; cf = "ctx" }
+    else if (key == "out of scope") { poos[np] = value; cf = "oos" }
     else if (key == "depends_on") pdep[np] = value
     else if (key == "steps") insteps = 1
     next
@@ -316,6 +337,7 @@ result=$(awk -v outdir="$out" -v repo="$repo" -v rel="$rel" -v forge="$forge" \
       close(f)
 
       deps = pdep[p]
+      if (match(deps, /^\[[^]]*\]/)) deps = substr(deps, 1, RLENGTH)
       gsub(/[^0-9,]/, "", deps)
       gsub(/,+/, ",", deps); sub(/^,/, "", deps); sub(/,$/, "", deps)
       print "M " pn[p] " " f " " (deps == "" ? "-" : deps)
