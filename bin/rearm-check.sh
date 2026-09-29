@@ -1,5 +1,5 @@
 #!/bin/sh
-# Stop hook (herdr research R4): the monitor of `factory herd` must not go idle with a herd unwatched. It keeps one
+# Stop hook: the monitor of `factory herd` must not go idle with a herd unwatched. It keeps one
 # `herd-watch.sh <T-id>` per herd armed through the Monitor tool; a Monitor expires after at most 30 minutes and a
 # restarted Claude has none, so at every Stop this hook looks at the hook's `background_tasks` and, when a herd of
 # this session has no entry naming herd-watch.sh with its id, exits 2 with one `<T-id> <repo> <status>` line per

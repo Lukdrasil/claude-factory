@@ -880,18 +880,27 @@ inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; ba
 inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
 lost_inplace() { deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$1'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."; }
 
-# R3: the human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
+# The human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
 # dialog in front of them. A session the herd monitor dispatched carries FACTORY_ROLE (session-monitor.sh), and none
-# of those runs a gate: the approval, the done gate, a block MR merge and a curation approve are the monitor's,
-# after the human's yes (references/herd.md). No FACTORY_ROLE is the monitor's or a human's own session. The
-# segments are read with the quote characters removed and split once more at `;`, `&`, `|`, a bracket and a
-# backtick, so `bash -c '... && sh task-approve.sh'` and `$(...)` count too; the script is the first word after
-# assignments, options and wrappers (sh, bash, env, ...).
+# of those runs a gate: the approval, the done gate, a block MR merge, a merge on the forge, a curation approve,
+# and the fields of state-report.sh only the monitor writes (a block's `done`, the phase lock, an MR url) are the
+# monitor's, after the human's yes where there is one (skills/factory/references/herd.md). No FACTORY_ROLE is the
+# monitor's, the solve session's or a human's own session. The commands are the segments of split_segs, read
+# without their quoted spans, so a quoted `(` or `;` in a commit message or a grep pattern starts none; a segment
+# that runs code of its own (`sh -c`, `bash -c`, `eval`, `$(`, a backtick) is read once more with its quotes
+# dropped and split at a bracket, `;`, `&`, `|` and a backtick, so a gate hidden inside it still counts. The script
+# is the first word after assignments, options (and the value of `-u`, `-g`, `-C`) and wrappers.
 gate_role_check() { # <the command segments>
   gr_role=${FACTORY_ROLE:-}
   [ -n "$gr_role" ] || return 0
-  case "$1" in *task-approve.sh*|*task-done.sh*|*block-mr-merge.sh*|*curate-apply.sh*) ;; *) return 0 ;; esac
-  gr_lines=$(printf '%s\n' "$1" | tr -d '\042\047' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  case "$1" in *task-approve.sh*|*task-done.sh*|*block-mr-merge.sh*|*curate-apply.sh*|*state-report.sh*|*merge*) ;; *) return 0 ;; esac
+  gr_lines=$(printf '%s\n' "$1" | while IFS= read -r gr_seg; do
+    # a quoted word with no space or shell character is a word (a quoted script path), every other span is data
+    unquoted "$(printf '%s' "$gr_seg" | sed -E "s/'([^' ();&|\`]*)'/\\1/g; s/\"([^\" ();&|\`]*)\"/\\1/g")"; printf '\n'
+    case "$gr_seg" in
+      *' -c '*|*eval' '*|*'$('*|*'`'*) printf '%s\n' "$gr_seg" | tr -d '\042\047' | tr '()`{};&|' '\n\n\n\n\n\n\n\n' ;;
+    esac
+  done)
   set -f
   gr_ifs=$IFS; IFS='
 '
@@ -901,6 +910,7 @@ gate_role_check() { # <the command segments>
     set -- $gr_line
     while [ $# -gt 0 ]; do
       case "$1" in
+        -u|-g|-C) shift; [ $# -eq 0 ] || shift ;;
         *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
         *) break ;;
       esac
@@ -912,9 +922,18 @@ gate_role_check() { # <the command segments>
       task-approve.sh|task-done.sh|block-mr-merge.sh) gr_msg="$gr_cmd is the herd monitor's, after the human's yes (references/herd.md)" ;;
       curate-apply.sh)
         [ "${1:-}" != approve ] || gr_msg="curate-apply.sh approve is the human's own session's, after the yes in its round (references/curate.md)" ;;
+      gh|glab)
+        case "${1:-} ${2:-}" in
+          'pr merge'|'mr merge') gr_msg="$gr_cmd ${1} merge is the herd monitor's: a block MR merges through block-mr-merge.sh, the task MR is the human's" ;;
+        esac ;;
+      state-report.sh)
+        case " $* " in
+          *' --set-status done '*|*' --set-phase '*|*' --mr-url '*)
+            gr_msg="a block's done, its phase and its MR url are the herd monitor's to report; a session reports tests_ready, review, blocked or failed (skills/_shared/block-session.md)" ;;
+        esac ;;
     esac
     [ -n "$gr_msg" ] || continue
-    deny "$gr_msg, and this session runs as FACTORY_ROLE=$gr_role. Report what is ready through state-report.sh and let the monitor ask the human."
+    deny "$gr_msg, and this session runs as FACTORY_ROLE=$gr_role. Report what is ready and leave the gate to the monitor."
   done
   IFS=$gr_ifs
   set +f

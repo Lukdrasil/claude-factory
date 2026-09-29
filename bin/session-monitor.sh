@@ -171,11 +171,19 @@ blocks_of() { # <T-id>
   done
 }
 # a block a dispatch may start: ready and unowned, or tests_ready with the implement phase the monitor armed,
-# whose tests session has reported and holds nothing
+# whose tests session has reported and holds nothing; in herdr also an in_progress or claimed block no live
+# session carries (its agent reads gone or closed in $agents), a session that died or a spawn that failed
+# after its claim, which would otherwise hold the block for good
 dispatchable() { # <task file>
   case "$(field "$1" status)" in
     ready) unowned "$(field "$1" owner)" ;;
     tests_ready) [ "$(field "$1" phase)" = implement ] ;;
+    in_progress|claimed)
+      [ "$mode" = herdr ] && [ -z "$dry" ] || return 1
+      case "$(printf '%s\n' "$agents" | awk -v u="$(field "$1" id)" '$1 == u { print $2; exit }')" in
+        ''|gone|closed) return 0 ;;
+      esac
+      return 1 ;;
     *) return 1 ;;
   esac
 }
@@ -197,14 +205,21 @@ unit() { # <id> <cwd> <model> <claim id> <role> <herdr name> <prompt>
 }
 
 # one unit of work out of one task file: the archetype skill is the prompt, with the claim command in front of
-# it and the brief of its agent to read first. A dry run writes no brief; one agent-brief.sh cannot write leaves
-# the prompt without it.
-unit_line() { # <task file> <id> <repo key>
+# it and the brief of its agent to read first. A block runs the skill as a session too, block-tests in its tests
+# phase, with skills/_shared/block-session.md over the delivery: the monitor opens and merges its MR. The agent
+# and the model of a block are the ones spawn-plan.sh picked. A dry run writes no brief; one agent-brief.sh
+# cannot write leaves the prompt without it.
+unit_line() { # <task file> <id> <repo key> [<agent> <model>]
   ul_arch=$(field "$1" archetype) ul_tier=$(field "$1" tier) ul_cx=$(field "$1" complexity)
   ul_phase=$(field "$1" phase)
-  ul_model=$(sh "$bin/model-for.sh" "$ul_arch" "$ul_tier" "$ul_phase" 1 "$ul_cx" 2>/dev/null || echo opus)
-  ul_agent=$(sh "$bin/model-for.sh" --agent "$ul_arch" "$ul_tier" "${ul_phase:-implement}" 0 "$ul_cx" 2>/dev/null \
-    || echo implementer)
+  ul_model=${5:-$(sh "$bin/model-for.sh" "$ul_arch" "$ul_tier" "$ul_phase" 1 "$ul_cx" 2>/dev/null || echo opus)}
+  ul_agent=${4:-$(sh "$bin/model-for.sh" --agent "$ul_arch" "$ul_tier" "${ul_phase:-implement}" 0 "$ul_cx" 2>/dev/null \
+    || echo implementer)}
+  ul_skill="block-$ul_arch" ul_block=''
+  if is_block_id "$2"; then
+    ul_block="Read $(dirname -- "$bin")/skills/_shared/block-session.md, the delivery of a block session; then "
+    [ "$ul_agent" != test-designer ] || ul_skill=block-tests
+  fi
   ul_brief="$root/$3/.harness/$2/brief.md"
   ul_read="Read $ul_brief first, your rules, memory and the $3 playbook; then "
   if [ -z "$dry" ]; then
@@ -213,7 +228,7 @@ unit_line() { # <task file> <id> <repo key>
       { rm -f "$ul_brief"; ul_read=''; echo "session-monitor: agent-brief.sh wrote no brief for $2" >&2; }
   fi
   unit "$2" "$root/$3/$2" "$ul_model" "$2" "$ul_agent" "$(agent_name "$ul_agent" "$2")" \
-    "$(claim_prompt "$2")$ul_read/claude-factory:block-$ul_arch $1"
+    "$(claim_prompt "$2")$ul_read$ul_block/claude-factory:$ul_skill $1"
 }
 
 # one parent-level step of a task; a step runs before the session worktree exists, so the cwd is the
@@ -227,14 +242,27 @@ step_unit() { # <T-id> <step>
   [ -e "$su_cwd/.git" ] || su_cwd=$(clone_path "$su_key")
   [ -n "$su_cwd" ] || die "repo '$su_key' has no path: in repos.yml and $1 has no worktree, so there is nowhere to run $2"
   su_model=opus
+  # plan-check and decompose read the plan the grill wrote, in the state clone, and run there
+  case "$2" in
+    plan-check|decompose)
+      su_plan=''
+      for f in "$state/repos/$su_key/plans/"*-plan-ready.md; do
+        [ -f "$f" ] && [ "$(field "$f" task)" = "$1" ] || continue
+        su_plan=$f; break
+      done
+      [ -n "$su_plan" ] || su_plan=$(grep -oE 'plans/[A-Za-z0-9_.-]+-plan-ready\.md' "$su_task" 2>/dev/null | head -n1 \
+        | sed "s|^|$state/repos/$su_key/|" || :)
+      [ -n "$su_plan" ] && [ -f "$su_plan" ] || die "$1 has no plan-ready file, so there is nothing to $2 yet"
+      su_cwd=$state ;;
+  esac
   case "$2" in
     triage)
       su_model=$(sh "$bin/model-for.sh" triage "$(field "$su_task" tier)" '' 0 \
         "$(field "$su_task" complexity)" 2>/dev/null || echo sonnet)
       su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, file the investigation report at $state/repos/$su_key/research/$1-investigation.md, in the state clone and never in this product clone, write ## Context into the task; for a feature, bugfix or refactor also write ## Related issues as its own section after ## Context (the issue-finder lines, or none), never inside ## Investigation, since solve-next.sh reads triage as done by that heading; set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
     grill) su_prompt="/claude-factory:grill $su_task" ;;
-    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_task" ;;
-    decompose) su_prompt="/claude-factory:decompose $su_task" ;;
+    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_plan" ;;
+    decompose) su_prompt="/claude-factory:decompose $su_plan" ;;
   esac
   unit "$1-$2" "$su_cwd" "$su_model" - "$2" "$(agent_name "$2" "$1")" "$su_prompt"
 }
@@ -293,6 +321,7 @@ fi
 # --- the work list -------------------------------------------------------------------------------------------
 units=$(mktemp)
 trap 'rm -f "$units"' EXIT
+agents=''
 
 if [ -n "$parent" ]; then
   is_task_id "$parent" || die "'$parent' is not a task id"
@@ -306,6 +335,13 @@ if [ -n "$parent" ]; then
     if is_block_id "$hm_t"; then hm_t=${hm_t%-*}; fi
     mkdir -p "$root/$key/.harness/$hm_t" && printf '%s\n' "$HERDR_TAB_ID" > "$root/$key/.harness/$hm_t/herd-monitor" || :
   fi
+  # one agent list for the pass, so a block whose session died is found and dispatched again
+  agents=''
+  if [ "$mode" = herdr ] && [ -z "$dry" ]; then
+    hm_t=$parent
+    if is_block_id "$hm_t"; then hm_t=${hm_t%-*}; fi
+    agents=$(sh "$bin/herdr-tabs.sh" agents "$hm_t" --state "$state" 2>/dev/null) || agents=''
+  fi
   if [ -n "$step" ]; then
     step_unit "$parent" "$step" > "$units"
   elif [ -n "$(dispatchable_blocks_of "$parent")" ]; then
@@ -318,12 +354,11 @@ if [ -n "$parent" ]; then
       bf=$(task_of "$bid")
       if ! dispatchable "$bf"; then
         printf '%s skipped %s\n' "$bid" "$root/$key/$bid"
-        printf 'session-monitor: %s is %s and owned by %s; only a ready, unowned block or a tests_ready one armed with phase: implement is dispatched\n' \
+        printf 'session-monitor: %s is %s and owned by %s; only a ready, unowned block, a tests_ready one armed with phase: implement, or one no live session carries is dispatched\n' \
           "$bid" "$(field "$bf" status)" "$(field "$bf" owner)" >&2
         continue
       fi
-      unit "$bid" "$root/$key/$bid" "$model" "$bid" "$agent" "$(agent_name "$agent" "$bid")" \
-        "$(claim_prompt "$bid")You are $agent. Read $brief and do exactly what it says." >> "$units"
+      unit_line "$bf" "$bid" "$key" "$agent" "$model" >> "$units"
     done
   elif [ -n "$(blocks_of "$parent")" ]; then
     echo "nothing to dispatch: every block of $parent is claimed, in review or done"
@@ -412,7 +447,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       continue
     fi
   fi
-  if [ ! -d "$cwd" ]; then
+  # a block or a leaf runs in its worktree, and a leftover directory is none
+  if [ ! -d "$cwd" ] || { [ "$claimid" != - ] && [ ! -e "$cwd/.git" ]; }; then
     printf '%s skipped %s\n' "$id" "$cwd"
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
@@ -423,8 +459,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   label=$(sh "$bin/herdr-tabs.sh" name "$id" --state "$state")
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
-    printf '  cd %s && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
-      "$cwd" "$role" "$id" "$model" "$label" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
+    printf '  cd "%s" && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
+      "$(dq "$cwd")" "$role" "$id" "$model" "$(dq "$label")" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
     continue
   fi
   # the tab belongs to the monitor's own workspace, not to whatever another client has focused

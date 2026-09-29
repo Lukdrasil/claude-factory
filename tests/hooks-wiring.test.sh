@@ -36,10 +36,12 @@ writes=$(grep -nE 'state-report\.sh|state-commit\.sh|state-push\.sh|state_write|
 missing=0
 while read -r e m c rest; do
   [ -f "$root/$c" ] || { printf 'FAIL missing script %s\n' "$c"; missing=1; }
+  # the hook runs the script by its path, so a lost exec bit is a hook that never runs
+  [ -x "$root/$c" ] || { printf 'FAIL script not executable %s\n' "$c"; missing=1; }
 done <<EOF
 $lines
 EOF
-check $missing "every hook command names a script under bin/"
+check $missing "every hook command names an executable script under bin/"
 
 has() { # <label> <line>
   printf '%s\n' "$lines" | grep -qxF "$2"; check $? "$1"

@@ -28,6 +28,7 @@ export PATH
 root="$tmp/factory"
 state="$root/state"
 mkdir -p "$state/repos/demo/tasks" "$root/demo/T-001"
+: > "$root/demo/T-001/.git"
 
 task() { # <id> <owner> <archetype>
   cat > "$state/repos/demo/tasks/$1.md" <<EOF
@@ -103,6 +104,7 @@ nocheck 'an unasked fallback says nothing' 'printing'
 
 # --task of a parent with a cut: the current wave of its blocks, not the parent itself
 mkdir -p "$root/demo/T-006-01"
+: > "$root/demo/T-006-01/.git"
 cat > "$state/repos/demo/tasks/T-006.md" <<'EOF'
 ---
 id: T-006
@@ -148,6 +150,7 @@ check '--wave 1 names the same wave'  '^T-006-01 printed '
 
 block() { # <id> <status> <owner> <phase or -> <path>
   mkdir -p "$root/demo/$1"
+  : > "$root/demo/$1/.git"
   {
     printf -- '---\nid: %s\nrepo: demo\nstatus: %s\narchetype: feature\ntier: yellow\ncomplexity: medium\nowner: %s\n' \
       "$1" "$2" "$3"
@@ -169,7 +172,8 @@ block T-007-03 tests_ready null implement src/c.ts
 out=$(sh "$bin/session-monitor.sh" --task T-007 --state "$state" --dry-run 2>/dev/null)
 check 'an armed implement block goes out'        '^T-007-02 printed '
 check 'every armed implement block goes out'     '^T-007-03 printed '
-check 'it goes out with the implement agent'     'You are implementer\.'
+check 'it goes out as a block session of its archetype skill' 'skills/_shared/block-session\.md, the delivery of a block session; then /claude-factory:block-feature '
+nocheck 'it is no subagent brief'                  'You are implementer'
 nocheck 'a done block does not'                  '^T-007-01 '
 
 # a tests_ready block the monitor has not armed is still in the hands of its tests phase
@@ -219,10 +223,16 @@ out=$(sh "$bin/session-monitor.sh" --task T-005 --step grill --state "$state" 2>
 check 'the grill step runs in the clone' "^T-005-grill printed $tmp/clone\$"
 check 'the grill step prompts the skill' '"/claude-factory:grill '
 check 'the grill step runs as FACTORY_ROLE=grill' 'FACTORY_ROLE=grill FACTORY_UNIT=T-005-grill CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude '
+out=$(sh "$bin/session-monitor.sh" --task T-005 --step plan-check --state "$state" --dry-run 2>&1); rc=$?
+exits 'plan-check before a plan exists exits 1' 1 "$rc"
+check 'and names the missing plan' 'has no plan-ready file'
+mkdir -p "$state/repos/demo/plans"
+printf -- '---\nrepo: demo\ntask: T-005\n---\n' > "$state/repos/demo/plans/p5-plan-ready.md"
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step plan-check --state "$state" --dry-run 2>/dev/null)
-check 'the plan-check step prompts the architect review' '"/claude-factory:architect-review plan-check '
+check 'the plan-check step prompts the architect review over the plan' "\"/claude-factory:architect-review plan-check $state/repos/demo/plans/p5-plan-ready\.md\"\$"
+check 'the plan-check step runs in the state clone' "^T-005-plan-check printed $state\$"
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step decompose --state "$state" --dry-run 2>/dev/null)
-check 'the decompose step prompts the decompose skill' '"/claude-factory:decompose '
+check 'the decompose step prompts the decompose skill over the plan' "\"/claude-factory:decompose $state/repos/demo/plans/p5-plan-ready\.md\"\$"
 
 out=$(sh "$bin/session-monitor.sh" --parent T-005 --step grill --state "$state" 2>/dev/null)
 check '--parent is still the same flag' "^T-005-grill printed $tmp/clone\$"
@@ -264,6 +274,7 @@ hroot="$tmp/h"
 hstate="$hroot/state"
 mkdir -p "$hstate/repos/demo/tasks" "$hstate/repos/plain/tasks" \
   "$hroot/demo/T-101" "$hroot/plain/T-102" "$hroot/demo/T-103-01" "$hroot/demo/T-107"
+for d in demo/T-101 plain/T-102 demo/T-103-01 demo/T-107; do : > "$hroot/$d/.git"; done
 printf 'demo: { path: %s, emoji: 🦊 }\nplain: { path: %s }\n' "$tmp/clone" "$tmp/clone" > "$hstate/repos.yml"
 leaf() { # <id> <repo>
   printf -- '---\nid: %s\nrepo: %s\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(%s): a leaf\n' \
@@ -325,6 +336,22 @@ out=$(cat "$hroot/demo/.harness/T-103/herd-monitor" 2>/dev/null)
 check 'the parent herd-monitor holds the monitor tab' '^tab-mon$'
 absent 'no herd-monitor is written under the block id' "$hroot/demo/.harness/T-103-01/herd-monitor"
 
+# a block in_progress that no live session carries (a session that died, a spawn that failed after its claim) is
+# dispatched again in herdr; one whose session runs is not, and a dry run or a printed run never takes it
+mkdir -p "$hroot/demo/T-108-01" && : > "$hroot/demo/T-108-01/.git"
+printf -- '---\nid: T-108\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: green\ncomplexity: low\n---\n\n# Goal\nfeat(demo): a parent\n' \
+  > "$hstate/repos/demo/tasks/T-108.md"
+printf -- '---\nid: T-108-01\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: green\ncomplexity: low\nowner: factory@host:pending-T-108-01\n---\n\n# Goal\nfeat(demo): a stranded block\n\nDesign (approved in the grill):\n\n### `src/s.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
+  > "$hstate/repos/demo/tasks/T-108-01.md"
+out=$(sh "$bin/session-monitor.sh" --task T-108 --dry-run --state "$hstate" 2>/dev/null)
+nocheck 'a dry run leaves a stranded block alone'  '^T-108-01 printed '
+out=$(sh "$bin/session-monitor.sh" --task T-108 --spawn herdr --state "$hstate" 2>/dev/null)
+check 'a stranded block with no live session goes out again' '^T-108-01 spawned '
+herdr_agent implementer_t-108-01 working pane-81 sess-81
+printf 'T-108-01 tab-81 pane-81 sess-81\n' >> "$hroot/demo/.harness/T-108/herdr-tabs"
+out=$(sh "$bin/session-monitor.sh" --task T-108 --spawn herdr --state "$hstate" 2>/dev/null)
+nocheck 'a block whose session runs is not dispatched twice' '^T-108-01 spawned '
+
 HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --task T-107 --dry-run --state "$hstate" >/dev/null 2>&1
 absent 'a dry run writes no herd-monitor'       "$hroot/demo/.harness/T-107/herd-monitor"
 HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --task T-107 --spawn manual --state "$hstate" >/dev/null 2>&1
@@ -377,6 +404,7 @@ rec() { # <T-NNN> <unit> <tab_id>
 }
 armed() { # <parent> <block>
   mkdir -p "$hroot/demo/$2"
+  : > "$hroot/demo/$2/.git"
   printf -- '---\nid: %s\nrepo: demo\nstatus: in_progress\narchetype: feature\ntier: yellow\ncomplexity: medium\n---\n\n# Goal\nfeat(demo): a parent\n' \
     "$1" > "$hstate/repos/demo/tasks/$1.md"
   printf -- '---\nid: %s\nrepo: demo\nstatus: tests_ready\nphase: implement\narchetype: feature\ntier: yellow\ncomplexity: medium\nowner: null\n---\n\n# Goal\nfeat(demo): a block\n\nDesign (approved in the grill):\n\n### `src/h.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
@@ -437,6 +465,7 @@ nocheck '--all keeps the tab of a leaf at review' '^tab close tab-109 '
 # a tab create reply with no tab id: the agent still starts, nothing is recorded, and the batch goes on
 armed T-111 T-111-01
 mkdir -p "$hroot/demo/T-111-02"
+: > "$hroot/demo/T-111-02/.git"
 sed 's/T-111-01/T-111-02/; s/h\.ts/i.ts/' "$hstate/repos/demo/tasks/T-111-01.md" > "$hstate/repos/demo/tasks/T-111-02.md"
 HERDR_STUB_CREATE='{"result":{"root_pane":{"pane_id":"pane-1"}}}'
 export HERDR_STUB_CREATE
@@ -508,12 +537,12 @@ out=$(cat "$HERDR_STUB_LOG")
 check '--all sweeps a record under a four-digit parent'  '^tab close tab-1003 '
 
 # a herdr name stops at 31 characters
-printf -- '---\nid: T-1234567890123456789\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): a long id\n' \
-  > "$hstate/repos/demo/tasks/T-1234567890123456789.md"
+printf -- '---\nid: T-12345678901234567890123\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): a long id\n' \
+  > "$hstate/repos/demo/tasks/T-12345678901234567890123.md"
 : > "$HERDR_STUB_LOG"
-sh "$bin/session-monitor.sh" --task T-1234567890123456789 --step plan-check --spawn herdr --state "$hstate" >/dev/null 2>&1
+sh "$bin/session-monitor.sh" --task T-12345678901234567890123 --step triage --spawn herdr --state "$hstate" >/dev/null 2>&1
 out=$(cat "$HERDR_STUB_LOG")
-check 'a herdr name stops at 31 characters'      '^agent start plan-check_t-123456789012345678 '
+check 'a herdr name stops at 31 characters'      '^agent start triage_t-1234567890123456789012 '
 unset HERDR_TAB_ID
 
 # the stub answers the verbs the monitor, herd-watch and herdr-tabs drive with the herdr 0.8.2 shapes, over a
@@ -568,6 +597,7 @@ printf -- '---\nid: T-DM-7\nrepo: demo\nstatus: in_progress\narchetype: feature\
 printf -- '---\nid: T-DM-7-01\nrepo: demo\nstatus: ready\narchetype: feature\ntier: green\ncomplexity: low\nowner: null\n---\n\n# Goal\nfeat(demo): an alias block\n\nDesign (approved in the grill):\n\n### `src/j.ts`\n\nAdd it.\n\n## Acceptance\n\n`npm test` is green.\n' \
   > "$hstate/repos/demo/tasks/T-DM-7-01.md"
 mkdir -p "$hroot/demo/T-DM-7-01"
+: > "$hroot/demo/T-DM-7-01/.git"
 : > "$HERDR_STUB_LOG"
 out=$(sh "$bin/session-monitor.sh" --task T-DM-7 --spawn herdr --state "$hstate" 2>/dev/null)
 check 'a herdr spawn of an alias block goes out' '^T-DM-7-01 spawned '
@@ -600,6 +630,7 @@ oroot="$tmp/o"
 ostate="$oroot/state"
 mkdir -p "$ostate/repos/ecs-core/tasks" "$oroot/ecs-core/T-ECS-12/.git" "$oroot/ecs-core/T-ECS-20-01" \
   "$oroot/ecs-core/T-ECS-30" "$tmp/eclone"
+for d in T-ECS-20-01 T-ECS-30; do : > "$oroot/ecs-core/$d/.git"; done
 printf 'ecs-core: { path: %s, alias: ECS, emoji: 🐳 }\n' "$tmp/eclone" > "$ostate/repos.yml"
 otask() { # <state> <id> <status> [<frontmatter line>...]
   ot_f="$1/repos/ecs-core/tasks/$2.md" ot_id=$2 ot_st=$3
@@ -660,11 +691,11 @@ check 'the workspace defaults to HERDR_WORKSPACE_ID' '^tab create .* --workspace
 # a manual line carries the env as a prefix; the triage prompt names its report path and sections
 out=$(sm --task T-ECS-14 --step triage --dry-run 2>/dev/null)
 check 'a manual line prints the env as a prefix' \
-  "cd $tmp/eclone && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+  "cd \"$tmp/eclone\" && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
 check 'the triage prompt asks for ## Related issues as its own section' 'write ## Related issues as its own section after ## Context'
 check 'the triage prompt names the report path in the state clone' "file the investigation report at $ostate/repos/ecs-core/research/T-ECS-14-investigation.md, "
-out=$(sm --task T-ECS-14 --step decompose --dry-run 2>/dev/null)
-check 'a step with no worktree runs in the registered clone' "^T-ECS-14-decompose printed $tmp/eclone\$"
+out=$(sm --task T-ECS-14 --step grill --dry-run 2>/dev/null)
+check 'a step with no worktree runs in the registered clone' "^T-ECS-14-grill printed $tmp/eclone\$"
 
 # agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
 herdr_agent grill_ecs-13 idle pane-13
@@ -681,7 +712,7 @@ exits 'a wait that times out exits 2' 2 "$rc"
 out=$(cat "$HERDR_STUB_LOG")
 nocheck 'a wait that times out prompts nothing'     '^agent prompt grill_ecs-14 '
 : > "$HERDR_STUB_LOG"
-out=$(HERDR_STUB_START=agent_failed sm --task T-ECS-14 --step plan-check 2>/dev/null); rc=$?
+out=$(HERDR_STUB_START=agent_failed sm --task T-ECS-14 --step triage 2>/dev/null); rc=$?
 exits 'a start that fails otherwise exits 2' 2 "$rc"
 out=$(cat "$HERDR_STUB_LOG")
 nocheck 'a failed start waits for nothing'          '^agent wait '

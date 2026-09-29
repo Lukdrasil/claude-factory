@@ -119,9 +119,17 @@ emit() { # <heading> <completion line>
 }
 cmd() { printf '  %s\n' "$1"; }
 # a parent-level step of the herd, one session of session-monitor.sh; the watcher reports it
+# the watcher is armed once per herd through the Monitor tool, never run as a command of its own: it never ends
+watch_line() { cmd "Monitor tool, armed once per herd: $bin/herd-watch.sh $id --interval 60 --state $state"; }
+# a parent-level step of the herd, one session of session-monitor.sh; a step whose session still runs in its tab
+# is a wait, since a second dispatch would close that tab and lose the conversation a grill holds with the human
 dispatch_step() { # <step>
-  cmd "$bin/session-monitor.sh --task $id --step $1 --state $state"
-  cmd "$bin/herd-watch.sh $id --interval 60 --state $state"
+  ds_agent=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null | awk -v u="$id-$1" '$1 == u { print $2; exit }')
+  case "$ds_agent" in
+    ''|gone|closed) cmd "$bin/session-monitor.sh --task $id --step $1 --state $state" ;;
+    *) cmd "# $id-$1 runs in its tab (agent $ds_agent); wait on the watcher, and its human answers it there" ;;
+  esac
+  watch_line
 }
 
 tier=$(fm "$task" tier)
@@ -247,7 +255,7 @@ wave_of() { # <block id>: the number of the wave line naming it, or nothing
       sub(/wave[[:space:]]*/, "", n); print n; exit }'
 }
 
-pending='' waiting=''
+pending='' waiting='' working=''
 for b in $ordered; do
   bf=$(task_of "$b" || :)
   [ -n "$bf" ] || continue
@@ -264,9 +272,17 @@ for b in $ordered; do
 "
     continue
   fi
+  # why: in the herd a block at work in its session holds nothing: a later block of its wave that is ready for
+  # why: a gate or a dispatch comes first, and the wait is the step only when nothing else is left to do
+  if [ -n "$herd" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; then
+    [ -n "$working" ] || working=$b
+    continue
+  fi
+  if [ -n "$working" ] && [ "$(wave_of "$b")" != "$(wave_of "$working")" ]; then break; fi
   pending=$b
   break
 done
+[ -n "$pending" ] || pending=$working
 
 # a task already stacked has a block cut from another block's branch; its block MRs stay the developer's to merge
 stacked=''
@@ -310,20 +326,33 @@ if [ -n "$pending" ]; then
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     [ -z "$stacked" ] || cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
+  elif [ "$bs" = draft ] || [ "$bs" = triaged ]; then
+    # why: a block written after the approval (a thread outside a block's acceptance, a fix round) is a draft,
+    # why: and draft -> in_progress is no agent transition
+    emit "Step 11 of 16: approve $pending" "the human said yes in the approval ask of references/approve.md and $pending is ready."
+    cmd "cat $plugin/skills/factory/references/approve.md"
+    cmd "$bin/task-approve.sh $pending --state $state"
   elif [ -n "$herd" ] && { [ ! -e "$bwt/.git" ] || [ "$bs" = ready ] || [ "$bs" = tests_ready ]; }; then
     # why: in the herd a block is a session, and session-monitor.sh claims each one it starts; a claim of the
     # why: monitor's own would leave it no ready block to dispatch. A tests_ready block goes out again with the
     # why: implement phase armed, which is what session-monitor.sh dispatches it on
     emit "Step 11 of 16: dispatch wave ${wave:-1} of $id" "every ready block of the wave, and every tests_ready one armed with phase: implement after you reran its red tests, printed <id> spawned from session-monitor.sh, which claimed it for its session, and herd-watch.sh is armed on $id."
-    [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
+    # every block of the wave that has no worktree yet gets one, or session-monitor.sh skips it
+    for b in $ordered; do
+      [ "$(wave_of "$b")" = "$wave" ] && [ ! -e "$own/$b/.git" ] || continue
+      case "$(fm "$(task_of "$b")" status)" in ready|tests_ready|in_progress|claimed) cmd "$bin/worktree-add.sh $b" ;; esac
+    done
     [ "$bs" != tests_ready ] || cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status --message 'chore($pending): implement'"
     cmd "$bin/session-monitor.sh --task $id$wave_arg --state $state"
-    cmd "$bin/herd-watch.sh $id --interval 60 --state $state"
+    watch_line
   elif [ -n "$herd" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; then
     # why: a block session holds its block in_progress while it works, and the Stop hook has it report
     # why: tests_ready or review with its ## Evidence when it ends; that report is a claim the next step reruns
-    emit "Step 11 of 16: wave ${wave:-1} of $id works in its sessions" "herd-watch.sh has reported $pending tests_ready or review, or its agent blocked or gone, and you acted on that line as references/herd.md says."
-    cmd "$bin/herd-watch.sh $id --interval 60 --state $state"
+    # why: a session that died, or a spawn that failed after its claim, would hold the block for good; the same
+    # why: dispatch starts it again, and skips every block whose session still runs
+    emit "Step 11 of 16: wave ${wave:-1} of $id works in its sessions" "herd-watch.sh has reported $pending tests_ready or review, or its agent blocked, gone or ready with no report, and you acted on that line as references/herd.md says."
+    watch_line
+    cmd "$bin/session-monitor.sh --task $id$wave_arg --state $state"
   elif [ -n "$herd" ] && [ "$bs" = review ] && [ -z "$stacked" ]; then
     emit "Step 11 of 16: verify, review and open the MR for $pending" "$pending has its mr_url set: its session's report is rerun by you (a single-phase block's red tests at the commit its ## Red proof names, red, and at HEAD, green), block-verify.sh is green and wrote $own/.harness/$pending/verify.txt, the code-reviewer's final message is saved as $own/.harness/$pending/review.md and the architecture-auditor wrote $own/.harness/$pending/arch.md, both over the block diff, as your subagents, and block-mr.sh opened the MR into ${branch:-the work branch} from them."
     cmd "$bin/block-verify.sh $pending --state $state"

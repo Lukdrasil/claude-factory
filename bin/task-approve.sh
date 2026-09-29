@@ -2,7 +2,7 @@
 # The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
 # for every id given, under one state lock and in one commit (PLAN 3.5, fewer commits), so the plan approval of a
 # parent and its blocks is one call. The commit flips the status (and bumps `attempt` from failed, sets `phase: implement`
-# from tests_ready) and writes plan_hash, the SHA of the commit that already holds exactly the body the human
+# from tests_ready), releases `owner:` to null, since a ready task is claimed afresh, and writes plan_hash, the SHA of the commit that already holds exactly the body the human
 # approved: HEAD before the approval, since the approval only touches the frontmatter. A task file whose body is
 # not committed yet (edited by hand) is committed first, in one commit for all such files, and plan_hash pins
 # that one. Nothing is pushed; state-push.sh publishes, printed by every step of solve-next.sh (DECISIONS D4).
@@ -110,6 +110,8 @@ while read -r id rel; do
   task="$state/$rel"
   from=$(task_fields "$task" status)
   setf "$task" status ready
+  # why: a ready task is one nobody holds; a block a dead session owned would otherwise never be dispatched again
+  setf "$task" owner null
   if [ "$from" = failed ]; then
     attempt=$(task_fields "$task" attempt)
     case "${attempt:-}" in ''|*[!0-9]*) attempt=0 ;; esac

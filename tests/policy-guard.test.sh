@@ -331,6 +331,20 @@ for role in triage implementer; do
   try 0 "$role: curate-apply.sh list" "$S" coord "sh $P/curate-apply.sh list --state $S"
   try 0 "$role: a commit message naming task-approve.sh" "$C/cf" coord "git commit -m ${q}fix: task-approve.sh reads the lock${q}"
   try 0 "$role: a test named after a gate" "$C/cf" coord 'sh tests/task-done.test.sh'
+  # a quoted shell character is data, not a new command
+  try 0 "$role: a commit message with a bracket before a gate name" "$C/cf" coord "git commit -m \"fix(task-done.sh): the lock\""
+  try 0 "$role: a grep pattern with an alternation of gate names" "$C/cf" coord "grep -rn \"task-done.sh\\|block-mr-merge.sh\" bin/"
+  try 0 "$role: an rg pattern with a pipe" "$C/cf" coord "rg ${q}task-approve.sh|task-done.sh${q} bin"
+  try 0 "$role: an echo with a quoted semicolon" "$C/cf" coord "echo \"done; task-done.sh is next\""
+  # the merges and the monitor's fields of state-report.sh
+  try 2 "$role: glab mr merge" "$C/cf" coord 'glab mr merge 12 --yes'
+  try 2 "$role: gh pr merge" "$C/cf" coord 'gh pr merge 12 --squash'
+  try 2 "$role: state-report.sh --set-status done" "$S" coord "sh $P/state-report.sh --task T-900-01 --set-status done"
+  try 2 "$role: state-report.sh --set-phase" "$S" coord "sh $P/state-report.sh --task T-900-01 --set-phase implement --no-status"
+  try 2 "$role: state-report.sh --mr-url" "$S" coord "sh $P/state-report.sh --task T-900-01 --no-status --mr-url https://x.test/1"
+  try 0 "$role: state-report.sh --set-status review" "$S" coord "sh $P/state-report.sh --task T-900-01 --set-status review"
+  try 0 "$role: gh pr view" "$C/cf" coord 'gh pr view 12'
+  try 2 "$role: env -u before task-approve.sh" "$S" coord "env -u FOO sh $P/task-approve.sh T-900"
 done
 role=''
 try 0 'no role: block-mr-merge.sh' "$S" coord "sh $P/block-mr-merge.sh T-900-01"

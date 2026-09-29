@@ -68,8 +68,10 @@ In a herdr pane the same flow can run with every step that writes as its own int
 ```
 
 This session becomes the monitor. `bin/solve-next.sh <T-id> --herd` prints each step; triage, grill, plan-check,
-decompose and every block of a wave go out through `bin/session-monitor.sh`, one herdr tab per unit in its own
-worktree, claimed for its session, named `<role>_<unit>` and recorded in the task's `.harness/<T-id>/herdr-tabs`.
+decompose and every block of a wave go out through `bin/session-monitor.sh`, one herdr tab per unit, named
+`<role>_<unit>` and recorded in the task's `.harness/<T-id>/herdr-tabs`: a step in the registered clone, or in the
+state clone for plan-check and decompose, a block in its own worktree, claimed for its session, which reports
+`tests_ready` or `review` under `skills/_shared/block-session.md`.
 The monitor arms `bin/herd-watch.sh <T-id>` through the Monitor tool: one `herdr agent list` per pass, one line
 per change of status, phase, agent or MR, the forge read on every pass and the state pushed. It answers a session
 at a dialog with the human's word, runs every gate and merges the block MRs; a dispatched session carries

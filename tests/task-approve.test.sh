@@ -80,6 +80,7 @@ check 'a refused stalled task keeps its status' stalled "$(field T-009 status)"
 # --- several ids: one lock, one commit ------------------------------------------------
 task T-010
 task T-011 failed
+sed -i 's/^owner: null$/owner: factory@host:sess-gone/' "$state/repos/demo/tasks/T-011.md"
 task T-012 tests_ready
 before=$(head_of)
 out=$(sh "$bin/task-approve.sh" T-010 T-011 T-012 --state "$state" 2>&1); rc=$?
@@ -91,6 +92,7 @@ for id in T-010 T-011 T-012; do
   check "$id pins the body commit" "$before" "$(field "$id" plan_hash)"
 done
 check 'a failed task gets its attempt bumped' 1 "$(field T-011 attempt)"
+check 'a ready task is owned by nobody, so it can be dispatched again' null "$(field T-011 owner)"
 check 'a tests_ready task moves to implement' implement "$(field T-012 phase)"
 check 'the commit holds the three files' 'repos/demo/tasks/T-010.md repos/demo/tasks/T-011.md repos/demo/tasks/T-012.md' \
   "$(git -C "$state" show --name-only --format= HEAD | sort | tr '\n' ' ' | sed 's/ $//')"

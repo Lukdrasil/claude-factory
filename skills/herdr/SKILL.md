@@ -51,7 +51,10 @@ sh <plugin-root>/bin/session-monitor.sh --task T-NNN
 
    It dispatches the current wave of that task's ready blocks, or the task alone when it is a ready leaf, and
    claims each unit `in_progress` under `factory@<host>:pending-<id>` before the session starts. The prompt it
-   sends opens with the reclaim command, so the spawned session's first heartbeat is not a refused guess.
+   sends opens with the reclaim command, so the spawned session's first heartbeat is not a refused guess. A
+   block runs `block-tests` or its archetype skill as a session, under `skills/_shared/block-session.md`: it
+   reports `tests_ready` or `review` and leaves its MR to the monitor. A block in progress that no live session
+   carries, one that died or whose spawn failed, goes out again on the next call.
    The implement phase of a wave goes out through the same `--task T-NNN --wave N` call once the monitor armed
    `phase: implement` on its `tests_ready` blocks; a block whose session still runs is printed `skipped`.
 
@@ -119,7 +122,8 @@ recent-unwrapped --lines 120`), ask the user, then answer with `herdr agent send
 
 A spawned session has its own context, its own hooks and its own state reports. It is not a subagent, so its
 report does not come back to the caller: it lands in the state repo, and
-`<plugin-root>/bin/factory-list.sh` and `state-report.sh` are how the main session reads it. The rules in
+`<plugin-root>/bin/factory-list.sh` and `herd-watch.sh` are how the main session reads it, and the session
+itself writes it through `state-report.sh`. The rules in
 `<plugin-root>/skills/_shared/delegation.md` about verifying a claim still hold, more so, since nothing is
 returned to you directly.
 
