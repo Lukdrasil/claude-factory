@@ -14,6 +14,8 @@
 #   a `tier`, `archetype` or `complexity` outside the allowed values, or missing
 #   a `red` proposal with no `## Quality scenarios` row
 #   a proposal `goal:` that cannot be the MR title it becomes (lib-tasks.sh plan_goal_violations)
+#   an indented proposal line outside `context:`, `acceptance:`, `docs:`, `out of scope:` and the `steps:`
+#   sub-bullets, which decompose.sh would drop
 #
 # invariant: the gap ledger's `state` column is found by its header cell, so a ledger with the `deps` column and
 # invariant: one without it read the same; a header with no `state` cell falls back to the fourth column.
@@ -97,17 +99,27 @@ out=$(awk '
     prop = trim(substr($0, 5))
     np++
     ptitle[np] = prop
+    ikey = ""
     next
   }
 
   sec == "Proposed tasks" && np > 0 && insteps && /^[ \t]+[-*][ \t]/ { nsub[np]++; next }
+  # see: decompose.sh, which carries an indented line only under these four keys and a sub-bullet only under
+  # see: steps:, so any other indented line would vanish from the block
+  sec == "Proposed tasks" && np > 0 && /^[ \t]+[^ \t]/ {
+    if (ikey != "context" && ikey != "acceptance" && ikey != "docs" && ikey != "out of scope")
+      bad("proposal " np " has an indented line under " (ikey == "" ? "its heading" : ikey == "?" ? "no field" : "`" ikey ":`") " that decompose.sh drops: " trim($0))
+    next
+  }
   sec == "Proposed tasks" && np > 0 && /^[-*][ \t]/ {
     insteps = 0
+    ikey = "?"
     line = trim($0)
     sub(/^[-*][ \t]+/, "", line)
     c = index(line, ":")
     if (c == 0) next
     key = trim(substr(line, 1, c - 1))
+    ikey = key
     value = trim(substr(line, c + 1))
     if (key == "tier") ptier[np] = first_word(value)
     else if (key == "archetype") parch[np] = first_word(value)
@@ -118,6 +130,7 @@ out=$(awk '
     else if (key == "steps") { hassteps[np] = 1; psteps[np] = value; insteps = 1 }
     next
   }
+  sec == "Proposed tasks" && np > 0 && /^[^ \t]/ { ikey = "?" }
 
   sec == "Quality scenarios" && /^\|/ {
     if ($0 ~ /^\|[ \t|:-]*\|[ \t|:-]*$/) next
