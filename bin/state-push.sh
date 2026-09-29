@@ -1,7 +1,7 @@
 #!/bin/sh
 # The push of a state clone to its state root, taken out of every writer: state-report.sh, task-done.sh,
-# state-commit.sh and the other writers commit locally under the state lock and return, and this script, run in
-# the background by the monitor pass and the CEO loop, carries the commits to the root. It never runs under the
+# state-commit.sh and the other writers commit locally under the state lock and return, and this script, printed
+# by every step of solve-next.sh, carries the commits to the root. It never runs under the
 # write lock and never waits for another push: its own lock is <git-dir>/factory-push.lock taken with flock -n
 # (a mkdir lock where flock is missing, the way state_lock falls back), and a push already running means this one
 # has nothing to do.

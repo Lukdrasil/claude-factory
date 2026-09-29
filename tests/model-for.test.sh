@@ -1,6 +1,5 @@
 #!/bin/sh
-# model-for.sh: a step the monitor spawns as its own herdr session runs in auto mode, which haiku has not, so the
-# triage and ops archetypes answer sonnet; subagent-only picks (phase verify, a green tier) keep haiku.
+# model-for.sh: the triage and ops archetypes answer sonnet; subagent-only picks (phase verify, a green tier) keep haiku.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/bin
 fail=0

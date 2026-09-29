@@ -40,7 +40,7 @@ record the command, its exit code and the key output line. The Stop hook bounces
 
 The task's `status:` and the progress file are written only through `state-report.sh`, which validates the
 transition and commits in the state clone under the state lock (ADR-0050). Nobody pushes by hand: the push to
-the state root happens in the background, `state-push.sh` from the monitor pass and the CEO loop. There is no
+the state root is `state-push.sh`, which every step of `solve-next.sh` prints first. There is no
 dashboard, so never send the user to one: a task with an MR ends in `done` and a triage, ops or research task
 ends in `closed`, both through
 `<plugin-root>/bin/task-done.sh <id>` once the human has said so, and `ready` comes the same way, from

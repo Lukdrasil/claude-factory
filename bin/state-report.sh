@@ -2,8 +2,8 @@
 # The one write path for task state (ADR-0050). The session's own state clone is the writer, and the
 # report is validated right here (including the transition, which is measured from the *committed* status of the
 # task file, not from the working copy the agent just wrote) and committed into the state clone under the state
-# lock. It does not push: the push to the state root is state-push.sh's, run in the background by the monitor pass
-# and the CEO loop, so no report waits on the network while it holds the lock. A clone with no origin is the
+# lock. It does not push: the push to the state root is state-push.sh's, printed by every step of solve-next.sh,
+# so no report waits on the network while it holds the lock. A clone with no origin is the
 # state root itself (factory-init.sh --root) and has nothing to push anyway.
 #
 #   state-report.sh --task <id> [--attempts "<line>"] [--tool-failures "<line>"] [--message "<commit message>"]

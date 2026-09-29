@@ -2,10 +2,9 @@
 # solve-next.sh over a throwaway state clone, step 11 with the stacked block MRs of a task already stacked (a
 # block cut from a block branch): a block in `review` with its MR open does not hold the blocks behind it, and
 # once every block is such a block the step is the reminder that lists the open MRs for the human. T-252-02:
-# stalled is no status any more, so it is not sent to approval. The agent org: step 3b charts the request map
-# before the grill, the grill is seeded by map.sh export, step 11 of a task whose blocks are cut from the work
-# branch merges a finished wave with block-mr-merge.sh before the next is cut, step 14 is the task MR the human
-# reviews.
+# stalled is no status any more, so it is not sent to approval. Step 11 of a task whose blocks are cut from the
+# work branch merges a finished wave with block-mr-merge.sh before the next is cut, step 14 is the task MR the
+# human reviews, and every step opens with state-push.sh.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -68,13 +67,8 @@ check "the step is for the later block"   "Step 11 of 16: worktree and claim for
 if printf '%s\n' "$out" | grep -q 'waits for the developer'; then printf 'FAIL open MR stalls the stack\n'; fail=1
 else printf 'PASS open MR does not stall the stack\n'; fi
 
-# F36: a lead herds its blocks as sessions, so step 11 hands it the wave dispatch, which claims each block itself;
-# the single-session claim would leave session-monitor.sh nothing to dispatch
-out=$(FACTORY_ROLE=repo-lead sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
-check 'a lead dispatches the wave'      "Step 11 of 16: dispatch wave 2 of T-001" "$out"
-check 'through session-monitor'         "session-monitor.sh --task T-001 --wave 2 --spawn herdr" "$out"
-if printf '%s\n' "$out" | grep -q 'set-status in_progress'; then printf 'FAIL a lead claims the block itself\n'; fail=1
-else printf 'PASS a lead leaves the claim to session-monitor\n'; fi
+check 'state-push.sh is the first command of the step' "^  .*state-push\.sh --state $state\$" \
+  "$(printf '%s\n' "$out" | sed -n '/^Commands:$/{n;p;}')"
 
 block T-001-02 review https://forge.test/mr/2
 out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
@@ -142,14 +136,12 @@ no() { # <what> <pattern> <output>
   if printf '%s\n' "$3" | grep -q "$2"; then printf 'FAIL %s\n' "$1"; fail=1; else printf 'PASS %s\n' "$1"; fi
 }
 
-# --- step 3b: a parent with request: whose map is not cleared is charted before the grill ----------------
-R=R-20260925-1
+# --- steps 3 and 4: triage until ## Related issues is written, then the grill ------------------------------
 cat > "$state/repos/demo/tasks/T-010.md" <<EOF
 ---
 id: T-010
 repo: demo
 status: triaged
-request: $R
 archetype: feature
 tier: yellow
 complexity: medium
@@ -162,35 +154,9 @@ out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
 check 'a draft with tier: but no ## Related issues is still triage' '^## Step 3 of 16: triage T-010$' "$out"
 printf '\n## Related issues\n\nnone\n' >> "$state/repos/demo/tasks/T-010.md"
 out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
-check 'no map yet is step 3b' "^## Step 3b of 16: chart $R\$" "$out"
-check 'step 3b reads the wayfinder skill' 'skills/wayfinder/SKILL.md' "$out"
-check 'step 3b completes on map.sh clear' "Completion:.*map.sh clear $R" "$out"
-mkdir -p "$state/requests/$R/issues"
-printf -- '---\nrequest: %s\n---\n\nStatus: charting\n\n## Destination\n\nInvoices reach the ledger.\n\n## Notes\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n\n## Terms\n' "$R" \
-  > "$state/requests/$R/map.md"
-out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
-check 'the empty map intake opened is not charted yet' "^## Step 3b of 16: chart $R\$" "$out"
-printf -- '---\nrequest: %s\n---\n\nStatus: grilling\n\n## Destination\n\nInvoices reach the ledger.\n\n## Decisions so far\n\n## Not yet specified\n\n## Out of scope\n\n## Terms\n' "$R" \
-  > "$state/requests/$R/map.md"
-printf '# Pick the store\n\nType: grilling\nStatus: open\nBlocked by: none\nRepo: all\nClaimed by: none\n\n## Question\n\nx\n\n## Answer\n' \
-  > "$state/requests/$R/issues/01-pick-the-store.md"
-out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
-check 'an open ticket keeps step 3b' "^## Step 3b of 16: chart $R\$" "$out"
-check 'step 3b prints the frontier' "map.sh frontier $R" "$out"
-sed -i 's/^Status: open$/Status: resolved/' "$state/requests/$R/issues/01-pick-the-store.md"
-out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
-check 'a clear map the chart has not set planned is still step 3b' "^## Step 3b of 16: chart $R\$" "$out"
-sed -i 's/^Status: grilling$/Status: planned/' "$state/requests/$R/map.md"
-out=$(sh "$bin/solve-next.sh" T-010 --state "$state" 2>&1)
-check 'a cleared map is the grill' '^## Step 4 of 16: grill T-010$' "$out"
-check 'the grill is seeded by the export' "map.sh export $R demo" "$out"
-check 'the plan names its request' "request: $R" "$out"
-parent T-012 'no plan named here'
-sed -i 's/^complexity: medium$/complexity: medium\nrequest: null/' "$state/repos/demo/tasks/T-012.md"
-printf '\n## Related issues\n\nnone\n' >> "$state/repos/demo/tasks/T-012.md"
-out=$(sh "$bin/solve-next.sh" T-012 --state "$state" 2>&1)
-check 'a parent without a request goes to the grill' '^## Step 4 of 16: grill T-012$' "$out"
-no 'and gets no export' 'map.sh export' "$out"
+check 'a triaged parent goes to the grill' '^## Step 4 of 16: grill T-010$' "$out"
+check 'the grill reads its skill' 'skills/grill/SKILL.md' "$out"
+no 'no request map is charted' 'map\.sh' "$out"
 
 # --- step 11: the automatic block merges, one wave merged before the next is cut -------------------------
 mkdir -p "$root/demo/T-005"

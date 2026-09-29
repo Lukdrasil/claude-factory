@@ -27,25 +27,15 @@ identity_line() {
   [ -n "$host" ] || host=localhost
   printf 'Session identity: session_id %s, owner string factory@%s:%s, use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
 }
-register_ui() { # <state>: the session's answer inbox, under `ui: docker` in herdr, with the flow, the task and the
-  # step of a session session-monitor.sh started (FACTORY_FLOW, default solve, FACTORY_TASK, FACTORY_STEP)
-  ui=$(sed -n 's/^ui:[[:space:]]*//p' "$1/factory.yml" 2>/dev/null | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
-  if [ "$ui" = docker ] && [ "${HERDR_ENV:-}" = 1 ]; then
-    set -- --session "$sid" --pane "${HERDR_PANE_ID:-}"
-    [ -z "${FACTORY_STEP:-}" ] || set -- "$@" --flow "${FACTORY_FLOW:-solve}" --task "${FACTORY_TASK:-}" --step "$FACTORY_STEP"
-    sh "$(dirname -- "$0")/ui-session.sh" "$@" >/dev/null
-  fi
-}
-
-# The state clone itself, where the CEO sits (agent-org plan 3.8): the identity, and the memory passes that are
-# due (pass-stamp.sh --due), so the human can give the go for them. No repo context and no playbook here; the
+# The state clone itself: the identity, and the memory passes that are due (pass-stamp.sh --due), so the human
+# can start them. No repo context and no playbook here; the
 # due list is printed nowhere else.
 st_top=$(git -C "${WORK_DIR:-/nonexistent}/state" rev-parse --show-toplevel 2>/dev/null) || st_top=''
 if [ -n "$st_top" ] && [ "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" = "$st_top" ]; then
-  { if [ -n "$sid" ]; then identity_line; register_ui "$WORK_DIR/state"; fi
+  { [ -z "$sid" ] || identity_line
     due=$(for k in daily weekly; do sh "$(dirname -- "$0")/pass-stamp.sh" --due "$k" --state "$WORK_DIR/state" 2>/dev/null; done)
     if [ -n "$due" ]; then
-      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one as its own step session (claude-factory:memory-daily <scope>), a weekly one too (claude-factory:memory-weekly <scope>):\n%s\n' "$due"
+      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one with /claude-factory:memory-daily <scope>, a weekly one with /claude-factory:memory-weekly <scope>:\n%s\n' "$due"
     fi; } | emit
   exit 0
 fi
@@ -118,10 +108,7 @@ stale_plugin_warning() {
   # lesson C (2026-09-07): nothing told the session its own session_id, so the coordinator wrote an owner: it
   # guessed (a bridge/cse_ id) and the owner-based Stop lookup (owned_task_ids) never found its tasks. The id
   # is in the hook stdin, so the session is told the exact owner string of ADR-0050 first thing.
-  if [ -n "$sid" ]; then
-    identity_line
-    register_ui "$state"
-  fi
+  [ -z "$sid" ] || identity_line
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
   # every text they had read named one and the single sentence that says otherwise lives in a skill a session
   # may never load.

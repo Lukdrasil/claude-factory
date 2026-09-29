@@ -4,9 +4,9 @@
 # owned_task_ids read the state clone the caller put in $state, the way self-report-check.sh and
 # session-stats.sh always did.
 
-# the permissions.allow rules factory-init.sh writes and factory-doctor.sh checks, one per line: a step session
-# reads the factory root and the plugin, edits the state clone and runs the plugin scripts without a dialog,
-# which a model that cannot run in auto mode (Haiku 4.5) needs
+# the permissions.allow rules factory-init.sh writes, one per line: the solve session and its subagents read the
+# factory root and the plugin, edit the state clone and run the plugin scripts without a dialog, which a model
+# that cannot run in auto mode (Haiku 4.5) needs
 factory_allow_rules() { # <work dir> <plugin root>
   printf '%s\n' "Read(/$1/**)" "Read(/$2/**)" "Edit(/$1/state/**)" "Bash(sh $2/bin/*)" "Bash($2/bin/*)"
 }

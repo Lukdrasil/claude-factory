@@ -1,8 +1,8 @@
 #!/bin/sh
 # task-new.sh allocates under the state lock and commits locally: a repo with an `alias:` in repos.yml gets
 # T-<ALIAS>-<n+1> over its live and archived tasks, one without keeps the global legacy counter, a block is its
-# parent plus -NN. The frontmatter carries request, priority and issue: validated, priority P2 by default, and a
-# block copies all three from its parent. The push is gone, state-push.sh publishes in the background, so the
+# parent plus -NN. The frontmatter carries issue: validated, null by default, and a block copies it from its
+# parent. The push is gone, state-push.sh publishes, so the
 # origin never moves here; a held state lock refuses the run and writes nothing.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
@@ -85,9 +85,7 @@ new_task cf "$tmp/cf2.md"
 check 'the second one is T-CF-2' T-CF-2 "$id"
 check 'the commit is chore(<id>): new draft task' 'chore(T-CF-2): new draft task' "$(git -C "$st" log -1 --format=%s)"
 
-draft "$tmp/ecs1.md" ecs 'a task after an archived one' fix/x 'request: R-20260924-3
-priority: P0
-issue: https://forge.example/g/ecs/-/issues/42'
+draft "$tmp/ecs1.md" ecs 'a task after an archived one' fix/x 'issue: https://forge.example/g/ecs/-/issues/42'
 new_task ecs "$tmp/ecs1.md"
 check 'the counter of a repo counts its archived tasks: T-ECS-7 archived gives T-ECS-8' T-ECS-8 "$id"
 draft "$tmp/ecs2.md" ecs 'a branch that carries an old id' fix/T-ECS-3-carried-over
@@ -110,9 +108,7 @@ check 'the refusal names the alias' yes "$(printf '%s' "$out" | grep -q "alias '
 check 'nothing is committed for the refused alias' "$before" "$(commits)"
 
 # --- blocks ------------------------------------------------------------------------------
-draft "$tmp/b1.md" ecs 'the first block' block/T-000 'request: null
-priority: P3
-issue: null'
+draft "$tmp/b1.md" ecs 'the first block' block/T-000 'issue: null'
 new_task ecs "$tmp/b1.md" --parent T-ECS-8
 check 'a block of T-ECS-8 is T-ECS-8-01' T-ECS-8-01 "$id"
 draft "$tmp/b2.md" ecs 'the second block' block/T-000
@@ -128,18 +124,11 @@ draft "$tmp/b4.md" demo 'a block of a legacy parent' block/T-000
 new_task demo "$tmp/b4.md" --parent T-120
 check 'a block of a legacy parent is T-120-01' T-120-01 "$id"
 
-# --- request, priority, issue -----------------------------------------------------------------
-check 'a parent without the three lines gets priority P2' P2 "$(field T-CF-1 priority)"
-check 'a parent without the three lines gets request null' null "$(field T-CF-1 request)"
-check 'a parent without the three lines gets issue null' null "$(field T-CF-1 issue)"
-check 'a parent keeps its request' R-20260924-3 "$(field T-ECS-8 request)"
-check 'a parent keeps its priority' P0 "$(field T-ECS-8 priority)"
+# --- issue -------------------------------------------------------------------------------------
+check 'a parent without the line gets issue null' null "$(field T-CF-1 issue)"
 check 'a parent keeps its issue' https://forge.example/g/ecs/-/issues/42 "$(field T-ECS-8 issue)"
-check 'a block copies the priority of its parent over its own' P0 "$(field T-ECS-8-01 priority)"
-check 'a block copies the request of its parent' R-20260924-3 "$(field T-ECS-8-01 request)"
 check 'a block copies the issue of its parent' https://forge.example/g/ecs/-/issues/42 "$(field T-ECS-8-01 issue)"
-check 'a block of a parent without the lines gets P2, null, null' 'P2 null null' \
-  "$(printf '%s %s %s' "$(field T-120-01 priority)" "$(field T-120-01 request)" "$(field T-120-01 issue)")"
+check 'a block of a parent without the line gets null' null "$(field T-120-01 issue)"
 
 refused() { # <what> <frontmatter line> <message part>
   draft "$tmp/r.md" cf "refused for $1" fix/x "$2"
@@ -149,9 +138,6 @@ refused() { # <what> <frontmatter line> <message part>
   check "the refusal of $1 says why" yes "$(printf '%s' "$out" | grep -qF -- "$3" && echo yes || echo no)"
   check "nothing is committed for $1" "$r_before" "$(commits)"
 }
-refused 'priority P4' 'priority: P4' 'priority must be one of P0|P1|P2|P3'
-refused 'a lower-case priority' 'priority: p1' 'priority must be one of P0|P1|P2|P3'
-refused 'a request without its date' 'request: R-2026-1' 'request must be R-YYYYMMDD-n or null'
 refused 'an issue that is no url' 'issue: see the ticket' 'issue must be an http(s) url or null'
 check 'no task file was left behind by a refusal' '' "$(ls "$st"/repos/cf/tasks/ | grep refused)"
 

@@ -1,11 +1,11 @@
 #!/bin/sh
 # The human approval gate of a task, and in the standalone posture (ADR-0050) the whole of it: `<from> → ready`
-# for every id given, under one state lock and in one commit (PLAN 3.5, fewer commits), so the CEO's plan approval
-# of a request is one call. The commit flips the status (and bumps `attempt` from failed, sets `phase: implement`
+# for every id given, under one state lock and in one commit (PLAN 3.5, fewer commits), so the plan approval of a
+# parent and its blocks is one call. The commit flips the status (and bumps `attempt` from failed, sets `phase: implement`
 # from tests_ready) and writes plan_hash, the SHA of the commit that already holds exactly the body the human
 # approved: HEAD before the approval, since the approval only touches the frontmatter. A task file whose body is
 # not committed yet (edited by hand) is committed first, in one commit for all such files, and plan_hash pins
-# that one. Nothing is pushed; state-push.sh publishes from the monitor pass and the CEO loop (DECISIONS D4).
+# that one. Nothing is pushed; state-push.sh publishes, printed by every step of solve-next.sh (DECISIONS D4).
 #
 #   task-approve.sh <id>... [--state <dir>]      cwd = the state clone unless --state
 #
@@ -16,7 +16,7 @@
 # `# Goal` line that cannot be an MR title. An id given twice is approved once.
 #
 # A depends_on that is not done yet (neither done nor closed, nor archived) is a warning on stderr per edge, and
-# the approval goes on: the queue (queue-next.sh) starts the parent once it is done. An edge between two blocks
+# the approval goes on. An edge between two blocks
 # of one parent is the cut's own order and no warning.
 #
 # Prints `<id> ready <plan_hash>` per id. Exit 0 = approved; 1 = refused, the reason on stderr, nothing written;
@@ -130,7 +130,7 @@ state_commit "$state" "$subject
 $body" "$@" \
   || { printf 'task-approve: git refused the commit in %s: %s written but not committed\n' "$state" "$list" >&2; exit 2; }
 
-# a warning per depends_on that is not done yet; the queue waits for it, the approval does not
+# a warning per depends_on that is not done yet; the flow waits for it, the approval does not
 while read -r id rel; do
   [ -n "$id" ] || continue
   for dep in $(task_fields "$state/$rel" depends_on | tr '[],"'"'" '    '); do

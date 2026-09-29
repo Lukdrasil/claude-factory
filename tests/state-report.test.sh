@@ -1,6 +1,6 @@
 #!/bin/sh
-# state-report.sh commits the report in the state clone and pushes nothing (the push is state-push.sh's, run in the
-# background by the monitor pass and the CEO loop): a clone with no origin, one with a bare origin and one whose
+# state-report.sh commits the report in the state clone and pushes nothing (the push is state-push.sh's, printed by
+# every step of solve-next.sh): a clone with no origin, one with a bare origin and one whose
 # origin would refuse a push all exit 0 with the report committed locally and the origin untouched. Exit 2 is a
 # report that could not be written or committed, here another session holding the state lock.
 set -u

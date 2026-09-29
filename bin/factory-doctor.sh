@@ -5,27 +5,22 @@
 # check, `ok: ...`, `missing: <what>, <fix>` or `failing: <what>, <fix>`. Always exit 0: the skill offers the fixes
 # to the human, the report gates nothing.
 #
-# --json walks the steps of the Setup tab instead, machine wide and for every registered repo, and writes them to
-# <ui home>/setup/doctor.json (`{at, root, steps: [{id, state: done|missing|failing, detail, fix}]}`, the path on
-# stdout); init and add-repo run it after every run. It reads the machine and the forges and writes nothing else:
-# a fix is text, applying it is a confirm ask of the session.
+# It reads the machine and the forges and writes nothing: a fix is text, applying it is a confirm ask of the session.
 #
 #   factory-doctor.sh [--root <dir>] [--repo <clone-dir>]
-#   factory-doctor.sh --json [--root <dir>] [--ui-home <dir>]
 #
-# The root is --root, else the parent of the state clone the cwd is in, else WORK_DIR (--json: else ~/factory).
+# The root is --root, else the parent of the state clone the cwd is in, else WORK_DIR.
 set -eu
 
-root='' repo='' json=0 uihome=''
+root='' repo=''
 die() { printf 'factory-doctor: %s\n' "$1" >&2; exit 1; }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root|--repo|--ui-home)
+    --root|--repo)
       [ $# -ge 2 ] || die "$1 needs a value"
-      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; --ui-home) uihome=$2 ;; esac
+      case "$1" in --root) root=$2 ;; --repo) repo=$2 ;; esac
       shift 2 ;;
-    --json) json=1; shift ;;
     *) die "unknown argument '$1'" ;;
   esac
 done
@@ -34,7 +29,6 @@ if [ -z "$root" ]; then
   if cwd_top=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$cwd_top/repos.yml" ]; then
     state=$cwd_top root=$(dirname -- "$cwd_top")
   elif [ -n "${WORK_DIR:-}" ]; then root=$WORK_DIR
-  elif [ "$json" = 1 ]; then root="$HOME/factory"
   else die "--root <dir> is required"; fi
 fi
 [ -n "$repo" ] || repo=$(pwd)
@@ -45,24 +39,19 @@ plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# every line the report prints and every row doctor.json holds goes through here: the user:pass@ of a url is
-# dropped, since doctor.json is served to the page by /api/setup
+# every line the report prints goes through here: the user:pass@ of a url is dropped, since the report ends up in
+# a session transcript
 redact() { printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'; }
 ok() { redact "ok: $1"; }
 missing() { redact "missing: $1, $2"; }
-# one check: printed as a line of the report, or with --json a row of the steps file
+# one check, printed as a line of the report
 step() { # <id> <done|missing|failing> <detail> [<fix>]
-  if [ "$json" = 1 ]; then
-    redact "$(printf '%s\t%s\t%s\t%s' "$1" "$2" "$(flat "$3")" "$(flat "${4:-}")")" >> "$tmp/steps"
-  else
-    case "$2" in
-      done) ok "$3" ;;
-      missing) missing "$3" "${4:-}" ;;
-      *) redact "failing: $3, ${4:-}" ;;
-    esac
-  fi
+  case "$2" in
+    done) ok "$3" ;;
+    missing) missing "$3" "${4:-}" ;;
+    *) redact "failing: $3, ${4:-}" ;;
+  esac
 }
-flat() { printf '%s' "$1" | tr '\t\n\r' '   ' | tr -d '\000-\037'; }
 
 # --- state remote + credentials ----------------------------------------------------------------------------------
 # 2026-09-07: a state repo with no remote pushes nowhere (every WIP push of a block "succeeded" locally), and one
@@ -92,98 +81,10 @@ if [ -d "$state/.git" ]; then
 fi
 }
 
-# --- the machine and the registered repos (the Setup tab) -----------------------------------------------------------
-herdr_min=0.8.2
-settings="${HOME:-/nonexistent}/.claude/settings.json"
+# --- the machine and the registered repos ---------------------------------------------------------------------------
 init_fix="run factory-init.sh --root $root"
-# a factory run with `claude --settings <file>` in FACTORY_CLAUDE_ARGS reads that file over the user settings
-fsettings=$(printf '%s\n' "${FACTORY_CLAUDE_ARGS:-}" | awk '{ for (i = 1; i <= NF; i++) {
-  if ($i == "--settings" && i < NF) { print $(i + 1); exit }
-  if (index($i, "--settings=") == 1) { print substr($i, 12); exit } } }')
-settings_label=$settings
-[ -z "$fsettings" ] || settings_label="$fsettings over $settings"
-# the effective value of WORK_DIR or promptSuggestionEnabled, the first file that sets it; allow is the union
-settings_value() { # WORK_DIR|promptSuggestionEnabled|allow
-  node -e '
-    const fs = require("fs"), [what, ...files] = process.argv.slice(1);
-    const os = files.map(f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { return {}; } });
-    const first = get => { for (const o of os) { const v = get(o); if (v !== undefined) return v; } return ""; };
-    if (what === "allow") process.stdout.write(os.flatMap(o => (o.permissions && o.permissions.allow) || []).join("\n"));
-    else if (what === "WORK_DIR") process.stdout.write(String(first(o => o.env && o.env.WORK_DIR)));
-    else process.stdout.write(String(first(o => o[what])));' "$1" $fsettings "$settings" 2>/dev/null || :
-}
-
-version_ge() { # <a> <b>: a >= b, both x.y.z
-  printf '%s %s\n' "$1" "$2" | awk '{
-    split($1, a, "."); split($2, b, ".")
-    for (i = 1; i <= 3; i++) { if (a[i] + 0 > b[i] + 0) exit 0; if (a[i] + 0 < b[i] + 0) exit 1 }
-    exit 0 }'
-}
 on_path() { command -v "$1" >/dev/null 2>&1; }
 
-check_tool() { # <id> <why> <install>
-  if on_path "$1"; then step "$1" done "$1 on PATH"; else step "$1" missing "$1 is not on PATH, $2" "$3"; fi
-}
-
-check_docker() {
-  if ! on_path docker; then step docker missing "docker is not on PATH, the Factory UI runs in it" 'install Docker'
-  elif docker info >/dev/null 2>&1; then step docker done "the Docker daemon answers"
-  else step docker failing "the Docker daemon does not answer" 'start Docker (systemctl start docker) and rerun doctor'; fi
-}
-
-check_herdr() {
-  if ! on_path herdr; then
-    step herdr missing "herdr is not on PATH, every factory session runs in it" "install herdr $herdr_min or later from https://herdr.dev"
-    return 0
-  fi
-  hv=$(herdr --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || :)
-  if [ -z "$hv" ]; then step herdr failing "herdr --version prints no version" "reinstall herdr $herdr_min or later from https://herdr.dev"
-  elif version_ge "$hv" "$herdr_min"; then step herdr done "herdr $hv"
-  else step herdr failing "herdr $hv is older than $herdr_min, the factory parses the $herdr_min shapes" "update herdr to $herdr_min or later"; fi
-}
-
-check_herdr_server() {
-  if ! on_path herdr; then step herdr-server missing "herdr is not installed" 'install herdr first'; return 0; fi
-  hs=$(herdr status 2>&1) && hs_rc=0 || hs_rc=$?
-  if [ "$hs_rc" = 0 ] && printf '%s\n' "$hs" | grep -q 'status: running' && printf '%s\n' "$hs" | grep -q 'compatible: yes'; then
-    step herdr-server done "the herdr server runs and is compatible"
-  else
-    step herdr-server failing "herdr status: $(printf '%s\n' "$hs" | grep -v '^[[:space:]]*$' | tail -n1)" \
-      'start herdr in a terminal (a restart after an update), then rerun doctor'
-  fi
-}
-
-check_herdr_integration() {
-  if ! on_path herdr; then step herdr-integration missing "herdr is not installed" 'install herdr first'; return 0; fi
-  hi=$(herdr integration status 2>/dev/null | grep '^claude:' | head -n1 || :)
-  case "$hi" in
-    'claude: current'*) step herdr-integration done "herdr integration for Claude ${hi#claude: }" ;;
-    ''|'claude: not installed'*)
-      step herdr-integration missing "no herdr integration for Claude: no session ids, no resume after a herdr restart" \
-        'herdr integration install claude' ;;
-    *) step herdr-integration failing "herdr integration for Claude is ${hi#claude: }" 'herdr integration install claude' ;;
-  esac
-}
-
-check_herdr_toast() {
-  tc="${XDG_CONFIG_HOME:-${HOME:-/nonexistent}/.config}/herdr/config.toml"
-  td=$(awk '
-    /^[ \t]*\[/ { on = ($0 ~ /^[ \t]*\[ui\.toast\][ \t]*$/); next }
-    on && /^[ \t]*delivery[ \t]*=/ { v = $0; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t]*#.*$/, "", v); gsub(/"/, "", v); print v; exit }' \
-    "$tc" 2>/dev/null || :)
-  case "$td" in
-    system|herdr|terminal) step herdr-toast done "herdr toast delivery \"$td\"" ;;
-    *) step herdr-toast missing "herdr toasts are off (${td:-no} [ui.toast] delivery in $tc), a waiting question notifies nobody" \
-         "set [ui.toast] delivery = \"system\" in $tc, then herdr server reload-config" ;;
-  esac
-}
-
-check_claude() {
-  if ! on_path claude; then step claude missing "Claude Code is not on PATH" 'install Claude Code (https://claude.com/claude-code)'; return 0; fi
-  cv=$(claude --version 2>/dev/null | head -n1 | sed 's/ *(Claude Code)//' || :)
-  if [ -n "$cv" ]; then step claude done "Claude Code $cv"
-  else step claude failing "claude --version prints nothing" 'reinstall Claude Code'; fi
-}
 
 # the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside);
 # an http(s) host keeps its port, the forge's own (a self-hosted GitLab on :8929), an ssh one drops the sshd's
@@ -214,10 +115,6 @@ logged_in() { # <cli> <host>, one auth status per pair
   logins="$logins$1@$2=0 "; return 1
 }
 
-repo_keys() {
-  [ -f "$state/repos.yml" ] || return 0
-  awk '/^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k); if (!(k in seen)) { seen[k] = 1; print k } }' "$state/repos.yml"
-}
 # `<key> <alias>` of every repo that has an alias: line, valid or not
 alias_rows() {
   [ -f "$state/repos.yml" ] || return 0
@@ -226,44 +123,6 @@ alias_rows() {
     k != "" && match($0, /(^|[{, \t])alias[ \t]*:[ \t]*["'"'"']?[^,}"'"'"' \t]+/) {
       v = substr($0, RSTART, RLENGTH); sub(/.*:[ \t]*/, "", v); gsub(/["'"'"']/, "", v); print k, v
     }' "$state/repos.yml"
-}
-
-check_forge_login() {
-  fl_hosts=$(for k in $(repo_keys); do host_of "$(yml_field "$k" url)"; echo; done | sort -u | grep -v '^$' || :)
-  if [ -z "$fl_hosts" ]; then
-    if on_path glab || on_path gh; then step forge-login done "no forge host registered yet"
-    else step forge-login missing "neither glab nor gh is on PATH" 'install glab (GitLab) or gh (GitHub)'; fi
-    return 0
-  fi
-  fl_bad='' fl_fix='' fl_good=''
-  for h in $fl_hosts; do
-    c=$(cli_of "$h")
-    if ! on_path "$c"; then fl_bad="$fl_bad $h ($c is not installed)"; fl_fix="$fl_fix; install $c"
-    elif ! logged_in "$c" "$h"; then fl_bad="$fl_bad $h ($c is not logged in)"; fl_fix="$fl_fix; $c auth login --hostname $h"
-    else fl_good="$fl_good $h"; fi
-  done
-  if [ -n "$fl_bad" ]; then step forge-login missing "no forge login for$fl_bad" "${fl_fix#; }"
-  else step forge-login done "logged in to$fl_good"; fi
-}
-
-check_state_repo() {
-  if [ -d "$state/.git" ] && [ -f "$state/repos.yml" ]; then step state-repo done "state repo $state"
-  else
-    step state-repo missing "no state repo at $state" \
-      "$init_fix for a new one, or factory-init.sh --root $root --from <url> for a clone of the existing one"
-  fi
-}
-
-check_state_remote() {
-  if [ ! -d "$state/.git" ]; then step state-remote missing "no state repo yet" "$init_fix"; return 0; fi
-  sr=$(state_remote_report)
-  srm=$(printf '%s\n' "$sr" | grep '^missing: ' | head -n1 || :)
-  if [ -n "$srm" ]; then
-    srm=${srm#missing: }
-    step state-remote missing "${srm%%, *}" "${srm#*, }"
-  else
-    step state-remote done "$(printf '%s\n' "$sr" | sed 's/^ok: //' | paste -sd ';' - | sed 's/;/; /g')"
-  fi
 }
 
 # PLAN 3.5: the writers commit locally and state-push.sh carries the commits in the background; a commit that stays
@@ -277,44 +136,10 @@ check_state_push() {
   sp_age=$(( $(date +%s) - $(printf '%s\n' "$sp" | sort -n | head -n1) ))
   if [ "$sp_age" -gt 600 ]; then
     step state-push failing "$sp_n state commit(s) unpushed, the oldest for $((sp_age / 60)) minutes" \
-      "sh $plugin/bin/state-push.sh --state $state (the monitor pass and the CEO loop run it), and read why it failed"
+      "sh $plugin/bin/state-push.sh --state $state (every step of factory solve runs it), and read why it failed"
   else
     step state-push done "$sp_n state commit(s) unpushed for less than 10 minutes"
   fi
-}
-
-check_work_dir() {
-  wd=${WORK_DIR:-} wd_in='the environment'
-  [ -n "$wd" ] || wd=$(settings_value WORK_DIR) wd_in=$settings_label
-  wd=${wd%/}
-  if [ "$wd" = "$root" ]; then step work-dir done "WORK_DIR=$root in $wd_in"
-  elif [ -z "$wd" ]; then step work-dir missing "no WORK_DIR in $wd_in" "$init_fix"
-  else step work-dir failing "WORK_DIR is $wd in $wd_in, not $root" "$init_fix"; fi
-}
-
-check_prompt_suggestion() {
-  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
-    step prompt-suggestion done "promptSuggestionEnabled: false in $settings_label"
-  else
-    step prompt-suggestion missing "promptSuggestionEnabled is not false in $settings_label, a suggestion would be typed into a UI answer" \
-      "$init_fix --ui docker"
-  fi
-}
-
-check_permissions() {
-  allow=$(settings_value allow)
-  pm=$(factory_allow_rules "$root" "$plugin" | while IFS= read -r r; do
-    printf '%s\n' "$allow" | grep -qxF -- "$r" || printf ' %s' "$r"
-  done)
-  pm=${pm# }
-  if [ -z "$pm" ]; then step permissions done "the allow rules of the step sessions are in $settings_label"
-  else step permissions missing "no allow rule $pm in $settings_label, a step session that cannot run in auto mode stops at a permission dialog" "$init_fix"; fi
-}
-
-check_repos() {
-  rn=$(repo_keys | wc -l | tr -d ' ')
-  if [ "$rn" -gt 0 ]; then step repos done "$rn repositories registered"
-  else step repos missing "no repository registered" "run factory-add-repo.sh --root $root in each product clone"; fi
 }
 
 check_aliases() {
@@ -331,13 +156,6 @@ check_aliases() {
   fi
 }
 
-check_repo_path() { # <key>
-  rp=$(yml_field "$1" path)
-  if [ -z "$rp" ]; then step "repo:$1:path" missing "$1 has no path: in repos.yml" "run factory-add-repo.sh --root $root in its clone"
-  elif git -C "$rp" rev-parse --git-dir >/dev/null 2>&1; then step "repo:$1:path" done "$1 at $rp"
-  else step "repo:$1:path" failing "the path of $1, $rp, is no git clone" "clone it there or change its path: in $state/repos.yml"; fi
-}
-
 check_repo_alias() { # <key>
   ra=$(repo_alias "$1") && ra_rc=0 || ra_rc=$?
   if [ "$ra_rc" != 0 ]; then
@@ -348,11 +166,6 @@ check_repo_alias() { # <key>
     step "repo:$1:alias" missing "$1 has no alias, its new tasks get legacy T-<n> ids" \
       "run factory-add-repo.sh --root $root --repo $(yml_field "$1" path) (it proposes an alias, --alias <ALIAS> overrides)"
   fi
-}
-
-check_repo_toolset() { # <key>
-  if [ -f "$state/repos/$1/toolset.md" ]; then step "repo:$1:toolset" done "repos/$1/toolset.md"
-  else step "repo:$1:toolset" missing "$1 has no repos/$1/toolset.md" "run factory-add-repo.sh --root $root --repo $(yml_field "$1" path)"; fi
 }
 
 # PLAN 3.4: the class of a repo decides how a block MR skips its pipeline. A: the pipeline is not required. B: it
@@ -420,82 +233,6 @@ check_repo_workflows() { # <key>
     step "repo:$1:workflows" done "the workflows of $1 filter on $wb, or there are none"
   fi
 }
-
-check_capacity() {
-  caps=$(awk '
-    on && /^[^ \t#]/ { exit }
-    /^capacity:/ { on = 1; sub(/^capacity:/, "") }
-    on {
-      s = $0; sub(/#.*/, "", s)
-      while (match(s, /[A-Za-z0-9_-]+[ \t]*:[ \t]*[0-9]+/)) {
-        p = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
-        k = p; sub(/[ \t]*:.*/, "", k); v = p; sub(/.*:[ \t]*/, "", v)
-        print k, v
-      }
-    }' "$state/factory.yml" 2>/dev/null || :)
-  cs=$(printf '%s\n' "$caps" | awk '$1 == "sessions" { print $2; exit }')
-  if [ -n "$cs" ]; then
-    step capacity done "capacity: sessions $cs, $(printf '%s\n' "$caps" | grep -vc '^sessions ' || :) roles capped"
-  else
-    step capacity missing "no capacity: sessions in $state/factory.yml, nothing is capped" \
-      "add to $state/factory.yml: capacity: {sessions: 10, roles: {repo-lead: 3, scout: 8, triage-analyst: 2, researcher: 4, plan-architect: 2, architecture-auditor: 2, test-designer: 3, implementer: 4, implementer-senior: 2, code-reviewer: 2}}"
-  fi
-}
-
-check_green() {
-  gf=$(awk -F '\t' '$2 == "failing"' "$tmp/steps" | wc -l | tr -d ' ')
-  gm=$(awk -F '\t' '$2 == "missing"' "$tmp/steps" | wc -l | tr -d ' ')
-  if [ "$gf" -gt 0 ]; then step doctor failing "$gf failing and $gm missing" 'fix the failing steps first, then rerun doctor'
-  elif [ "$gm" -gt 0 ]; then step doctor missing "$gm missing" 'fix the missing steps, then rerun doctor'
-  else step doctor done "every step is done"; fi
-}
-
-check_ceo() {
-  if on_path herdr && herdr agent get ceo >/dev/null 2>&1; then step ceo done "the CEO runs (herdr agent ceo)"
-  else step ceo missing "the CEO is not running" "open a herdr tab in $state and run: claude '/claude-factory:factory ceo'"; fi
-}
-
-if [ "$json" = 1 ]; then
-  : > "$tmp/steps"
-  check_tool git 'the factory is git' 'install git'
-  check_tool node 'init and the hooks parse JSON with it' 'install Node.js'
-  check_tool python3 'the herdr integration hook of Claude needs it' 'install python3'
-  check_docker
-  check_herdr
-  check_herdr_server
-  check_forge_login
-  check_claude
-  check_state_repo
-  check_state_remote
-  check_state_push
-  check_work_dir
-  check_prompt_suggestion
-  check_permissions
-  check_herdr_integration
-  check_herdr_toast
-  check_repos
-  check_aliases
-  for k in $(repo_keys); do
-    check_repo_path "$k"
-    check_repo_alias "$k"
-    check_repo_toolset "$k"
-    check_repo_mr_class "$k"
-    check_repo_workflows "$k"
-  done
-  check_capacity
-  check_green
-  check_ceo
-  out="${uihome:-${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}}/setup"
-  mkdir -p "$out" || die "cannot create $out"
-  awk -F '\t' -v at="$(date -u +%Y-%m-%dT%H:%M:%SZ)" -v root="$root" '
-    function esc(s) { gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); return s }
-    BEGIN { printf "{\n  \"at\": \"%s\",\n  \"root\": \"%s\",\n  \"steps\": [", at, esc(root) }
-    { printf "%s\n    {\"id\": \"%s\", \"state\": \"%s\", \"detail\": \"%s\", \"fix\": \"%s\"}", (NR > 1 ? "," : ""), esc($1), $2, esc($3), esc($4) }
-    END { printf "\n  ]\n}\n" }' "$tmp/steps" > "$out/.doctor.json.tmp"
-  mv -f "$out/.doctor.json.tmp" "$out/doctor.json"
-  echo "$out/doctor.json"
-  exit 0
-fi
 
 top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
 [ -n "$top" ] || die "$repo is not a git clone"
@@ -579,41 +316,6 @@ if [ -f "$toolset" ]; then
   if [ -n "$stack" ]; then ok "stack $stack"; else missing "stack in repos/$key/toolset.md" "add stack: <stack> to its frontmatter"; fi
 else
   missing "repos/$key/toolset.md" "$add_repo"
-fi
-
-# --- how tasks are dispatched -------------------------------------------------------------------------------
-spawn=manual
-[ ! -f "$state/factory.yml" ] || spawn=$(sed -n 's/^spawn:[[:space:]]*//p' "$state/factory.yml" | head -n1 \
-  | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
-[ -n "$spawn" ] || spawn=unset
-case "$spawn" in
-  manual) ok "spawn: manual (session-monitor.sh prints the commands)" ;;
-  herdr)
-    if command -v herdr >/dev/null 2>&1; then
-      ok "spawn: herdr, herdr on PATH"
-    else
-      missing "spawn: herdr, but herdr is not on PATH" \
-        'install herdr from https://herdr.dev, or set spawn: manual in factory.yml'
-    fi ;;
-  unset) missing "spawn: in factory.yml" 'add `spawn: manual` or `spawn: herdr` to it' ;;
-  *) missing "spawn: $spawn in factory.yml" 'it takes herdr or manual' ;;
-esac
-
-# --- the Factory UI ------------------------------------------------------------------------------------------
-ui=off
-[ ! -f "$state/factory.yml" ] || ui=$(sed -n 's/^ui:[[:space:]]*//p' "$state/factory.yml" | head -n1 \
-  | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
-if [ "$ui" = docker ]; then
-  if docker info >/dev/null 2>&1; then ok "ui: docker, the Docker daemon answers"
-  else missing "ui: docker, but the Docker daemon does not answer" 'install and start Docker, or set ui: off in factory.yml'; fi
-  if command -v herdr >/dev/null 2>&1; then ok "ui: docker, herdr on PATH"
-  else missing "ui: docker, but herdr is not on PATH" 'install herdr from https://herdr.dev, or set ui: off in factory.yml'; fi
-  if [ "$(settings_value promptSuggestionEnabled)" = false ]; then
-    ok "ui: docker, promptSuggestionEnabled: false in $settings_label"
-  else
-    missing "ui: docker, but promptSuggestionEnabled is not false in $settings_label" \
-      "run factory-init.sh --root $root --ui docker"
-  fi
 fi
 
 # --- the tools the toolset binds ---------------------------------------------------------------------------------
@@ -722,7 +424,7 @@ if [ -f "$plugin/bin/memory-budget.sh" ]; then
       for scope in $over; do
         case "$scope" in
           repo-agent:*) missing "memory over budget in $scope" \
-            "run its daily pass, /claude-factory:memory-daily $scope, which the CEO offers" ;;
+            "run its daily pass, /claude-factory:memory-daily $scope" ;;
           *) missing "memory over budget in $scope" "run factory consolidate $scope" ;;
         esac
       done
@@ -734,12 +436,7 @@ if [ -f "$plugin/bin/memory-budget.sh" ]; then
   fi
 fi
 
-# --- the machine checks of the Setup tab that touch this clone's sessions ------------------------------------------
-check_tool python3 'the herdr integration hook of Claude needs it' 'install python3'
-check_herdr
-check_herdr_server
-check_herdr_integration
-check_herdr_toast
+# --- the machine checks that touch this clone's sessions ----------------------------------------------------------
 check_state_push
 check_aliases
 if [ -f "$state/repos.yml" ] && grep -q "^$key:" "$state/repos.yml"; then
@@ -747,5 +444,4 @@ if [ -f "$state/repos.yml" ] && grep -q "^$key:" "$state/repos.yml"; then
   check_repo_mr_class "$key"
   check_repo_workflows "$key"
 fi
-check_capacity
 exit 0

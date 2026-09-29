@@ -108,7 +108,7 @@ block() {
 # how a session's own state files get into the state repo, the tail of every message that asks for a rewrite:
 # the task and the progress file go in through the report this hook sends, anything else through state-commit.sh,
 # and nobody pushes by hand
-commit_how="then stop again: the Stop hook commits the task and progress files for you through state-report.sh, any other state file of yours goes in with sh $(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/state-commit.sh -m \"<message>\" -- <paths>, and the push to the state root happens in the background (state-push.sh from the monitor pass and the CEO loop)."
+commit_how="then stop again: the Stop hook commits the task and progress files for you through state-report.sh, any other state file of yours goes in with sh $(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/state-commit.sh -m \"<message>\" -- <paths>, and the push to the state root is state-push.sh, printed by every step of solve-next.sh."
 
 # the rules run over every owned task and block once, naming each failing one: <msgs> is what the agent reads,
 # <labels> the short form the exhaustion record carries
@@ -116,14 +116,6 @@ msgs=''
 labels=''
 add() { msgs="${msgs:+$msgs
 }$1"; labels="${labels:+$labels; }$2"; }
-
-# a repo-lead owns the parent it leads and ends its turns with it in_progress for hours while its blocks run
-# (skills/factory/references/lead.md); the CEO never owns a parent as a worker either. The monitor sets
-# FACTORY_ROLE (session-monitor.sh), and for these two roles a parent is no worker's task, so its status asks
-# for no self-report. A block they own, and every other role or none, keeps the rule.
-leads() { # <task id>
-  case "${FACTORY_ROLE:-}" in repo-lead|ceo) is_parent_id "$1" ;; *) return 1 ;; esac
-}
 
 for i in $ids; do
   t=$(task_of "$i")
@@ -148,7 +140,7 @@ for i in $ids; do
   # reports a human can see, and none of them blocks the Stop.
   case "$s" in
     review|tests_ready|blocked|failed|changes_requested|done) ;;
-    *) leads "$i" || add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md, $commit_how" \
+    *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md, $commit_how" \
          "no self-report, task $i still has status '$s', not review|tests_ready|blocked|failed (ADR-0009)" ;;
   esac
 done

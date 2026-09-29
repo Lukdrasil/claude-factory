@@ -40,8 +40,8 @@ human asks for; never a green task, which costs more than it gives. You criticis
 
    Write it after the edits, from a run over the file as it now stands: when edits went in, run the critique
    again and write that verdict. It replaces the line of an earlier run, so it always describes the spec as it
-   stands, and it is written whether or not the human agreed to any edit: the CEO's approval ask and the UI's
-   Plan checklist read it from there. Commit and push it like the edits; `plan_hash` pins it with the body.
+   stands, and it is written whether or not the human agreed to any edit: the approval ask of step 9 reads it
+   from there. Commit and push it like the edits; `plan_hash` pins it with the body.
 6. Say what happens next: the flip to `ready` and `plan_hash` are a human's, through `factory approve`.
 
 As the `spec-critic` subagent you stop after step 3: the report is your final message, back to the calling

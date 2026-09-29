@@ -1,8 +1,8 @@
 #!/bin/sh
 # The human gate that ends a task, `factory done` (T-007), run in the standalone posture straight against the
 # state clone. It flips the parent and every T-NNN-NN block to a terminal status in one commit and releases the
-# owner. It does not push: the push to the state root is state-push.sh's, run in the background by the monitor
-# pass and the CEO loop.
+# owner. It does not push: the push to the state root is state-push.sh's, printed by every step of
+# solve-next.sh.
 #
 # There are two endings, decided by the parent's `archetype:` (T-186):
 #   * a task with an MR ends in `done`, and only after a human validated that MR, so a parent whose `mr_url` is

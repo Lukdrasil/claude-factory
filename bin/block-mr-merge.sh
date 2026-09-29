@@ -1,9 +1,9 @@
 #!/bin/sh
-# The lead's merge of one block MR into the work branch (3.4 step 5 of the agent-org plan): the MR block-mr.sh
+# The solve session's merge of one block MR into the work branch (step 11 of factory solve): the MR block-mr.sh
 # opened is merged on the forge, the parent worktree follows with a fast-forward pull, the block's worktree and
 # local branch are removed and the block is set done through state-report.sh. No human waits on it: what was merged
 # is written as `## Merged` into the block's progress file in the state repo (the MR, the risk with its reason from
-# `.harness/<block>/arch.md`, the review verdict), which the UI's task drawer shows; the human gates only the task MR.
+# `.harness/<block>/arch.md`, the review verdict), which the human reads beside the task MR; the human gates only the task MR.
 #
 #   block-mr-merge.sh <block-id> [--dry-run] [--state <dir>]
 #

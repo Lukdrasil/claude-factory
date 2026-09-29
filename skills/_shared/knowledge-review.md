@@ -8,7 +8,7 @@ never into a subdirectory of `proposals/`: the passes and the curation gate do n
 
 - **Lesson** to `$WORK_DIR/state/repos/<key>/agents/<agent>/memory/proposals/<id>-<slug>.md`, `<key>` the repo
   of the task and `<agent>` the agent you run as without `claude-factory:` (`researcher-s0`..`s3` write under
-  `researcher`), or your role when you run as none (`$FACTORY_ROLE`, e.g. `repo-lead`; `factory` without one).
+  `researcher`), or `factory` when you run as none.
   With no repo key at all, `$WORK_DIR/state/agents/<agent>/memory/proposals/`. The daily pass
   (`claude-factory:memory-daily`) judges it and turns a verified lesson into a draft of that agent's playbook
   for the repo; a lesson that holds for the role in every repo reaches the plugin as a K1 draft, never by

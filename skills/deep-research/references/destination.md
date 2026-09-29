@@ -11,8 +11,7 @@ suffix `-2`.
 Derive the tie from the topic, whether a repo key or its code comes up in it, or force it with `--repo=<key>`;
 `--repo=none` forces the general `research/`. When in doubt choose `research/`: a general topic in a repo
 folder is harder to find than the other way round. `research/` is the final home of the report, where a human
-reads or archives it. A research ticket of a request map always lands under `repos/<key>/research/`, the key
-the wayfinder skill names for it.
+reads or archives it.
 
 ## The commit
 
@@ -24,6 +23,6 @@ not matter:
 sh <plugin-root>/bin/state-commit.sh -m "research: <topic>" --state <state clone> -- <path to the report>
 ```
 
-It never pushes: `state-push.sh` publishes the commit in the background, run by the monitor pass and the CEO
-loop, never by you. Exit 2 means another session held the lock or git refused the commit; run it again. If it
+It does not push: run `sh <plugin-root>/bin/state-push.sh --state <state clone>` after it, which publishes the
+commit and exits 0 on a clone with no origin. Exit 2 means another session held the lock or git refused the commit; run it again. If it
 still fails, say so in the summary: an uncommitted report exists only in this session.

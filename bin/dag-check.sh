@@ -123,7 +123,7 @@ deps_of() { # <task file>
 # invariant: the blocks sit under the parent's repo key, live or archived (task_files --all, the way task_of
 # invariant: finds the parent): an archived parent moved with all its blocks, so its cut stays whole.
 # why: a depends_on outside the parent's blocks, live or archived, is no edge of the wave plan: it orders
-# why: parents, the queue (queue-next.sh) waits for it, and an archived id is done.
+# why: parents, and an archived id is done.
 while IFS= read -r f; do
   [ -f "$f" ] || continue
   bid=$(sed -n 's/^id:[[:space:]]*//p' "$f" | sed 's/[[:space:]]*#.*//' | head -n 1)

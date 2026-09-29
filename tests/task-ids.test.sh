@@ -371,7 +371,7 @@ listed=$(sh "$bin/factory-list.sh" --root "$ls_root" 2>&1 | awk '{print $1}' | t
 check 'factory-list orders T-246 before its blocks, T-246-99 before T-246-100, T-999 before T-1000' \
   'T-246 T-246-00 T-246-99 T-246-100 T-999 T-1000 ' "$listed"
 
-# --- solve-next and herd-watch order blocks missing from the wave plan by id -------------
+# --- solve-next orders blocks missing from the wave plan by id -------------
 sn="$tmp/sn/state"
 mkdir -p "$sn/repos/demo/tasks" "$sn/repos/demo/plans" "$sn/repos/demo/progress" "$tmp/sn/demo/T-246"
 : > "$tmp/sn/demo/T-246/.git"
@@ -383,16 +383,14 @@ task_file "$sn" demo T-246-99 null
 task_file "$sn" demo T-246-100 null
 check 'solve-next reaches T-246-99 before T-246-100 when neither is in the wave plan' \
   '## Step 11 of 16: worktree and claim for T-246-99' "$(sh "$bin/solve-next.sh" T-246 --state "$sn" 2>&1 | head -n1)"
-watched=$(sh "$bin/herd-watch.sh" T-246 --once --no-mr --state "$sn" 2>&1 | awk '$2 == "status" { print $1 }' | tr '\n' ' ')
-check 'herd-watch lists T-246-99 before T-246-100' 'T-246 T-246-99 T-246-100 ' "$watched"
 
-# --- no fixed-width number pattern under bin/ or in ui/wwwroot/*.js --------------------------
+# --- no fixed-width number pattern under bin/ --------------------------------------------------
 # An unquantified run of two or more [0-9] classes, or an exact {2} / {3} count, is a fixed-width pattern. A number
 # is spelled [0-9][0-9]*, which is stripped from every file before the grep, so no file needs an allow-list.
-fixed=$(for f in "$bin"/*.sh "$root"/ui/wwwroot/*.js; do
+fixed=$(for f in "$bin"/*.sh; do
   [ -f "$f" ] || continue
   sed 's/\[0-9\]\[0-9\]\*//g' "$f" | grep -nE '(\[0-9\]){2,}([^+[]|$)|\{[23]\}' | sed "s|^|${f#"$root"/}:|"
 done)
-check 'no fixed-width number pattern under bin/ or in ui/wwwroot/*.js' '' "$fixed"
+check 'no fixed-width number pattern under bin/' '' "$fixed"
 
 exit $fail

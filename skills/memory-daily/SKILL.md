@@ -1,6 +1,6 @@
 ---
 name: memory-daily
-description: The daily memory pass over one scope. Every proposal in the scope's queue is judged by Q7 by reading only, a verified lesson creates or updates a draft of the agent's playbook for the repo, a one-off is rejected, a one-lesson draft older than 7 days is deleted, then the pass is stamped. Runs as an interactive step session the CEO dispatches after the human's go, never headless.
+description: The daily memory pass over one scope. Every proposal in the scope's queue is judged by Q7 by reading only, a verified lesson creates or updates a draft of the agent's playbook for the repo, a one-off is rejected, a one-lesson draft older than 7 days is deleted, then the pass is stamped. Runs in an interactive session the human starts, never headless.
 ---
 
 # memory-daily
@@ -12,8 +12,8 @@ file, or anything outside the paths of this scope.
 
 ## Preconditions
 
-- An interactive session the human said go for: a step session the CEO dispatches
-  (`session-monitor.sh --step pass`), or one the human types. Never `claude -p` or any other headless run.
+- An interactive session the human started (`/claude-factory:memory-daily <scope>`). Never `claude -p` or any
+  other headless run.
 - The argument is the scope: `repo-agent:<key>/<agent>` (`<key>/<agent>` means the same), or a legacy tier
   `global`, `repo:<key>`, `agent:<agent>`. An optional second word `filed` (M2, once per scope) adds the
   scope's filed lessons. No scope: ask for it through `_shared/ask.md`.
@@ -51,10 +51,9 @@ A lesson is kept only when all three hold; name the one that fails when it does 
      otherwise a new `drafts/<slug>.md` in the format below. Remove the proposal and commit both in one:
      `state-commit.sh -m "chore(memory): draft <slug> from <proposal>" -- <draft> <proposal>` (a proposal
      that was never committed is removed and left out of the paths).
-   - keep: never approved here. Approve deletes every file a `Replaces:` line names, and policy-guard allows
-     `curate-apply.sh approve` to the `ceo` role only: the proposal stays in the queue for the weekly round,
-     where the CEO approves it after the human's yes (`pass-stamp.sh --due weekly` lists the scope), and the
-     report names it `keep, <why it stays in this tier>`.
+   - keep: never approved here, since approve deletes every file a `Replaces:` line names: the proposal stays
+     in the queue for the weekly round, where it is approved after the human's yes (`pass-stamp.sh --due
+     weekly` lists the scope), and the report names it `keep, <why it stays in this tier>`.
    - a proposal with a `Replaces:` line, in any scope: no verdict applied, it stays in the queue for the
      weekly round, where the human decides it; the report names it `waits, Replaces: <paths>`.
    - a filed lesson is never deleted here: a draft verdict adds its line with `Source: <path>`, and the weekly
@@ -66,7 +65,8 @@ A lesson is kept only when all three hold; name the one that fails when it does 
    Completion: no such draft is left.
 5. **Stamp**: `pass-stamp.sh daily <scope>`. Completion: exit 0 and its line printed.
 6. **Report**: the counts (read, one-off, drafted as new, drafted into an existing draft, kept for the weekly
-   round, drafts deleted), then one line per file, `<path> -> <verdict>, <reason or draft>`.
+   round, drafts deleted), then one line per file, `<path> -> <verdict>, <reason or draft>`. Then
+   `state-push.sh --state $WORK_DIR/state` publishes the pass.
 
 ## Draft format
 

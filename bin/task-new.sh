@@ -5,10 +5,9 @@
 # The id: a repo with an `alias:` in repos.yml gets T-<ALIAS>-<n>, one more than the highest n of that alias over
 # the live and the archived tasks; a repo without one keeps the legacy counter, one more than the highest T-<n>
 # taken anywhere; a block (--parent) is its parent plus -NN. Nothing talks to the remote: no pull before and no
-# push after, state-push.sh publishes the commit in the background and never under the lock, so there is no
-# refused push to undo and no reset of any kind.
-# The frontmatter carries `request:` (R-YYYYMMDD-n or null), `priority:` (P0 to P3, P2 when a parent leaves it
-# out) and `issue:` (an http(s) url or null); a block copies all three from its parent over its own.
+# push after, state-push.sh publishes the commit and never under the lock, so there is no refused push to undo and
+# no reset of any kind.
+# The frontmatter carries `issue:` (an http(s) url or null); a block copies it from its parent over its own.
 #
 #   task-new.sh --repo <key> [--parent <parent id>] [--slug <slug>] [--status claimed --owner <owner>] [--state <dir>] --file <markdown>
 #
@@ -76,19 +75,13 @@ ids=$(task_files --all | awk '{
   while ((getline l < f) > 0) if (l ~ /^id:/) { sub(/^id:[ \t]*/, "", l); sub(/[ \t]*#.*/, "", l); print l; break }
   close(f) }')
 
-# a block takes request, priority and issue from its parent, read here under the lock so a priority change the
-# lock serializes is not missed
-preq='' ppri='' piss=''
-if [ -n "$parent" ]; then
-  pv=$(task_fields "$(task_of "$parent")" request priority issue)
-  preq=$(printf '%s\n' "$pv" | sed -n 1p)
-  ppri=$(printf '%s\n' "$pv" | sed -n 2p)
-  piss=$(printf '%s\n' "$pv" | sed -n 3p)
-fi
+# a block takes the issue of its parent, read here under the lock
+piss=''
+[ -z "$parent" ] || piss=$(task_fields "$(task_of "$parent")" issue)
 
 # ponytail: node is already a hard dependency of every session (policy-guard.sh); one process computes the id,
 # inserts it into the branch, fills the bookkeeping defaults, validates and slugs. stdout = id, slug, markdown.
-res=$(IDS=$ids REPO=$repo ALIAS=$alias PARENT=$parent PREQ=$preq PPRI=$ppri PISS=$piss SLUG=$slug STATUS=$status \
+res=$(IDS=$ids REPO=$repo ALIAS=$alias PARENT=$parent PISS=$piss SLUG=$slug STATUS=$status \
   OWNER=$owner TODAY=$(date +%F) node -e '
 const e=process.env;let s="";
 process.stdin.on("data",d=>s+=d).on("end",()=>{
@@ -130,10 +123,9 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   s=set(s,"id",id);
   const br=parse(s).branch||"",sl=br.indexOf("/");
   if(br&&sl>=0){const rest=br.slice(sl+1).replace(/^(?:T-(?:[A-Z]{2,4}-\d+|\d{3,})(-\d{2,})?|<new-id>)(?:-|$)/,"");s=set(s,"branch",`${br.slice(0,sl+1)}${id}${rest?"-"+rest:""}`)}
-  for(const [k,v] of [["depends_on","[]"],["attempt","0"],["plan_hash","null"],["owner","null"],["mr_url","null"],["request","null"],["issue","null"]])
+  for(const [k,v] of [["depends_on","[]"],["attempt","0"],["plan_hash","null"],["owner","null"],["mr_url","null"],["issue","null"]])
     if(!(k in parse(s)))s=set(s,k,v);
-  if(!parse(s).priority)s=set(s,"priority","P2");
-  if(e.PARENT){s=set(s,"request",e.PREQ||"null");s=set(s,"priority",e.PPRI&&e.PPRI!=="null"?e.PPRI:"P2");s=set(s,"issue",e.PISS||"null")}
+  if(e.PARENT)s=set(s,"issue",e.PISS||"null");
   if(!("created" in parse(s)))s=set(s,"created",e.TODAY);
   f=parse(s);
 
@@ -146,8 +138,6 @@ process.stdin.on("data",d=>s+=d).on("end",()=>{
   en("status",["draft","triaged","ready","claimed","in_progress","tests_ready","review","blocked","failed","done","closed"]);
   en("tier",["green","yellow","red"]);
   en("complexity",["low","medium","high"]);
-  en("priority",["P0","P1","P2","P3"]);
-  if(f.request&&!/^R-\d{8}-\d+$/.test(f.request))fail("request must be R-YYYYMMDD-n or null");
   if(f.issue&&!/^https?:\/\/\S+$/.test(f.issue))fail("issue must be an http(s) url or null");
   if(f.phase&&!["tests","implement"].includes(f.phase))fail("phase must be one of tests|implement, or absent");
   if(f.agent&&!["claude","codex"].includes(f.agent))fail("agent must be one of claude|codex, or absent");

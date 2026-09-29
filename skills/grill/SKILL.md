@@ -16,8 +16,7 @@ decision branches into the decisions that hang off it.
 Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the
 questions you can ask _now_ without guessing at answers you have not heard yet. Ask the whole frontier in one
 round, numbered, each with lettered options and your recommendation, then wait. Every round goes through
-`${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`, so with the UI on it is an ask the browser shows, not only terminal
-text.
+`${CLAUDE_PLUGIN_ROOT}/skills/_shared/ask.md`.
 
 ```
 ❓ **Q3** - **<question title>** (after Q1, Q2): <question body: what hangs on it, possibly several paragraphs>
@@ -79,16 +78,13 @@ row again.
 
 ## Steps
 
-1. When the task file carries `request: <R-id>` and the spec does not already start with the map's export, run
-   `sh ${CLAUDE_PLUGIN_ROOT}/bin/map.sh export <R-id> <repo-key>` first: its destination, decisions and terms are
-   settled rows of the ledger, never asked again. Then run the interview loop, keeping the gap ledger of
+1. Run the interview loop, keeping the gap ledger of
    `references/ledger.md`, which also holds the musts the loop has to ask about, and close every row, dry run
    included. Every answered round completes with the grill file `<slug>-grill.md` written.
 2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
-4. Write the proposals and the plan (its frontmatter carries `task:` and, when a `map.sh export` was prepended to
-   the spec, `request:` with that request id), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
+4. Write the proposals and the plan (its frontmatter carries `task:`), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
    `references/output.md`.
 
 **Done when** `plan-ready.md` exists in the state repo, `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` passes over it, plan-check left a

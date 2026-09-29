@@ -13,11 +13,11 @@ plan the task names, else the goal as the last resort. So write that first sente
 counts toward the 120 words.
 
 A block MR into the work branch (`sh <plugin-root>/bin/block-mr.sh <block-id>`) keeps **What changed**,
-**Why** and **How to verify** under the same 120 words, and adds what the lead merges it on: **Risk** (low,
+**Why** and **How to verify** under the same 120 words, and adds what the solve session merges it on: **Risk** (low,
 medium or high with the sentence and the five reasons of `.harness/<block>/arch.md`: blast radius,
 contracts, security, data, drift; `not rated` when the repo has no docs/architecture/), **Verified** (the
 report block-verify.sh left in `.harness/<block>/verify.txt`) and **Review** (the verdict line of
-`.harness/<block>/review.md`, the code-reviewer's report the lead saved there). The agents' own contracts
+`.harness/<block>/review.md`, the code-reviewer's report the solve session saved there). The agents' own contracts
 bound those three. The task MR into the base branch gets a `## Blocks` section from mr-open.sh: one
 `- [<block goal>](<block MR>), risk <level>` line per block MR.
 

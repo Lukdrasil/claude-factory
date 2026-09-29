@@ -3,7 +3,6 @@
 # high or attempt >= 1 escalates to opus at every phase; otherwise
 # phase tests -> opus, phase implement -> opus; with no phase, archetype review/feature/bugfix/refactor -> opus
 # (generated code never runs below opus), tier green -> haiku, everything else (triage and ops included) -> sonnet.
-# Triage and ops run as their own herdr session, which must be in auto mode, and haiku has no auto mode.
 #
 # Phase implement answers opus at every tier: the implement agents (agents/implementer*.md) fix
 # `model: opus` and the coordinator passes no override, so a cheaper answer here would only disagree with the

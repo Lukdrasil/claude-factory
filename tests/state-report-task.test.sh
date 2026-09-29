@@ -57,10 +57,8 @@ check 'and not the task CLAUDE.md names' no "$(has "$tmp/err" 'task T-010')"
 stop "$W/demo/T-010" nobody
 check 'self-report-check.sh for a session that owns no task passes beside a CLAUDE.md naming one' 0 "$?"
 
-# a lead ends its turns with the parent it leads in_progress for hours while its blocks run
-# (skills/factory/references/lead.md): FACTORY_ROLE=repo-lead, or ceo, is asked no worker self-report for a
-# parent it owns. A block it owns still is, and so is a real worker on the same parent. The state is a git
-# clone here so the report the hook sends for the parent is committed and the Stop can pass.
+# a session that owns an in_progress parent, or a block of one, is asked for its self-report. The state is a git
+# clone here so the report the hook sends is committed and the later cases run over a clone.
 mkdir -p "$W/demo/T-013" "$W/demo/T-014" "$state/repos/demo/progress"
 task T-013 lead
 task T-014 lead2
@@ -69,29 +67,18 @@ printf '# T-013\n' > "$state/repos/demo/progress/T-013.md"
 git -C "$state" init -q -b main
 git -C "$state" add -A
 git -C "$state" -c user.name=t -c user.email=t@t commit -q -m init
-role_stop() { # <role> <cwd> <session id>
-  (cd "$2" && printf '{"session_id":"%s"}' "$3" \
-    | FACTORY_ROLE=$1 WORK_DIR=$W sh "$bin/self-report-check.sh" >/dev/null 2>"$tmp/err")
+owner_stop() { # <cwd> <session id>
+  (cd "$1" && printf '{"session_id":"%s"}' "$2" \
+    | WORK_DIR=$W sh "$bin/self-report-check.sh" >/dev/null 2>"$tmp/err")
 }
 
-role_stop repo-lead "$W/demo/T-013" lead
-check 'a repo-lead stops with the parent it leads in_progress' 0 "$?"
-check 'and is not asked for a self-report' no "$(has "$tmp/err" 'Write the self-report')"
-rm -rf "$W/demo/.harness"
-role_stop ceo "$W/demo/T-013" lead
-check 'the CEO stops with a parent it owns in_progress' 0 "$?"
-rm -rf "$W/demo/.harness"
-role_stop '' "$W/demo/T-013" lead
-check 'a worker on the same in_progress parent is still blocked' 2 "$?"
+owner_stop "$W/demo/T-013" lead
+check 'the owner of an in_progress parent is blocked' 2 "$?"
 check 'and asked for the self-report' yes "$(has "$tmp/err" 'Write the self-report')"
 rm -rf "$W/demo/.harness"
-role_stop implementer "$W/demo/T-013" lead
-check 'a worker with another role is still blocked' 2 "$?"
-rm -rf "$W/demo/.harness"
-role_stop repo-lead "$W/demo/T-014" lead2
-check 'a repo-lead that owns an in_progress block is still blocked' 2 "$?"
+owner_stop "$W/demo/T-014" lead2
+check 'the owner of an in_progress block is blocked' 2 "$?"
 check 'and asked for the self-report of the block' yes "$(has "$tmp/err" 'task T-014-01')"
-check 'and not of the parent' no "$(has "$tmp/err" 'task T-014 ')"
 
 # --base-branch: written while the task is at most ready, refused once it is past that, on a triage task and for a
 # name git would not take

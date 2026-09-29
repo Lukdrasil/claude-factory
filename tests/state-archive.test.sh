@@ -2,7 +2,7 @@
 # state-archive.sh over a throwaway state clone: a finished parent (done or closed, every block terminal, no open
 # task depending on it or on a block of it) moves with its blocks, progress and verdicts to
 # repos/<key>/archive/<YYYY-MM>/{tasks,progress,verdicts}/ in one commit, YYYY-MM being the month of the last
-# commit of the parent's task file; a done request moves to requests/archive/<YYYY-MM>/<R-id>/.
+# commit of the parent's task file.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(cd "$(mktemp -d)" && pwd -P)
@@ -77,15 +77,6 @@ task T-006 closed '[]' plan-b
 printf 'verdict: aligned\n' > "$d/verdicts/plan-b.md"
 # T-007: done, no blocks
 task T-007 done
-# two requests: one done, one running
-mkdir -p "$st/requests/R-20260901-1/issues" "$st/requests/R-20260902-1"
-printf -- '---\ntitle: a\n---\n\nStatus: done\n\n# Map\n' > "$st/requests/R-20260901-1/map.md"
-printf 'Type: task\nStatus: resolved\n' > "$st/requests/R-20260901-1/issues/01-one.md"
-printf -- '---\ntitle: b\n---\n\nStatus: running\n' > "$st/requests/R-20260902-1/map.md"
-# a done request whose parent T-002 stays live (its block is open): it waits for the parent
-mkdir -p "$st/requests/R-20260903-1"
-printf -- '---\ntitle: c\n---\n\nStatus: done\n' > "$st/requests/R-20260903-1/map.md"
-sed -i 's/^status: done$/status: done\nrequest: R-20260903-1/' "$d/tasks/T-002-demo.md"
 printf 'shared notes\n' > "$st/notes.md"
 commit_at '2026-08-15T10:00:00' fixture
 
@@ -155,9 +146,6 @@ rc=0
 sh "$bin/state-archive.sh" --all --dry-run --state "$st" >"$tmp/out" 2>&1 || rc=$?
 check '--all --dry-run exits 0' 0 "$rc"
 check '--all --dry-run prints T-007' yes "$(has "$tmp/out" 'T-007-demo.md')"
-check '--all --dry-run prints the done request' yes "$(has "$tmp/out" 'requests/R-20260901-1')"
-check '--all --dry-run skips the done request of a live parent' 'no yes' \
-  "$(has "$tmp/out" 'requests/R-20260903-1 ->') $(grep -q '^skipped: R-20260903-1 ' "$tmp/out" && echo yes || echo no)"
 check '--all --dry-run makes no commit' "$before" "$(git -C "$st" rev-parse HEAD)"
 check '--all --dry-run moves nothing' '' "$(git -C "$st" status --porcelain)"
 
@@ -179,10 +167,7 @@ check 'a held state lock exits 2' 2 "$rc"
 check 'a held state lock moves nothing' yes "$(there repos/demo/tasks/T-007-demo.md)"
 : > "$tmp/release"; wait "$holder"
 
-# --- --all: every finished parent and the done request, nothing else -----------------------
-# the request's own month is the one of its last commit
-printf '\nnotes\n' >> "$st/requests/R-20260901-1/map.md"
-commit_at '2026-09-03T10:00:00' 'request note'
+# --- --all: every finished parent, nothing else -------------------------------------------
 rc=0
 sh "$bin/state-archive.sh" --all --state "$st" >"$tmp/out" 2>&1 || rc=$?
 check '--all exits 0' 0 "$rc"
@@ -194,13 +179,6 @@ check '--all keeps T-003' yes "$(there repos/demo/tasks/T-003-demo.md)"
 check '--all keeps T-004' yes "$(there repos/demo/tasks/T-004-demo.md)"
 check '--all keeps T-005' yes "$(there repos/demo/tasks/T-005-demo.md)"
 check 'a verdict an open task still names stays' yes "$(there repos/demo/verdicts/plan-b.md)"
-check '--all moves the done request' yes "$(there requests/archive/2026-09/R-20260901-1/map.md)"
-check '--all moves the request tickets along' yes "$(there requests/archive/2026-09/R-20260901-1/issues/01-one.md)"
-check 'the done request is no longer live' no "$(there requests/R-20260901-1)"
-check '--all keeps the running request' yes "$(there requests/R-20260902-1/map.md)"
-check '--all keeps a done request whose parent is live' yes "$(there requests/R-20260903-1/map.md)"
-check 'and prints a skipped: line naming the live parent' yes \
-  "$(grep '^skipped: R-20260903-1 ' "$tmp/out" | grep -q T-002 && echo yes || echo no)"
 check '--all leaves a clean tree' '' "$(git -C "$st" status --porcelain)"
 
 # --- once the dependent closes, T-003 goes too ---------------------------------------------

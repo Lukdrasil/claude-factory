@@ -8,12 +8,11 @@
 #
 # The key is the basename of the origin URL without .git. The alias (2 to 4 uppercase letters, unique in repos.yml)
 # makes the repo's new task ids T-<ALIAS>-<n>; it is proposed from the key unless --alias names one, and a repo
-# registered before aliases gets it added to its line. Every run refreshes the doctor.json of the Setup tab.
+# registered before aliases gets it added to its line.
 #
 # --clone first clones <url> into <clones>/<key>, <clones> being `clones:` of <root>/state/factory.yml: absolute and
 # outside <root>, whose <root>/<key> holds the task worktrees. A key registered with the same URL is not cloned or
-# fetched again. Each state goes to <ui home>/setup/add-repo/<key>.json for the Setup tab, when the UI home exists:
-# `{"at","key","url","path","state","detail"}`, state pending, cloning, registered or failed.
+# fetched again.
 #
 # Exit 0 = applied, or nothing to do. Exit 3 = changes pending, printed, not written (no --yes), the same gate
 # factory-init.sh has, so the skill previews and reruns identically on both scripts. Exit 4 = the URL cannot be
@@ -48,9 +47,6 @@ if [ -n "$clone" ]; then
   esac
   [ -z "$repo" ] || die "--clone and --repo exclude each other"
 fi
-# taken now: the doctor refresh at the end creates the UI home, and the status json is only for a UI that exists
-ui_home=${FACTORY_UI_HOME:-$HOME/.claude-factory/ui}
-[ -d "$ui_home" ] || ui_home=''
 [ -n "$root" ] || die "--root <dir> is required"
 root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
 state="$root/state"
@@ -75,25 +71,7 @@ key=${url%/}; key=${key##*[/:]}; key=${key%.git}
 printf '%s' "$key" | grep -qE '^[A-Za-z0-9_-]+$' || die "'$key' is not a usable repo key (letters, digits, - and _)"
 echo "$key"
 
-# --- --clone: the status json, the clones directory and the target ---------------------------------------------
-jpath=''
-json_str() { printf '%s' "$1" | tr '\t\n\r' '   ' | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-status() { # <pending|cloning|registered|failed> <detail>: written through a temp file and a rename
-  [ -n "$ui_home" ] || return 0
-  st_d="$ui_home/setup/add-repo"
-  { mkdir -p "$st_d" \
-    && printf '{"at":"%s","key":"%s","url":"%s","path":"%s","state":"%s","detail":"%s"}\n' \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$key" "$(json_str "$url")" "$(json_str "$jpath")" "$1" \
-      "$(json_str "$(redact_urls "$2")")" > "$st_d/.$key.json.tmp" \
-    && mv -f "$st_d/.$key.json.tmp" "$st_d/$key.json"; } || :
-}
-on_exit() { # <exit status>
-  case "$1" in
-    0) status registered '' ;;
-    3) status pending "$jpath" ;;
-    *) status failed "${why:-exit $1}" ;;
-  esac
-}
+# --- --clone: the clones directory and the target ---------------------------------------------------------------
 # a URL as compared: no userinfo, no trailing / and no .git
 norm_url() { redact_urls "$1" | sed 's:/*$::; s:\.git$::'; }
 git_net() { GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -o BatchMode=yes" git "$@"; }
@@ -107,18 +85,16 @@ unreachable() { # <git's output>: exit 4 with its lines up to fatal:, at most th
   exit 4
 }
 fresh=0
-[ -z "$clone" ] || trap 'on_exit $?' EXIT
 case "$alias" in
   ''|[A-Z][A-Z]|[A-Z][A-Z][A-Z]|[A-Z][A-Z][A-Z][A-Z]) ;;
   *) die "--alias takes 2 to 4 uppercase letters, not '$alias'" ;;
 esac
 if [ -n "$clone" ] && grep -q "^$key:" "$state/repos.yml"; then
   # F6: a registered key is not fetched or cloned again; with the same URL the registration below runs in its
-  # path: (nothing to do, or the missing alias or toolset), and its onboarding runs there
+  # path: (nothing to do, or the missing alias or toolset)
   reg=$(yml_field "$key" url)
   [ "$(norm_url "$reg")" = "$(norm_url "$url")" ] || die "key $key is registered for $reg"
   top=$(yml_field "$key" path)
-  jpath=$top
   [ -n "$top" ] || die "$key has no path: in repos.yml: run factory-add-repo.sh --root $root in its clone"
   git -C "$top" rev-parse --git-dir >/dev/null 2>&1 \
     || die "the path of $key, $top, is no git clone: clone it there or change its path: in $state/repos.yml"
@@ -138,7 +114,6 @@ elif [ -n "$clone" ]; then
     "$rroot/"*) die "$nodir (clones: $cv is $root or under it, whose <key>/ directories hold the task worktrees)" ;;
   esac
   top="$clones/$key"
-  jpath=$top
   if [ -e "$top" ] || [ -L "$top" ]; then
     o=$(git -C "$top" remote get-url origin 2>/dev/null || :)
     { [ -e "$top/.git" ] && [ -n "$o" ] && [ "$(norm_url "$o")" = "$(norm_url "$url")" ]; } \
@@ -169,8 +144,6 @@ commit() { # <message> <path...>
     git -C "$state" -c user.name=harness -c user.email=harness@localhost commit -q -m "$m" -- "$@"
   fi
 }
-# the Setup tab reads <ui home>/setup/doctor.json, so every run leaves it current; it never changes this exit
-refresh_doctor() { sh "$plugin/bin/factory-doctor.sh" --json --root "$root" >/dev/null 2>&1 || :; }
 
 # the alias proposed for a key: the initials of its words (claude-factory: CF) or the first three letters of a single
 # word (nemeton: NEM); when that one is taken, the first two letters and each later letter in turn, then the first
@@ -227,11 +200,9 @@ if [ "$fresh" = 1 ] && [ "$yes" = 0 ]; then
   echo "+ $key: {url: \"$url\", default_branch: $branch, path: \"$top\", alias: $alias}   in $state/repos.yml"
   echo "+ $state/repos/$key/toolset.md   from the stack found after the clone"
   echo "pending - rerun with --yes to apply"
-  refresh_doctor
   exit 3
 fi
 if [ "$fresh" = 1 ]; then
-  status cloning "$top"
   # why: a clone is renamed into place only once complete; the temp directory a killed apply left is no clone
   tmpd="$clones/.$key.cf-clone"
   rm -rf "$tmpd"
@@ -280,7 +251,6 @@ fi
 if [ "$need_yml$need_alias$need_toolset" = 000 ]; then
   if [ -f "$toolset" ]; then echo "nothing to do: $key is registered with repos/$key/toolset.md"
   else echo "nothing to do: $key is registered"; fi
-  refresh_doctor
   exit 0
 fi
 
@@ -294,7 +264,6 @@ fi
 
 if [ "$yes" = 0 ]; then
   echo "pending - rerun with --yes to apply"
-  refresh_doctor
   exit 3
 fi
 
@@ -320,4 +289,3 @@ if [ "$need_toolset" = 1 ]; then
   commit "chore($key): toolset $stack" "repos/$key/toolset.md"
   echo "toolset repos/$key/toolset.md (stack $stack${solution:+, solution $solution})"
 fi
-refresh_doctor

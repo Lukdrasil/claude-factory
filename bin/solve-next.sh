@@ -3,9 +3,8 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]
+#   solve-next.sh <T-NNN> [--state <dir>]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
-#                            --ui also records the step in that session's session.md through ui-session.sh
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
@@ -18,19 +17,15 @@
 # cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
 # the human's yes). Step 14 is then the task MR the human reviews and merges.
 #
-# A parent with `request:` is charted first: while no plan-ready file exists and `map.sh clear <R-id>` does not
-# exit 0 or the map is not yet `planned` or later, the step is 3b, the request map of skills/wayfinder; the grill of step 4 is then seeded by
-# `map.sh export <R-id> <key>`.
-#
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
 # beginning `Completion:`, and under `Commands:` the commands to run, two spaces in front of each. The work
 # root is the parent directory of the state clone, so every path printed is absolute: `<root>/<key>/T-NNN` is
 # the session worktree, `<root>/<key>/T-NNN-NN` a block worktree, `<root>/<key>/.harness/T-NNN` the scratch
-# directory of the run.
+# directory of the run. Every step opens with state-push.sh, so the commits the writers made locally reach the
+# state root once per step.
 #
 # The state a step is read off, in the order the steps are tried: no `tier` is step 3, and so is no plan-ready
-# file on a feature, bugfix or refactor with no `## Related issues`; no plan-ready file is step 3b while the
-# parent's request map is not clear or its `Status:` is still charting or grilling, else step 4 (the plan-ready file is the one whose
+# file on a feature, bugfix or refactor with no `## Related issues`; no plan-ready file is step 4 (the plan-ready file is the one whose
 # frontmatter says `task: <id>`, else the one the parent's ## Context names), no blocks
 # and a product repo with docs/architecture/ and no verdict is step 5, no blocks is step 6, blocks with no
 # wave plan in the progress file is step 8, a parent that is not `in_progress` is step 9, no session worktree
@@ -49,16 +44,15 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state='' ui=''
+id='' state=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
-    --ui) [ $# -ge 2 ] || die "--ui needs a value"; ui=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--ui <sid>]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
@@ -116,7 +110,7 @@ emit() { # <heading> <completion line>
   printf '## %s\n' "$1"
   printf 'Completion: %s\n' "$2"
   printf 'Commands:\n'
-  [ -z "$ui" ] || sh "$bin/ui-session.sh" --session "$ui" --task "$id" --flow solve --step "$1"
+  printf '  %s\n' "$bin/state-push.sh --state $state"
 }
 cmd() { printf '  %s\n' "$1"; }
 
@@ -127,7 +121,6 @@ complexity=$(fm "$task" complexity)
 status=$(fm "$task" status)
 branch=$(fm "$task" branch)
 mr_url=$(fm "$task" mr_url)
-request=$(fm "$task" request)
 
 triage_step() {
   emit "Step 3 of 16: triage $id" "tier and archetype are set on $id and ## Related issues is written for a feature, bugfix or refactor."
@@ -148,37 +141,15 @@ done
 plan="$state/repos/$key/plans/$slug-plan-ready.md"
 
 # why: task-new.sh requires tier: of every draft, so before the plan triage is done only once investigate.md
-# why: step 4 has written ## Related issues (feature, bugfix and refactor only), and charting only once the chart
-# why: session has moved the map past charting and grilling, which it does when the map is clear
+# why: step 4 has written ## Related issues (feature, bugfix and refactor only)
 triaged() {
   case "$archetype" in feature|bugfix|refactor) grep -q '^## Related issues[[:space:]]*$' "$task" ;; esac
-}
-charted() {
-  sh "$bin/map.sh" clear "$request" --state "$state" >/dev/null 2>&1 || return 1
-  case "$(awk '/^Status:/ { print $2; exit }' "$state/requests/$request/map.md")" in
-    planned|queued|running|done) ;;
-    *) return 1 ;;
-  esac
 }
 
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
   triaged || triage_step
-  # why: the request map is one per request and decides what every parent of it shares, so no grill starts on
-  # why: a parent while a ticket of the map is open or fog is left on it
-  if [ -n "$request" ] && ! charted; then
-    emit "Step 3b of 16: chart $request" "$bin/map.sh clear $request exits 0: no ticket of $state/requests/$request/map.md is open or claimed and nothing is left under Not yet specified."
-    cmd "cat $plugin/skills/wayfinder/SKILL.md"
-    if [ -f "$state/requests/$request/map.md" ]; then
-      cmd "cat $state/requests/$request/map.md"
-      cmd "$bin/map.sh frontier $request --state $state"
-    else
-      cmd "$bin/map.sh new $request --destination '<the request in one or two lines>' --state $state"
-    fi
-    exit 0
-  fi
-  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id${request:+ and request: $request} in its frontmatter."
+  emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
   cmd "cat $plugin/skills/grill/SKILL.md"
-  [ -z "$request" ] || cmd "$bin/map.sh export $request $key --state $state"
   cmd "cat $task"
   exit 0
 fi
@@ -311,12 +282,6 @@ if [ -n "$pending" ]; then
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
-  elif [ "${FACTORY_ROLE:-}" = repo-lead ] && { [ ! -e "$bwt/.git" ] || [ "$bs" = ready ]; }; then
-    # why: a lead herds its blocks as sessions and session-monitor.sh claims each one it starts; a claim of the
-    # why: lead's own leaves it no ready block to dispatch (F36)
-    emit "Step 11 of 16: dispatch wave ${wave:-1} of $id" "every ready block of the wave printed <id> spawned from session-monitor.sh, which claimed it for its session."
-    [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
-    cmd "$bin/session-monitor.sh --task $id$wave_arg --spawn herdr"
   elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ]; then
     emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"

@@ -1,7 +1,7 @@
 #!/bin/sh
-# The playbook of an agent's role for one repository (agent-org plan 3.8), the third of the three ways a playbook
-# reaches an agent: the lead's prompt names the repo-lead playbook, agent-brief.sh prints it in a brief, and this
-# script hands it to every subagent at SubagentStart. The file is `repos/<key>/agents/<role>/playbook.md` in the
+# The playbook of an agent's role for one repository (agent-org plan 3.8), the second of the two ways a playbook
+# reaches an agent: agent-brief.sh prints it in a brief, and this script hands it to every subagent at
+# SubagentStart. The file is `repos/<key>/agents/<role>/playbook.md` in the
 # state clone (the weekly pass keeps it under 800 words), printed after a `<!-- <that path> -->` marker. The role
 # is the agent type without `claude-factory:`, researcher-s0..s3 reading researcher's playbook.
 #

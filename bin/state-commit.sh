@@ -2,7 +2,7 @@
 # The one way an agent commits its own files in the state clone (a research report, an ADR or memory proposal, a
 # plan): under the state lock every writer shares (state_lock, lib-tasks.sh) and scoped to the paths it names, so
 # another session's uncommitted edit in the same working tree never rides along and is never touched. It does not
-# push; the push to the state root is state-push.sh's, run in the background by the monitor pass and the CEO loop.
+# push; the push to the state root is state-push.sh's, printed by every step of solve-next.sh.
 # The task's status and progress file still go through state-report.sh, which validates the transition.
 #
 #   state-commit.sh -m <message> [--state <dir>] -- <path>...

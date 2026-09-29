@@ -1,5 +1,5 @@
 #!/bin/sh
-# factory-doctor.sh's coverage collector check run from inside the clone, the way onboarding runs it: the test-globs
+# factory-doctor.sh's coverage collector check run from inside the clone: the test-globs
 # `test/**` and `**/*Tests.cs` are matched as patterns against each *.csproj, never expanded by the shell against the
 # clone's files, so a test project the globs alone name is found and its Directory.Build.props collector counts.
 set -u
