@@ -3,8 +3,12 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>]
+#   solve-next.sh <T-NNN> [--state <dir>] [--herd]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
+#                            --herd prints the steps of `factory herd` (skills/factory/references/herd.md): a
+#                            step that writes goes out as an interactive session through session-monitor.sh,
+#                            one per parent-level step (3 to 6) and one per block of a wave (11), and a block
+#                            whose session still works is a wait on herd-watch.sh; every gate stays yours
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
@@ -44,15 +48,16 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state=''
+id='' state='' herd=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    --herd) herd=1; shift ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--herd]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
@@ -113,6 +118,25 @@ emit() { # <heading> <completion line>
   printf '  %s\n' "$bin/state-push.sh --state $state"
 }
 cmd() { printf '  %s\n' "$1"; }
+# a parent-level step of the herd, one session of session-monitor.sh; the watcher reports it
+# the watcher is armed once per herd through the Monitor tool, never run as a command of its own: it never ends
+watch_line() { cmd "Monitor tool, armed once per herd: $bin/herd-watch.sh $id --interval 60 --state $state"; }
+# a parent-level step of the herd, one session of session-monitor.sh; a step whose session still runs in its tab
+# is a wait, since a second dispatch would close that tab and lose the conversation a grill holds with the human
+dispatch_step() { # <step>
+  ds_agent=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null | awk -v u="$id-$1" '$1 == u { print $2; exit }')
+  case "$ds_agent" in
+    ''|gone|closed) cmd "$bin/session-monitor.sh --task $id --step $1 --state $state" ;;
+    idle|done)
+      # why: an idle step may be a round waiting on its human, or a turn that ended short of the step; only the
+      # why: second is started again, after one prompt, and session-monitor.sh keeps a focused or busy tab
+      cmd "# $id-$1 is idle in its tab: its human may be answering it there. Once its turn ended short of the Completion above, prompt it once (herdr agent prompt $1_<tail> ...), and if that ends short too, start it again:"
+      cmd "$bin/session-monitor.sh --task $id --step $1 --state $state" ;;
+    unknown) cmd "# herdr does not answer, so $id-$1 cannot be read: run factory doctor for the herdr server, then this step again" ;;
+    *) cmd "# $id-$1 runs in its tab (agent $ds_agent); wait on the watcher, and its human answers it there" ;;
+  esac
+  watch_line
+}
 
 tier=$(fm "$task" tier)
 archetype=$(fm "$task" archetype)
@@ -124,6 +148,7 @@ mr_url=$(fm "$task" mr_url)
 
 triage_step() {
   emit "Step 3 of 16: triage $id" "tier and archetype are set on $id and ## Related issues is written for a feature, bugfix or refactor."
+  if [ -n "$herd" ]; then dispatch_step triage; exit 0; fi
   cmd "cat $task"
   cmd "cat $plugin/skills/_shared/investigate.md"
   cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): triaged'"
@@ -149,6 +174,7 @@ triaged() {
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
   triaged || triage_step
   emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
+  if [ -n "$herd" ]; then dispatch_step grill; exit 0; fi
   cmd "cat $plugin/skills/grill/SKILL.md"
   cmd "cat $task"
   exit 0
@@ -167,6 +193,7 @@ verdict="$state/repos/$key/verdicts/$slug.md"
 # why: writes the blocks, so a parent with blocks is past this step
 if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
   emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan."
+  if [ -n "$herd" ]; then dispatch_step plan-check; exit 0; fi
   cmd "cat $plugin/skills/architect-review/SKILL.md"
   cmd "sha256sum $plan"
   exit 0
@@ -174,6 +201,7 @@ fi
 
 if [ -z "$blocks" ]; then
   emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on."
+  if [ -n "$herd" ]; then dispatch_step decompose; exit 0; fi
   cmd "cat $plugin/skills/decompose/SKILL.md"
   cmd "cat $plan"
   exit 0
@@ -233,7 +261,7 @@ wave_of() { # <block id>: the number of the wave line naming it, or nothing
       sub(/wave[[:space:]]*/, "", n); print n; exit }'
 }
 
-pending='' waiting=''
+pending='' waiting='' working=''
 for b in $ordered; do
   bf=$(task_of "$b" || :)
   [ -n "$bf" ] || continue
@@ -250,9 +278,17 @@ for b in $ordered; do
 "
     continue
   fi
+  # why: in the herd a block at work in its session holds nothing: a later block of its wave that is ready for
+  # why: a gate or a dispatch comes first, and the wait is the step only when nothing else is left to do
+  if [ -n "$herd" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; then
+    [ -n "$working" ] || working=$b
+    continue
+  fi
+  if [ -n "$working" ] && [ "$(wave_of "$b")" != "$(wave_of "$working")" ]; then break; fi
   pending=$b
   break
 done
+[ -n "$pending" ] || pending=$working
 
 # a task already stacked has a block cut from another block's branch; its block MRs stay the developer's to merge
 stacked=''
@@ -285,17 +321,57 @@ if [ -n "$pending" ]; then
   [ -z "$wave" ] || wave_arg=" --wave $wave"
 
   if [ "$bs" = blocked ] || [ "$bs" = failed ]; then
-    emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on a fresh implement subagent."
+    if [ -n "$herd" ]; then bretry="the next dispatch of its wave, a fresh session"; else bretry="a fresh implement subagent"; fi
+    emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
     cmd "cat $bprogress"
     cmd "cat $plugin/skills/_shared/blocked-question.md"
     cmd "$bin/task-approve.sh $pending --state $state"
-    cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
+    [ -n "$herd" ] || cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
     emit "Step 11 of 16: $pending has changes requested" "the threads of the block MR are answered on its branch by one implement subagent, every block behind $pending is rebased onto its new head, and $pending is review again."
     cmd "$bin/mr-watch.sh $id --comments $pending --state $state"
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     [ -z "$stacked" ] || cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
+  elif [ "$bs" = draft ] || [ "$bs" = triaged ]; then
+    # why: a block written after the approval (a thread outside a block's acceptance, a fix round) is a draft,
+    # why: and draft -> in_progress is no agent transition
+    emit "Step 11 of 16: approve $pending" "the human said yes in the approval ask of references/approve.md and $pending is ready."
+    cmd "cat $plugin/skills/factory/references/approve.md"
+    cmd "$bin/task-approve.sh $pending --state $state"
+  elif [ -n "$herd" ] && { [ "$bs" = ready ] || [ "$bs" = tests_ready ] ||
+      { [ ! -e "$bwt/.git" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; }; }; then
+    # why: in the herd a block is a session, and session-monitor.sh claims each one it starts; a claim of the
+    # why: monitor's own would leave it no ready block to dispatch. A tests_ready block goes out again with the
+    # why: implement phase armed, which is what session-monitor.sh dispatches it on
+    emit "Step 11 of 16: dispatch wave ${wave:-1} of $id" "every ready block of the wave printed <id> spawned from session-monitor.sh, which claimed it for its session$( [ "$bs" != tests_ready ] || printf ', and %s, after you reran its red tests at the commit its ## Handoff names, each failing for the reason it states, carries phase: implement and went out for its implement session (another tests_ready block of the wave follows on the next step)' "$pending")."
+    # every block of the wave that has no worktree yet gets one, or session-monitor.sh skips it
+    for b in $ordered; do
+      [ "$(wave_of "$b")" = "$wave" ] && [ ! -e "$own/$b/.git" ] || continue
+      case "$(fm "$(task_of "$b")" status)" in ready|tests_ready|in_progress|claimed) cmd "$bin/worktree-add.sh $b" ;; esac
+    done
+    if [ "$bs" = tests_ready ]; then
+      cmd "sed -n '/^## Handoff/,\$p' $bprogress"
+      cmd "(cd $bwt && <test-filter binding over the red test files the ## Handoff names>)"
+      cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status --message 'chore($pending): implement'"
+    fi
+    cmd "$bin/session-monitor.sh --task $id$wave_arg --state $state"
+    watch_line
+  elif [ -n "$herd" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; then
+    # why: a block session holds its block in_progress while it works, and the Stop hook has it report
+    # why: tests_ready or review with its ## Evidence when it ends; that report is a claim the next step reruns
+    # why: a session that died, or a spawn that failed after its claim, would hold the block for good; the same
+    # why: dispatch starts it again, and skips every block whose session still runs
+    emit "Step 11 of 16: wave ${wave:-1} of $id works in its sessions" "herd-watch.sh has reported $pending tests_ready or review, or its agent blocked, gone or ready with no report, and you acted on that line as references/herd.md says."
+    watch_line
+    cmd "$bin/session-monitor.sh --task $id$wave_arg --state $state"
+  elif [ -n "$herd" ] && [ "$bs" = review ]; then
+    emit "Step 11 of 16: verify, review and open the MR for $pending" "$pending has its mr_url set: its session's report is rerun by you (a single-phase block's red tests at the commit its ## Red proof names, red, and at HEAD, green), block-verify.sh is green and wrote $own/.harness/$pending/verify.txt, the code-reviewer's final message is saved as $own/.harness/$pending/review.md and the architecture-auditor wrote $own/.harness/$pending/arch.md, both over the block diff, as your subagents, and block-mr.sh opened the MR into ${branch:-the work branch} from them."
+    [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
+    cmd "$bin/block-verify.sh $pending --state $state"
+    [ -z "$stacked" ] || cmd "$bin/block-merge.sh $pending --verify"
+    cmd "$bin/model-for.sh review $bt '' 0 $bc"
+    cmd "$bin/block-mr.sh $pending"
   elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ] || [ "$bs" = ready ]; then
     emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress with your owner string. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"

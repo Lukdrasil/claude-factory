@@ -260,6 +260,31 @@ out=$(report "$tmp/alpha")
 has "a commit unpushed for more than 10 minutes is failing" '^failing: 2 state commit\(s\) unpushed' "$out"
 has "its fix is state-push.sh" 'state-push\.sh' "$out"
 
+# --- herdr, for the herd lane: checked only when it is on PATH ---------------------------------------------------
+# a machine of the tester's own with herdr installed has nothing to assert here
+if ! command -v herdr >/dev/null 2>&1; then
+  if printf '%s\n' "$out" | grep -q 'herdr'; then printf 'FAIL no herdr on PATH gives no herdr line\n'; fail=1
+  else printf 'PASS no herdr on PATH gives no herdr line\n'; fi
+fi
+cat > "$stub/herdr" <<'EOF'
+#!/bin/sh
+case "$1 ${2:-}" in
+  "--version "*) echo "herdr ${HSTUB_VERSION:-0.8.2}" ;;
+  "status "*) printf 'server:\n  status: running\n  compatible: yes\n' ;;
+  "integration status") echo "claude: ${HSTUB_INTEGRATION:-current (v8)} (/x/hook.sh)" ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$stub/herdr"
+out=$(report "$tmp/alpha")
+has "herdr 0.8.2 is ok" '^ok: herdr 0\.8\.2$' "$out"
+has "a running compatible herdr server is ok" '^ok: the herdr server runs and is compatible$' "$out"
+has "the current Claude integration is ok" '^ok: herdr integration for Claude current' "$out"
+out=$(export HSTUB_VERSION=0.8.1 HSTUB_INTEGRATION='not installed'; report "$tmp/alpha")
+has "herdr 0.8.1 is failing" '^failing: herdr 0\.8\.1 is older than 0\.8\.2' "$out"
+has "no Claude integration is missing, with its fix" '^missing: no herdr integration for Claude.*herdr integration install claude' "$out"
+rm -f "$stub/herdr"
+
 # --- memory over budget: consolidate takes repo: and global scopes, a repo-agent scope gets the daily pass -----------
 for d in repos/alpha/memory repos/alpha/agents/scout/memory; do
   mkdir -p "$st/$d"

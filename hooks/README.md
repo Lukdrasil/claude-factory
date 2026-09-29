@@ -19,7 +19,11 @@ that used to sit in that key lives here instead.
   MR-body marker or a Conventional Commits first line. A source file mentioning a banned phrase still passes.
 - The Stop hooks that write the state clone are chained from `self-report-check.sh`: both write into the same
   state clone, so `bin/session-stats.sh` runs from the end of `self-report-check.sh` rather than beside it over
-  one git index.
+  one git index. `rearm-check.sh` is the second Stop hook and writes nothing there: in a herdr pane whose
+  `$HERDR_TAB_ID` session-monitor.sh wrote as the `herd-monitor` of a parent that is not done, it exits 2 with one
+  line per such herd that no entry of the hook's `background_tasks` watches with `herd-watch.sh <T-id>`, so a
+  monitor whose Monitor expired, or that was restarted, arms it again. Never when `stop_hook_active` is true, at
+  most twice per session, its counter `.harness-rearm-<sid>` in the state clone's git dir.
 - `session-start.sh` warns when the running plugin root looks older than this repo: `bin/attribution-gate.sh`
   missing from it, a `.claude-plugin/plugin.json` version other than the installed one, or, for a dev checkout,
   a HEAD other than the installed `gitCommitSha`. The installed cache is keyed by that version, so a merged PR
@@ -28,8 +32,8 @@ that used to sit in that key lives here instead.
 - `playbook-inject.sh --hook` on `SubagentStart` hands the subagent the playbook of its role for the repo key of
   its cwd, `repos/<key>/agents/<role>/playbook.md` in the state clone, as `additionalContext`, or nothing.
 - No key other than `hooks` belongs in the file, and no key inside `hooks` may be anything but an event
-  name. `tests/hooks-wiring.test.sh` enforces both, that the playbook hook sits on `SubagentStart`, and that
-  `self-report-check.sh` is the one Stop hook.
+  name. `tests/hooks-wiring.test.sh` enforces both, that the playbook hook sits on `SubagentStart`, and the
+  Stop order with `rearm-check.sh` calling no state writer.
 
 ## policy-guard rules
 
@@ -80,3 +84,6 @@ The Bash rules of `bin/policy-guard.sh` that T-228 changed, and the issue label 
 - **Issue label.** A segment with `gh issue create` or `glab issue create` is denied unless `--label` or `-l`
   carries `ai-drafted` as one comma-separated value, quoted or bare, after a space or `=`. The deny names
   `bin/issue-create.sh`, which adds the label.
+- **Human gates.** A session with a `FACTORY_ROLE`, which only `session-monitor.sh` sets on the sessions of a
+  herd, is denied `task-approve.sh`, `task-done.sh`, `block-mr-merge.sh` and `curate-apply.sh approve`, however the
+  script is spelled or chained. No `FACTORY_ROLE` is the monitor's, the solve session's or a human's own session.

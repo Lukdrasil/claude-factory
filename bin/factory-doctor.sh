@@ -85,6 +85,41 @@ fi
 init_fix="run factory-init.sh --root $root"
 on_path() { command -v "$1" >/dev/null 2>&1; }
 
+# the herd lane (references/herd.md) on a machine with herdr: the version the scripts parse, a server that answers
+# and the Claude integration, without which a session has no id to reattach by after a herdr restart
+herdr_min=0.8.2
+version_ge() { # <a> <b>: a >= b, both x.y.z
+  printf '%s %s\n' "$1" "$2" | awk '{
+    split($1, a, "."); split($2, b, ".")
+    for (i = 1; i <= 3; i++) { if (a[i] + 0 > b[i] + 0) exit 0; if (a[i] + 0 < b[i] + 0) exit 1 }
+    exit 0 }'
+}
+check_herdr() {
+  hv=$(herdr --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || :)
+  if [ -z "$hv" ]; then step herdr failing "herdr --version prints no version" "reinstall herdr $herdr_min or later from https://herdr.dev"
+  elif version_ge "$hv" "$herdr_min"; then step herdr done "herdr $hv"
+  else step herdr failing "herdr $hv is older than $herdr_min, the factory parses the $herdr_min shapes" "update herdr to $herdr_min or later"; fi
+}
+check_herdr_server() {
+  hs=$(herdr status 2>&1) && hs_rc=0 || hs_rc=$?
+  if [ "$hs_rc" = 0 ] && printf '%s\n' "$hs" | grep -q 'status: running' && printf '%s\n' "$hs" | grep -q 'compatible: yes'; then
+    step herdr-server done "the herdr server runs and is compatible"
+  else
+    step herdr-server failing "herdr status: $(printf '%s\n' "$hs" | grep -v '^[[:space:]]*$' | tail -n1)" \
+      'start herdr in a terminal (a restart after an update), then rerun doctor'
+  fi
+}
+check_herdr_integration() {
+  hi=$(herdr integration status 2>/dev/null | grep '^claude:' | head -n1 || :)
+  case "$hi" in
+    'claude: current'*) step herdr-integration done "herdr integration for Claude ${hi#claude: }" ;;
+    ''|'claude: not installed'*)
+      step herdr-integration missing "no herdr integration for Claude: no session ids, no resume after a herdr restart" \
+        'herdr integration install claude' ;;
+    *) step herdr-integration failing "herdr integration for Claude is ${hi#claude: }" 'herdr integration install claude' ;;
+  esac
+}
+
 
 # the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside);
 # an http(s) host keeps its port, the forge's own (a self-hosted GitLab on :8929), an ssh one drops the sshd's
@@ -438,6 +473,11 @@ fi
 
 # --- the machine checks that touch this clone's sessions ----------------------------------------------------------
 check_state_push
+if on_path herdr; then
+  check_herdr
+  check_herdr_server
+  check_herdr_integration
+fi
 check_aliases
 if [ -f "$state/repos.yml" ] && grep -q "^$key:" "$state/repos.yml"; then
   check_repo_alias "$key"
