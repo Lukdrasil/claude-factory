@@ -153,6 +153,11 @@ The task MR is the one the human reviews and merges (step 14); the session may e
 `<plugin-root>/bin/session-start.sh` prints. `<plugin-root>/bin/policy-guard.sh` carries the fix in its deny
 message.
 
+## The herd lane
+
+`factory herd <T-id>` runs this same flow with every step that writes as an interactive session in a herdr tab,
+and this session only dispatching, watching and gating: `references/herd.md`.
+
 ## The quick lane
 
 Step 3 of Start, a triage that ends at `tier: green` and `complexity: low`, or an explicit `--quick`:

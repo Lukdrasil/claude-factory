@@ -1,19 +1,20 @@
 ---
 name: factory
-description: The standalone factory on a developer machine, one session per task: solve takes a task in words or by id and runs it end to end (triage, grill, plan-check, decompose, blocks in their own worktrees, block MRs merged, the task MR for the human); init, add-repo and doctor for setup; list for what exists; curate and consolidate for the proposal queues; approve and done for the human gates. Use when the user says factory, or solve, approve, done, list, curate, consolidate, doctor, add-repo or init against it, or hands the factory a task.
+description: The standalone factory on a developer machine: solve takes a task in words or by id and runs it end to end (triage, grill, plan-check, decompose, blocks in their own worktrees, block MRs merged, the task MR for the human); init, add-repo and doctor for setup; list for what exists; curate and consolidate for the proposal queues; approve and done for the human gates; herd runs the same flow with every step that writes as an interactive session in a herdr tab and this session as its monitor. Use when the user says factory, or solve, herd, approve, done, list, curate, consolidate, doctor, add-repo or init against it, or hands the factory a task.
 ---
 
 # factory
 
 Plugin root: `${CLAUDE_PLUGIN_ROOT}` (the base directory of this skill is `<plugin-root>/skills/factory`).
 
-The standalone posture (ADR-0049): no dashboard, no Docker, no second session. The session runs where the user
+The standalone posture (ADR-0049): no dashboard, no Docker. The session runs where the user
 starts it, and the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktrees. The scripts
 in `${CLAUDE_PLUGIN_ROOT}/bin/` do the writes; this skill runs them in the right order.
 
 | subcommand | what it does | reference |
 |---|---|---|
 | `solve` | one task end to end in this session: `solve <the task in words> [--repo <key>]` creates it, `solve <T-id>` resumes it; triage, grill, plan-check, decompose, the blocks with their MRs merged into the work branch, the task MR the human merges | `references/solve.md`, quick lane `references/solve-quick.md` |
+| `herd` | the same flow as `solve`, `herd <T-id>` or `herd <the task in words> [--repo <key>]`, with triage, grill, plan-check, decompose and every block as an interactive session in a herdr tab, dispatched by `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh`; this session is the monitor: it watches with `herd-watch.sh` and runs every gate | `references/herd.md`, `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `init` | the factory root, `state/`, `WORK_DIR` in the settings, then add-repo and doctor for this clone | `references/init.md` |
 | `add-repo` | registers a clone in `state/repos.yml` and seeds `repos/<key>/toolset.md`; with `--clone <url>` it clones the repository into the clones directory first | `references/add-repo.md` |
 | `doctor` | a report over registration, toolset, the tools on PATH, the forge and `docs/architecture/`, with a fix per missing line | `references/doctor.md` |

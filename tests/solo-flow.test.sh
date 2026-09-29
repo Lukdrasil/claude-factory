@@ -1,6 +1,7 @@
 #!/bin/sh
-# The plugin runs one task in one session: no file of it names the Factory UI, the session org or the herdr lane, and
-# `factory solve` takes a task in words, creates it and runs the loop through the human's gates only. The removed
+# The plugin runs one task per flow, solve or herd, with no org above it: no file of it names the Factory UI or
+# the session org, and `factory solve` takes a task in words, creates it and runs the loop through the human's
+# gates only. The removed
 # names are assembled from halves so this file is no hit of its own, and the grep first runs over a fixture repo
 # holding one planted hit, so a grep that matches nothing cannot pass vacuously.
 set -u
@@ -14,9 +15,9 @@ check() { # <what> <0 = ok>
 }
 
 gone='ui''-ask|ui''-session|ui''-up\.sh|ui''-down\.sh|ui''-relay|ask''-gate|herdr''-sound|factory''-start|FACTORY''_UI|ui: ''docker'
-gone="$gone|FACTORY""_ROLE|org""-check|rearm""-check|queue""-next|task""-priority|herd""-list|capacity""\\.sh|map""\\.sh"
-gone="$gone|session""-monitor|herd""-watch|herdr""-tabs|way""finder|references/(c""eo|le""ad|in""take|ro""ute|on""board|cross""-repo|he""rd)\\.md"
-gone="$gone|state""-set\\.sh|the C""EO|skills/her""dr"
+gone="$gone|org""-check|queue""-next|task""-priority|herd""-list|capacity""\\.sh|map""\\.sh|spawn: ""herdr"
+gone="$gone|way""finder|references/(c""eo|le""ad|in""take|ro""ute|on""board|cross""-repo)\\.md|repo""-lead"
+gone="$gone|state""-set\\.sh|the C""EO"
 stale() { # <repo>
   git -C "$1" grep -nE "$gone" -- bin hooks skills agents tests README.md
 }
@@ -28,10 +29,10 @@ git -C "$fix" init -q
 git -C "$fix" add -A
 stale "$fix" | grep -q '^skills/one.md:1:'; check 'the grep sees a planted hit' $?
 out=$(stale "$root")
-[ -z "$out" ]; check 'no file names the UI, the session org or the herdr lane' $?
+[ -z "$out" ]; check 'no file names the UI or the session org' $?
 [ -z "$out" ] || printf '%s\n' "$out" | sed 's/^/  /'
 
-for d in ui skills/way''finder skills/her''dr skills/factory''-start; do
+for d in ui skills/way''finder skills/factory''-start; do
   [ ! -e "$root/$d" ]; check "$d is gone" $?
 done
 

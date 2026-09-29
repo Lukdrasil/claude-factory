@@ -22,8 +22,9 @@ will find and what is missing. It gates nothing; the value is in the fixes you o
     plugin) and commit in the state repo;
   - `docs/architecture` → the architecture-docs bootstrap (the `architecture-docs` skill); recommend it,
     the architect review points run once the repo has a model;
-  - unpushed state commits, one alias on two repos, MR class C, a GitHub workflow without a branch filter
-    → the fix is the command or the setting the line names; forge settings are the human's to change.
+  - unpushed state commits, one alias on two repos, MR class C, a GitHub workflow without a branch filter, and
+    with herdr on PATH its version (0.8.2 or later), its server and its Claude integration → the fix is the
+    command or the setting the line names; forge settings are the human's to change.
   Completion: every line is sorted into one of these.
 - **Offer the fixes.** One round (`_shared/ask.md`) with a question per tool that is missing, each naming its
   install command with the options yes and no, a question per other fix that writes (a command, or an edit of

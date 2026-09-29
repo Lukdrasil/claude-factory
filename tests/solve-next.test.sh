@@ -245,4 +245,31 @@ out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
 check 'a blocked block is approved back after the answer' 'task-approve\.sh T-006-01 --state' "$out"
 no 'a block cut from the work branch gets no restack' 'restack\.sh' "$(block T-006-01 changes_requested null; sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)"
 
+# --- --herd: the steps that write go out as sessions of session-monitor.sh, the gates stay the monitor's ------
+out=$(sh "$bin/solve-next.sh" T-010 --herd --state "$state" 2>&1)
+check 'herd: the grill is a session' "session-monitor\.sh --task T-010 --step grill --state $state" "$out"
+check 'herd: and the watcher follows it' "herd-watch\.sh T-010 --interval 60" "$out"
+no 'herd: the grill skill is not read here' 'skills/grill/SKILL\.md' "$out"
+sed -i '/^## Related issues$/,$d' "$state/repos/demo/tasks/T-010.md"
+out=$(sh "$bin/solve-next.sh" T-010 --herd --state "$state" 2>&1)
+check 'herd: triage is a session' "session-monitor\.sh --task T-010 --step triage" "$out"
+block T-006-01 ready null
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a ready block goes out with its wave' '^## Step 11 of 16: dispatch wave 1 of T-006$' "$out"
+check 'herd: through session-monitor.sh, which claims it' "session-monitor\.sh --task T-006 --wave 1 --state" "$out"
+no 'herd: the monitor claims no block itself' 'set-status in_progress' "$out"
+block T-006-01 tests_ready null
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a tests_ready block is armed and goes out again' \
+  'state-report\.sh --task T-006-01 --set-phase implement --no-status' "$out"
+block T-006-01 in_progress null
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a block at work in its session is a wait on the watcher' '^## Step 11 of 16: wave 1 of T-006 works in its sessions$' "$out"
+no 'herd: nothing is spawned as a subagent then' 'spawn-plan\.sh' "$out"
+block T-006-01 review null
+out=$(sh "$bin/solve-next.sh" T-006 --herd --state "$state" 2>&1)
+check 'herd: a block its session reported review gets the gates' '^## Step 11 of 16: verify, review and open the MR for T-006-01$' "$out"
+check 'herd: block-verify.sh reruns its claim' 'block-verify\.sh T-006-01' "$out"
+check 'herd: and its MR' 'block-mr\.sh T-006-01' "$out"
+
 exit $fail

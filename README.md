@@ -59,6 +59,25 @@ Lessons land as proposals. `/claude-factory:memory-daily <scope>` turns verified
 rounds; a session in the state clone is told which passes are due. A change to a plugin skill is always a human
 PR.
 
+## The herd lane
+
+In a herdr pane the same flow can run with every step that writes as its own interactive session:
+
+```
+/claude-factory:factory herd <T-id>        # or: herd <the task in words>
+```
+
+This session becomes the monitor. `bin/solve-next.sh <T-id> --herd` prints each step; triage, grill, plan-check,
+decompose and every block of a wave go out through `bin/session-monitor.sh`, one herdr tab per unit in its own
+worktree, claimed for its session, named `<role>_<unit>` and recorded in the task's `.harness/<T-id>/herdr-tabs`.
+The monitor arms `bin/herd-watch.sh <T-id>` through the Monitor tool: one `herdr agent list` per pass, one line
+per change of status, phase, agent or MR, the forge read on every pass and the state pushed. It answers a session
+at a dialog with the human's word, runs every gate and merges the block MRs; a dispatched session carries
+`FACTORY_ROLE`, and the guard keeps the human gates from it. The Stop hook `bin/rearm-check.sh` reminds a monitor
+whose watcher expired, `herdr-tabs.sh reattach <T-id>` finds the sessions again after a herdr restart, and
+doctor checks herdr 0.8.2 or later, its server and its Claude integration (`skills/factory/references/herd.md`,
+`skills/herdr/SKILL.md`). Without herdr the same commands are printed for the human to start by hand.
+
 ## Layout
 
 | path | what |
@@ -91,7 +110,7 @@ Since 0.15.0 the agent names say what they do:
 
 `spec-critic`, `memory-curator`, `mr-reviewer`, `report-preview` and `solution-map-*` kept their names.
 
-## Upgrading to 0.16
+## Upgrading to 0.17
 
 From 0.14, in order, once `claude plugin update` shows the new version, in a plain session in the state clone:
 
@@ -102,7 +121,8 @@ From 0.14, in order, once `claude plugin update` shows the new version, in a pla
 2. Clear the open proposals with `factory curate`; `bin/state-archive.sh --all`; `memory-consolidate` over
    `memory/global` when it is over budget.
 3. Remove `spawn:`, `ui:`, `ui_port:` and `capacity:` from `factory.yml` if an earlier version wrote them; nothing
-   reads them any more.
+   reads them any more. The herd lane needs no `spawn:`: `factory herd` uses herdr whenever this session runs in
+   a herdr pane.
 
 From 0.15, only step 3, plus: stop the 0.15 CEO session and the Factory UI (`docker rm -f claude-factory-ui`), and finish
 or close the parents a lead was running, then resume each with `/claude-factory:factory solve <T-id>`. The

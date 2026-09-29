@@ -880,6 +880,46 @@ inplace_tok() { case "$1" in */*) ;; *) [ -e "$cwd/$1" ] || return 0 ;; esac; ba
 inplace_last() { [ -e "$cwd/$1" ] || bash_write_target "$1"; }
 lost_inplace() { deny "a relative in-place write target after a 'cd' the guard cannot resolve (a relative path, '-', a variable or '..'): '$1'. Name the file by its absolute path, or 'cd' to an absolute one first (T-228)."; }
 
+# R3: the human gates are plain scripts, and the `Bash(sh <plugin>/bin/*)` allow rule of factory-init.sh leaves no
+# dialog in front of them. A session the herd monitor dispatched carries FACTORY_ROLE (session-monitor.sh), and none
+# of those runs a gate: the approval, the done gate, a block MR merge and a curation approve are the monitor's,
+# after the human's yes (references/herd.md). No FACTORY_ROLE is the monitor's or a human's own session. The
+# segments are read with the quote characters removed and split once more at `;`, `&`, `|`, a bracket and a
+# backtick, so `bash -c '... && sh task-approve.sh'` and `$(...)` count too; the script is the first word after
+# assignments, options and wrappers (sh, bash, env, ...).
+gate_role_check() { # <the command segments>
+  gr_role=${FACTORY_ROLE:-}
+  [ -n "$gr_role" ] || return 0
+  case "$1" in *task-approve.sh*|*task-done.sh*|*block-mr-merge.sh*|*curate-apply.sh*) ;; *) return 0 ;; esac
+  gr_lines=$(printf '%s\n' "$1" | tr -d '\042\047' | tr '()`{};&|' '\n\n\n\n\n\n\n\n')
+  set -f
+  gr_ifs=$IFS; IFS='
+'
+  for gr_line in $gr_lines; do
+    IFS=$gr_ifs
+    # shellcheck disable=SC2086
+    set -- $gr_line
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        *=*|-*|[0-9]*|!|.|if|then|else|elif|do|while|until|time|timeout|nohup|env|exec|command|eval|source|xargs|sudo|sh|bash|dash|zsh|ksh) shift ;;
+        *) break ;;
+      esac
+    done
+    [ $# -gt 0 ] || continue
+    gr_cmd=${1##*/}; shift
+    gr_msg=''
+    case "$gr_cmd" in
+      task-approve.sh|task-done.sh|block-mr-merge.sh) gr_msg="$gr_cmd is the herd monitor's, after the human's yes (references/herd.md)" ;;
+      curate-apply.sh)
+        [ "${1:-}" != approve ] || gr_msg="curate-apply.sh approve is the human's own session's, after the yes in its round (references/curate.md)" ;;
+    esac
+    [ -n "$gr_msg" ] || continue
+    deny "$gr_msg, and this session runs as FACTORY_ROLE=$gr_role. Report what is ready through state-report.sh and let the monitor ask the human."
+  done
+  IFS=$gr_ifs
+  set +f
+}
+
 guard_bash() {
   c=$1
   [ -n "$c" ] || deny "empty command"
@@ -962,6 +1002,7 @@ guard_bash() {
   # split into segments is split_segs, which ends a segment only outside quotes.
   sc=$(heredoc_stripped "$c")
   segs=$(split_segs "$sc")
+  gate_role_check "$segs"
   # T-254: a created issue carries the ai-drafted label, as one comma-separated value of --label or -l, quoted or
   # bare. bin/issue-create.sh adds it; a direct create is held to the same rule, segment by segment. The create is
   # read with the quoted spans removed, so a mention in a message is none; the label is read as written.

@@ -32,11 +32,12 @@ task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
 home=$H
+role=''
 proj=''
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u HOME -u CLAUDE_PROJECT_DIR ${home:+HOME=$home} \
+    "$3" "$4" "$5" | env -u HOME -u FACTORY_ROLE -u CLAUDE_PROJECT_DIR ${home:+HOME=$home} ${role:+FACTORY_ROLE=$role} \
     ${proj:+CLAUDE_PROJECT_DIR=$proj} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
@@ -311,9 +312,28 @@ try 0 'a key-dir session writes inside its key dir' "$W/cf" coord "printf x > $W
 try 2 'a state-clone session writes the stamp dir of a task it owns' "$W/state" coord "printf x > $W/cf/.harness/T-900/x.md"
 try 2 'a state-clone session reads a block of a task it owns' "$W/state" coord "cat $BLK/tests/x.test.sh"
 
-# the human gates are plain scripts the solve session runs after the human's yes; the guard lets them through
+# R3: the human gates are plain scripts the solve session or the herd monitor runs after the human's yes. A
+# session the monitor dispatched carries FACTORY_ROLE and is denied every one of them, however it is spelled;
+# no FACTORY_ROLE is the monitor's or a human's own session.
 P=/plug/bin
 S=$W/state
+for role in triage implementer; do
+  try 2 "$role: sh task-approve.sh" "$S" coord "sh $P/task-approve.sh T-900 --state $S"
+  try 2 "$role: task-approve.sh by its path" "$S" coord "$P/task-approve.sh T-900 --state $S"
+  try 2 "$role: bash task-approve.sh with a quoted path" "$S" coord "bash \"$P/task-approve.sh\" T-900"
+  try 2 "$role: task-done.sh" "$S" coord "sh $P/task-done.sh T-900 --state $S"
+  try 2 "$role: block-mr-merge.sh" "$S" coord "sh $P/block-mr-merge.sh T-900-01"
+  try 2 "$role: curate-apply.sh approve" "$S" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
+  try 2 "$role: cd, then task-approve.sh" "$C/cf" coord "cd $S && sh $P/task-approve.sh T-900"
+  try 2 "$role: task-done.sh after a ; in a chain" "$S" coord "git pull --ff-only; $P/task-done.sh T-900"
+  try 2 "$role: task-approve.sh after an env assignment" "$S" coord "X=1 sh $P/task-approve.sh T-900"
+  try 2 "$role: task-approve.sh inside bash -c" "$S" coord "bash -c ${q}cd $S && sh $P/task-approve.sh T-900${q}"
+  try 0 "$role: curate-apply.sh list" "$S" coord "sh $P/curate-apply.sh list --state $S"
+  try 0 "$role: a commit message naming task-approve.sh" "$C/cf" coord "git commit -m ${q}fix: task-approve.sh reads the lock${q}"
+  try 0 "$role: a test named after a gate" "$C/cf" coord 'sh tests/task-done.test.sh'
+done
+role=''
+try 0 'no role: block-mr-merge.sh' "$S" coord "sh $P/block-mr-merge.sh T-900-01"
 try 0 'task-approve.sh' "$S" coord "sh $P/task-approve.sh T-900 --state $S"
 try 0 'task-done.sh --close' "$S" coord "sh $P/task-done.sh T-900 --close ${q}no MR${q} --state $S"
 try 0 'curate-apply.sh approve' "$S" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
