@@ -1,6 +1,6 @@
 ---
 name: block-research
-description: A research task in a worker session: reading without changing code, a report into research/, self-reporting into the state repo. Started by the controller with the task file path.
+description: A research task in a standalone session: reading without changing code, a report into research/, self-reporting into the state repo. Started with the task file path.
 ---
 
 # block-research
@@ -18,7 +18,7 @@ and `CONTEXT.md` applies only then.
 ## Preconditions
 
 - cwd is the product repo clone, **read-only** except under the handoff. You write only
-  `../state/repos/<key>/progress/<id>.md` and `../state/repos/<key>/research/<id>-<slug>.md`.
+  `$WORK_DIR/state/repos/<key>/progress/<id>.md` and `$WORK_DIR/state/repos/<key>/research/<id>-<slug>.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/rules.md`,
   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/progress-and-push.md` and
   `${CLAUDE_PLUGIN_ROOT}/skills/_shared/delegation.md` hold; verify a subagent's citations before they enter
@@ -36,11 +36,11 @@ and `CONTEXT.md` applies only then.
    `factory@<host>:<session_id>` is the owner string of your SessionStart identity line, verbatim; the
    owner-based Stop lookup finds this task only under it. The command is the same whether the task is still
    `ready` or was already claimed `in_progress` for you under a `pending-<id>` owner. Then write the progress
-   snapshot and run `state-report.sh --task <id>` again: that heartbeat is your only liveness signal, so repeat it after every answered
-   sub-question and before any long search (ADR-0009).
+   snapshot and run `state-report.sh --task <id>` again, and repeat it after every answered sub-question and
+   before any long search (ADR-0009).
 2. Cut `# Goal` into sub-questions under `## Remaining`, then answer them one at a time. The source of truth
    is the **code**, documentation only a supplement. Every claim carries a `path/file.ext:line` or a SHA.
-3. Write the report to `../state/repos/<key>/research/<id>-<slug>.md`. A human reads it later (ADR-0025), so
+3. Write the report to `$WORK_DIR/state/repos/<key>/research/<id>-<slug>.md`. A human reads it later (ADR-0025), so
    it has to make sense a year from now: a one-sentence answer in bold, then `## Question`,
    `## Findings`, `## Conclusion and recommendation`, `## Left open`. **Under 800 words**, a finding one
    claim plus its reference, the conclusion under 100 words. Leave out the search that found it and what you
@@ -65,6 +65,6 @@ Research pointing at work on the code does not do it: the follow-up belongs in
 | `blocked` | a human decision is needed; `${CLAUDE_PLUGIN_ROOT}/skills/_shared/blocked-question.md` |
 | `failed` | acceptance is unreachable; `state-report.sh --task <id> --attempts "<N>, <model>, <why>"` |
 
-Never write `done`, `ready`, `in_progress` or `stalled`.
+Never write `done` or `ready`.
 Report per `${CLAUDE_PLUGIN_ROOT}/skills/_shared/progress-and-push.md`: status and progress file through
 `state-report.sh`, the report and the `.html` next to it committed and pushed as the new files they are.

@@ -1,6 +1,6 @@
 ---
 name: block-feature
-description: Implementing a feature task in a worker session: TDD, WIP push, self-reporting progress and status into the state repo. Started by the controller after dispatch with the path to the task file.
+description: Implementing a feature task in a standalone session: TDD, WIP push, self-reporting progress and status into the state repo. Started with the path to the task file.
 ---
 
 # block-feature
@@ -21,7 +21,7 @@ the frontmatter, `${CLAUDE_PLUGIN_ROOT}/skills/_shared/refinement.md` (ADR-0031)
 MR exists and your assignment is its review comments.
 
 Deltas: Toolset commands (ADR-0039) you will use are `build`, `test`, `test-filter <expr>`, `coverage`,
-`crap <scope>`, `format`, `arch-build`. `worker-explorer` fans out for the bearings, `worker-implementer`
+`crap <scope>`, `format`, `arch-build`. `scout` fans out for the bearings, `step-implementer`
 takes a large well-scoped step; the red-green rhythm itself is serial.
 
 ## Procedure

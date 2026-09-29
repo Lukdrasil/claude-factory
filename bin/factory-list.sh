@@ -1,6 +1,6 @@
 #!/bin/sh
 # The tasks in the state repo, one line each: id, status, archetype, tier, repo, owner and the goal line.
-# Read-only — nothing is written, nothing is committed.
+# Read-only, nothing is written, nothing is committed.
 #
 #   factory-list.sh --root <dir> [--repo <key>] [--status <s>[,<s>…]]
 set -eu
@@ -21,14 +21,18 @@ done
 [ -n "$root" ] || die "--root <dir> is required"
 root=$(printf '%s' "$root" | sed 's:/*$::')
 state="$root/state"
-[ -d "$state/repos" ] || die "$state/repos is not there — is $root the factory root?"
+[ -d "$state/repos" ] || die "$state/repos is not there, is $root the factory root?"
 
-# the same glob the hooks read tasks with (lib-tasks.sh); an unmatched glob stays literal, hence the -f guard
-set -- "$state"/repos/*/tasks/*.md
-[ -f "$1" ] || exit 0
+# the live task files, as the hooks read them (task_files, lib-tasks.sh); the archive of finished parents is
+# history and not listed
+set --
+while IFS= read -r f; do [ -z "$f" ] || set -- "$@" "$f"; done <<EOF
+$(task_files)
+EOF
+[ $# -gt 0 ] || exit 0
 
-# ponytail: one awk over every task file; the frontmatter is flat key: value (docs/design/task-format.md),
-# so a line-wise read is enough — no yaml parser for six keys.
+# ponytail: one awk over every task file; the frontmatter is flat key: value (task-new.sh validates it),
+# so a line-wise read is enough, no yaml parser for six keys.
 awk -v want_repo="$repo" -v want_status="$status" '
   function flush() {
     if (f["id"] == "") return
@@ -46,7 +50,7 @@ awk -v want_repo="$repo" -v want_status="$status" '
     sub(/ #.*$/, "", v); gsub(/^[ \t]+|[ \t]+$/, "", v)
     f[k] = v; next
   }
-  # the goal is the first non-empty line under the first heading — the shape every task template writes
+  # the goal is the first non-empty line under the first heading, the shape every task template writes
   !infm && /^#/ { seen_goal = 1; next }
   !infm && seen_goal && goal == "" && $0 !~ /^[ \t]*$/ { goal = $0 }
   END { flush() }

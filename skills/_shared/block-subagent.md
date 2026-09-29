@@ -1,7 +1,7 @@
 # Block subagent
 
-Read by every agent a `factory solve` coordinator spawns into a block worktree: `factory-block-tests`,
-`factory-block-implement` and `factory-block-implement-medium`. It replaces `_shared/session-contract.md`
+Read by every agent a `factory solve` coordinator spawns into a block worktree: `test-designer`,
+`implementer` and `implementer-senior`. It replaces `_shared/session-contract.md`
 and its siblings: you are not the session. The coordinator owns the state repo, the progress file, the push,
 the MR, the self-report and the knowledge review. You own the worktree and your final message.
 

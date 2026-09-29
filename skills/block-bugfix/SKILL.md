@@ -1,6 +1,6 @@
 ---
 name: block-bugfix
-description: Fixing a defect in a worker session: reproduce with a test, smallest possible fix, WIP push, self-reporting progress and status into the state repo. Started by the controller after dispatch with the path to the task file.
+description: Fixing a defect in a standalone session: reproduce with a test, smallest possible fix, WIP push, self-reporting progress and status into the state repo. Started with the path to the task file.
 ---
 
 # block-bugfix
@@ -19,7 +19,7 @@ it names (`rules.md`, `progress-and-push.md`, `knowledge-review.md`, `delegation
 frontmatter means `${CLAUDE_PLUGIN_ROOT}/skills/_shared/refinement.md` (ADR-0031) replaces the procedure.
 
 Deltas: Toolset commands (ADR-0039) here are `build`, `test`, `test-filter <expr>`, `coverage`,
-`crap <scope>`, `format`, `arch-build`. `worker-explorer` fans out while you hunt the cause; the
+`crap <scope>`, `format`, `arch-build`. `scout` fans out while you hunt the cause; the
 reproduction test you write yourself, as the contract of the fix.
 
 ## Procedure

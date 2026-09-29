@@ -144,7 +144,10 @@ has 'the status is draft'            "$f2" 'status: draft'
 has 'the tier is copied'             "$f2" 'tier: yellow'
 has 'the archetype is copied'        "$f2" 'archetype: feature'
 has 'the complexity is copied'       "$f2" 'complexity: medium'
-has 'the runtime is the default'     "$f2" 'runtime: default'
+[ "$(awk '/^---$/ { n++; next } n == 1 { sub(/:.*/, ""); print } n == 2 { exit }' "$f2" | sort | tr '\n' ' ')" = \
+  'archetype attempt branch complexity created depends_on id mr_url owner plan_hash repo status tier ' ]
+check 'the frontmatter holds exactly the task keys' $?
+has 'the attempt count starts at 0'  "$f2" 'attempt: 0'
 has 'depends_on is left empty'       "$f3" 'depends_on: []'
 has 'plan_hash is null'              "$f2" 'plan_hash: null'
 has 'the goal is the proposal goal'  "$f2" 'feat(export): write the rows of a stream into an open handle'
@@ -226,6 +229,14 @@ headless() { # <label> <design value>
 headless none-with-prose 'none, a config file and a test with no code surface'
 headless file-only '`src/export/cli.py`'
 headless bare-none-on-a-feature 'none'
+
+# F29 (sim, 2026-09-25): the grill left a plan whose goal could not be an MR title, and only decompose.sh
+# refused it, after plan-check had signed that plan hash. plan-lint runs the same title check.
+lp="$state/repos/demo/plans/long-goal-plan-ready.md"
+awk '/^- goal: feat/ && !d { print "- goal: A new index module in the tags repo that keeps a tag index of note ids and writes it atomically as a versioned JSON file for callers"; d = 1; next } { print }' "$plan" > "$lp"
+sh "$bin/plan-lint.sh" "$lp" >/dev/null 2>"$tmp/lgerr"
+[ $? -eq 1 ]; check 'plan-lint refuses a goal that cannot be the MR title' $?
+grep -q 'MR title' "$tmp/lgerr"; check 'the refusal says it is the MR title' $?
 
 # --- T-253: the steps of a proposal become the block's `## Checklist` --------------------------------
 section() { # <file> <heading>: the non-blank lines under the heading, up to the next `## `

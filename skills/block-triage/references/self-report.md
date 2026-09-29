@@ -1,8 +1,8 @@
 # Self-report
 
-The state repo is the only signalling channel. cwd **is** the state clone, so paths are relative to it and
-there is no `../state`, but the clone is still read-only towards the state repo: the status and the progress
-snapshot go the same way as everywhere else.
+The state repo is the only signalling channel. The state clone is `$WORK_DIR/state`, paths below are relative
+to it, and it is read-only towards the state repo: the status and the progress snapshot go the same way as
+everywhere else.
 
 ```sh
 sh <plugin-root>/bin/state-report.sh
@@ -13,8 +13,8 @@ sh <plugin-root>/bin/state-report.sh
 `# <id> - triage <repo>#<number>`, and `## Evidence` holds the draft task path and the validator run that
 passed.
 
-**Status**: `status:` in the **triage task's** frontmatter, and nothing else in that frontmatter. `owner`,
-`attempt` and `plan_hash` belong to the controller, `ready` and `done` to the human.
+**Status**: `status:` in the **triage task's** frontmatter, and nothing else in that frontmatter. `owner` is
+set by your claim, `attempt` and `plan_hash` by `task-approve.sh`, `ready` and `closed` by the human.
 
 | status | when |
 |---|---|
@@ -22,6 +22,6 @@ passed.
 | `blocked` | the issue cannot be read, or the archetype cannot be decided from it: the question goes into the progress file as `## Question`, shaped per `<plugin-root>/skills/_shared/blocked-question.md` |
 | `failed` | the draft could not be written; `state-report.sh --task <id> --attempts "attempt <N> - <model>, <what failed>"` |
 
-Never write `done`, `ready`, `in_progress` or `stalled`.
+Never write `done` or `ready`.
 
 **Report** per `## Report` in `<plugin-root>/skills/_shared/progress-and-push.md`.

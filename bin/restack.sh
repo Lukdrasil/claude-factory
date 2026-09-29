@@ -1,7 +1,8 @@
 #!/bin/sh
 # The rebase of a stack after one of its blocks moved (T-164, ADR-0057): a review fix on a block rewrites the
 # branch every later block was cut from, so every block whose base chain runs through it is rebased onto the
-# new head, in dependency order, force-pushed with lease and verified again.
+# new head, in dependency order, force-pushed with lease and verified again. Since 3.4 of the agent-org plan a
+# new block is cut from the work branch and never from another block, so this is for a task stacked before.
 #
 #   restack.sh <T-NNN> <block-id> [--state <dir>] [--no-push]
 #
@@ -63,12 +64,14 @@ base_of() {
 }
 
 blocks=''
-for f in "$state"/repos/*/tasks/*.md; do
-  [ -f "$f" ] || continue
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
   b=$(fm "$f" id)
   if is_block_of "$id" "$b"; then blocks="$blocks$b
 "; fi
-done
+done <<EOF
+$(task_files "$key")
+EOF
 blocks=$(printf '%s' "$blocks" | sort_ids)
 
 moved=$(branch_of "$block")

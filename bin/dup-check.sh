@@ -1,7 +1,7 @@
 #!/bin/sh
 # Duplicate-code candidates of one diff (T-163): what the added lines repeat of code the repo already has.
 # Deterministic and cheap, no model call anywhere in here: it hands the coordinator a short list of pairs to
-# ask about, and the asking is done by `worker-explorer` spawns per skills/_shared/delegation.md.
+# ask about, and the asking is done by `scout` spawns per skills/_shared/delegation.md.
 #
 #   dup-check.sh <diff-file> <repo-dir>
 #

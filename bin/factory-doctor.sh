@@ -1,10 +1,15 @@
 #!/bin/sh
 # A report over one product clone in the standalone factory (ADR-0049): the state remote and its credentials,
 # registration (one key per clone), toolset, the tools the toolset binds and what they need (a coverage collector,
-# a .NET 8 runtime for dotnet-crap), docs/architecture. One line per check, `ok: ...` or `missing: ... - <what
-# fixes it>`. Always exit 0: the skill offers the fixes to the human, the report gates nothing.
+# a .NET 8 runtime for dotnet-crap), docs/architecture, then the machine checks below for this clone. One line per
+# check, `ok: ...`, `missing: <what>, <fix>` or `failing: <what>, <fix>`. Always exit 0: the skill offers the fixes
+# to the human, the report gates nothing.
 #
-#   factory-doctor.sh --root <dir> [--repo <clone-dir>]
+# It reads the machine and the forges and writes nothing: a fix is text, applying it is a confirm ask of the session.
+#
+#   factory-doctor.sh [--root <dir>] [--repo <clone-dir>]
+#
+# The root is --root, else the parent of the state clone the cwd is in, else WORK_DIR.
 set -eu
 
 root='' repo=''
@@ -19,25 +24,40 @@ while [ $# -gt 0 ]; do
     *) die "unknown argument '$1'" ;;
   esac
 done
-[ -n "$root" ] || die "--root <dir> is required"
+state=''
+if [ -z "$root" ]; then
+  if cwd_top=$(git rev-parse --show-toplevel 2>/dev/null) && [ -f "$cwd_top/repos.yml" ]; then
+    state=$cwd_top root=$(dirname -- "$cwd_top")
+  elif [ -n "${WORK_DIR:-}" ]; then root=$WORK_DIR
+  else die "--root <dir> is required"; fi
+fi
 [ -n "$repo" ] || repo=$(pwd)
 root=$(printf '%s' "$root" | sed 's/\\/\//g; s:/*$::')
-state="$root/state"
+[ -n "$state" ] || state="$root/state"
 plugin=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$plugin/bin/lib-tasks.sh"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
 
-top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
-[ -n "$top" ] || die "$repo is not a git clone"
-url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origin remote"
-key=${url%/}; key=${key##*[/:]}; key=${key%.git}
-
-ok() { echo "ok: $1"; }
-missing() { echo "missing: $1 — $2"; }
-add_repo="run factory-add-repo.sh --root $root --repo $top"
+# every line the report prints goes through here: the user:pass@ of a url is dropped, since the report ends up in
+# a session transcript
+redact() { printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'; }
+ok() { redact "ok: $1"; }
+missing() { redact "missing: $1, $2"; }
+# one check, printed as a line of the report
+step() { # <id> <done|missing|failing> <detail> [<fix>]
+  case "$2" in
+    done) ok "$3" ;;
+    missing) missing "$3" "${4:-}" ;;
+    *) redact "failing: $3, ${4:-}" ;;
+  esac
+}
 
 # --- state remote + credentials ----------------------------------------------------------------------------------
 # 2026-09-07: a state repo with no remote pushes nowhere (every WIP push of a block "succeeded" locally), and one
 # with an https remote and no stored credential prompts inside a hook, where nobody answers. Only checked when the
 # root has a state clone at all; a local-only state repo is a choice, so the miss names it as one.
+state_remote_report() {
 if [ -d "$state/.git" ]; then
   if surl=$(git -C "$state" remote get-url origin 2>/dev/null) && [ -n "$surl" ]; then
     ok "state remote $surl"
@@ -59,6 +79,169 @@ if [ -d "$state/.git" ]; then
     missing "state remote" "add one (git -C $state remote add origin <url>) or accept a local-only state repo"
   fi
 fi
+}
+
+# --- the machine and the registered repos ---------------------------------------------------------------------------
+init_fix="run factory-init.sh --root $root"
+on_path() { command -v "$1" >/dev/null 2>&1; }
+
+
+# the forge of a repo url: its host, its project path, and the CLI that reads it (forge.sh's rule, gitea aside);
+# an http(s) host keeps its port, the forge's own (a self-hosted GitLab on :8929), an ssh one drops the sshd's
+host_of() {
+  case "$1" in
+    http://*|https://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*} ;;
+    *://*) ho=${1#*://}; ho=${ho#*@}; ho=${ho%%/*}; ho=${ho%%:*} ;;
+    *@*:*) ho=${1#*@}; ho=${ho%%:*} ;;
+    *) ho='' ;;
+  esac
+  printf '%s' "$ho"
+}
+project_of() {
+  case "$1" in
+    *://*) po=${1#*://}; po=${po#*/} ;;
+    *) po=${1#*:} ;;
+  esac
+  po=${po%/}; printf '%s' "${po%.git}"
+}
+cli_of() { if [ "$1" = github.com ]; then echo gh; else echo glab; fi; }
+logins=' '
+# glab --hostname refuses a host:port ("invalid hostname"): its status is read off the status of every host, and
+# its api goes through GITLAB_HOST, as in forge.sh
+logged_in() { # <cli> <host>, one auth status per pair
+  case "$logins" in *" $1@$2=1 "*) return 0 ;; *" $1@$2=0 "*) return 1 ;; esac
+  case "$2" in *:*) set -- "$1" "$2" ;; *) set -- "$1" "$2" --hostname "$2" ;; esac
+  if "$1" auth status ${3:+"$3" "$4"} 2>&1 | grep -q "Logged in to $2 "; then logins="$logins$1@$2=1 "; return 0; fi
+  logins="$logins$1@$2=0 "; return 1
+}
+
+# `<key> <alias>` of every repo that has an alias: line, valid or not
+alias_rows() {
+  [ -f "$state/repos.yml" ] || return 0
+  awk '
+    /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
+    k != "" && match($0, /(^|[{, \t])alias[ \t]*:[ \t]*["'"'"']?[^,}"'"'"' \t]+/) {
+      v = substr($0, RSTART, RLENGTH); sub(/.*:[ \t]*/, "", v); gsub(/["'"'"']/, "", v); print k, v
+    }' "$state/repos.yml"
+}
+
+# PLAN 3.5: the writers commit locally and state-push.sh carries the commits in the background; a commit that stays
+# local for more than 10 minutes means that push stopped running or keeps being refused
+check_state_push() {
+  if [ ! -d "$state/.git" ]; then step state-push missing "no state repo yet" "$init_fix"; return 0; fi
+  if ! git -C "$state" remote get-url origin >/dev/null 2>&1; then step state-push done "no state remote, nothing to push"; return 0; fi
+  sp=$(git -C "$state" log --format=%ct HEAD --not --remotes=origin 2>/dev/null || :)
+  if [ -z "$sp" ]; then step state-push done "every state commit is pushed"; return 0; fi
+  sp_n=$(printf '%s\n' "$sp" | wc -l | tr -d ' ')
+  sp_age=$(( $(date +%s) - $(printf '%s\n' "$sp" | sort -n | head -n1) ))
+  if [ "$sp_age" -gt 600 ]; then
+    step state-push failing "$sp_n state commit(s) unpushed, the oldest for $((sp_age / 60)) minutes" \
+      "sh $plugin/bin/state-push.sh --state $state (every step of factory solve runs it), and read why it failed"
+  else
+    step state-push done "$sp_n state commit(s) unpushed for less than 10 minutes"
+  fi
+}
+
+check_aliases() {
+  ar=$(alias_rows)
+  ar_bad=$(printf '%s\n' "$ar" | awk 'NF == 2 && $2 !~ /^[A-Z][A-Z][A-Z]?[A-Z]?$/ { printf " %s (%s)", $1, $2 }')
+  ar_dup=$(printf '%s\n' "$ar" | grep -v '^$' | sort -k2,2 -k1,1 \
+    | awk '$2 == prev { printf " %s on %s and %s", $2, pk, $1 } { prev = $2; pk = $1 }')
+  if [ -n "$ar_dup" ]; then
+    step aliases failing "one alias on two repos:$ar_dup, their ids would collide" "give one of them another alias: in $state/repos.yml"
+  elif [ -n "$ar_bad" ]; then
+    step aliases failing "an alias that is not 2 to 4 uppercase letters:$ar_bad" "correct it in $state/repos.yml"
+  else
+    step aliases done "$(printf '%s\n' "$ar" | grep -c . || :) aliases, all unique"
+  fi
+}
+
+check_repo_alias() { # <key>
+  ra=$(repo_alias "$1") && ra_rc=0 || ra_rc=$?
+  if [ "$ra_rc" != 0 ]; then
+    step "repo:$1:alias" failing "the alias of $1 is not 2 to 4 uppercase letters" "correct it in $state/repos.yml"
+  elif [ -n "$ra" ]; then
+    step "repo:$1:alias" done "$1 alias $ra, its new ids are T-$ra-<n>"
+  else
+    step "repo:$1:alias" missing "$1 has no alias, its new tasks get legacy T-<n> ids" \
+      "run factory-add-repo.sh --root $root --repo $(yml_field "$1" path) (it proposes an alias, --alias <ALIAS> overrides)"
+  fi
+}
+
+# PLAN 3.4: the class of a repo decides how a block MR skips its pipeline. A: the pipeline is not required. B: it
+# is required and a skipped pipeline counts as success (an empty [skip ci] head commit). C: required and a skipped
+# one does not count, so every block MR runs the full pipeline. Read only, and skipped cleanly (missing, with the
+# login as its fix) when the forge CLI is absent or not logged in.
+json_val() { # <json> <field>
+  printf '%s' "$1" | grep -oE "\"$2\"[[:space:]]*:[[:space:]]*(\"[^\"]*\"|true|false|null|[0-9]+)" | head -n1 \
+    | sed 's/^[^:]*:[[:space:]]*//; s/"//g'
+}
+check_repo_mr_class() { # <key>
+  mu=$(yml_field "$1" url); mh=$(host_of "$mu")
+  [ -n "$mh" ] || return 0
+  mp=$(project_of "$mu"); mc=$(cli_of "$mh"); id="repo:$1:mr-class"
+  if ! on_path "$mc"; then step "$id" missing "MR class of $1 not read: $mc is not installed" "install $mc, then rerun doctor"; return 0; fi
+  if ! logged_in "$mc" "$mh"; then step "$id" missing "MR class of $1 not read: $mc is not logged in to $mh" "$mc auth login --hostname $mh"; return 0; fi
+  if [ "$mc" = glab ]; then
+    case "$mh" in
+      *:*) mj=$(GITLAB_HOST=$mh glab api "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+      *) mj=$(glab api --hostname "$mh" "projects/$(printf '%s' "$mp" | sed 's#/#%2F#g')" 2>/dev/null) || mj='' ;;
+    esac
+    if [ -z "$mj" ]; then step "$id" failing "MR class of $1 not read: glab api projects/$mp failed on $mh" "check that $mu exists and glab reaches $mh"; return 0; fi
+    mm=$(json_val "$mj" merge_method); sq=$(json_val "$mj" squash_option)
+    req=$(json_val "$mj" only_allow_merge_if_pipeline_succeeds); skp=$(json_val "$mj" allow_merge_on_skipped_pipeline)
+    if [ "$req" = true ] && [ "$skp" != true ]; then
+      step "$id" failing "$1 is class C: the pipeline must succeed and a skipped pipeline does not count (merge method $mm), so every block MR runs the full pipeline" \
+        "in $mp on $mh: Settings > Merge requests > Merge checks, tick \"Skipped pipelines are considered successful\" (allow_merge_on_skipped_pipeline: true)"
+    elif [ "$req" = true ]; then
+      step "$id" done "$1 is class B: merge method $mm, squash $sq, the pipeline must succeed, a skipped one counts"
+    else
+      step "$id" done "$1 is class A: merge method $mm, the pipeline is not required"
+    fi
+  else
+    mb=$(yml_field "$1" default_branch); mb=${mb:-main}
+    if ! gh api "repos/$mp" >/dev/null 2>&1; then step "$id" failing "MR class of $1 not read: gh api repos/$mp failed" "check that $mu exists and gh reaches it"; return 0; fi
+    # block-mr.sh's rule: a workflow its branch filter never starts reports nothing, so on GitHub a skipped run
+    # never counts (skipped_counts_as_success: false) and a required check makes the repo class C
+    if gh api "repos/$mp/branches/$mb/protection/required_status_checks" >/dev/null 2>&1; then
+      step "$id" failing "$1 is class C: $mb requires status checks and a skipped run never counts on GitHub, so every block PR runs the full workflows" \
+        "filter the workflows of $1 on $mb (branches: [$mb]) so block PRs start none, or drop the required status check on the work branch (feat/*)"
+    else
+      step "$id" done "$1 is class A: $mb requires no status checks"
+    fi
+  fi
+}
+
+# PLAN 3.4, GitHub: a block PR targets the work branch, so a workflow that triggers on pull_request or push without a
+# branch filter on the default branch runs for every block
+check_repo_workflows() { # <key>
+  wu=$(yml_field "$1" url)
+  [ "$(host_of "$wu")" = github.com ] || return 0
+  wp=$(yml_field "$1" path); wb=$(yml_field "$1" default_branch); wb=${wb:-main}
+  wf_bad=''
+  for f in "$wp"/.github/workflows/*.yml "$wp"/.github/workflows/*.yaml; do
+    [ -f "$f" ] || continue
+    grep -qE '(^|[^a-z_])(pull_request|push)([^a-z_]|$)' "$f" || continue
+    grep -qE "branches:.*(^|[^A-Za-z0-9_./-])$wb([^A-Za-z0-9_./-]|\$)" "$f" && continue
+    grep -qE "^[[:space:]]*-[[:space:]]*[\"']?$wb[\"']?[[:space:]]*\$" "$f" && continue
+    wf_bad="$wf_bad ${f##*/}"
+  done
+  if [ -n "$wf_bad" ]; then
+    step "repo:$1:workflows" failing "workflows of $1 without a branch filter on $wb:$wf_bad, they run for every block PR" \
+      "filter their pull_request and push triggers with branches: [$wb]"
+  else
+    step "repo:$1:workflows" done "the workflows of $1 filter on $wb, or there are none"
+  fi
+}
+
+top=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null | sed 's/\\/\//g') || die "$repo is not a git clone"
+[ -n "$top" ] || die "$repo is not a git clone"
+url=$(git -C "$top" remote get-url origin 2>/dev/null) || die "$top has no origin remote"
+key=${url%/}; key=${key##*[/:]}; key=${key%.git}
+
+add_repo="run factory-add-repo.sh --root $root --repo $top"
+
+state_remote_report
 
 # --- registration ----------------------------------------------------------------------------------------------
 if [ -f "$state/repos.yml" ] && grep -q "^$key:.*path:" "$state/repos.yml"; then
@@ -78,7 +261,7 @@ else
 fi
 
 # --- one key per clone -------------------------------------------------------------------------------------------
-# 2026-09-07: two keys registered for the same directory made repo_key_of_cwd pick one and the tasks the other —
+# 2026-09-07: two keys registered for the same directory made repo_key_of_cwd pick one and the tasks the other,
 # the toolset, memory and tripwire state of a session split across two keys. The same awk as lib-tasks.sh's
 # repo_clone_paths, paths compared with forward slashes and no trailing slash.
 if [ -f "$state/repos.yml" ]; then
@@ -103,7 +286,6 @@ fi
 # E (2026-09-22, MR !412): the factory opened a 113-character title and the repo's own commitlint job refused
 # it at 100. When the clone lints its titles, its registry entry has to carry a cap no larger than that lint's,
 # or the factory will keep authoring goals the forge cannot take.
-. "$plugin/bin/lib-tasks.sh"
 if cc=$(commitlint_cap "$top"); then
   cc_max=$(printf '%s' "$cc" | cut -f1)
   cc_src=$(printf '%s' "$cc" | cut -f2)
@@ -136,30 +318,12 @@ else
   missing "repos/$key/toolset.md" "$add_repo"
 fi
 
-# --- how tasks are dispatched -------------------------------------------------------------------------------
-spawn=manual
-[ ! -f "$state/factory.yml" ] || spawn=$(sed -n 's/^spawn:[[:space:]]*//p' "$state/factory.yml" | head -n1 \
-  | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//')
-[ -n "$spawn" ] || spawn=unset
-case "$spawn" in
-  manual) ok "spawn: manual (session-monitor.sh prints the commands)" ;;
-  herdr)
-    if command -v herdr >/dev/null 2>&1; then
-      ok "spawn: herdr, herdr on PATH"
-    else
-      missing "spawn: herdr, but herdr is not on PATH" \
-        'install herdr from https://herdr.dev, or set spawn: manual in factory.yml'
-    fi ;;
-  unset) missing "spawn: in factory.yml" 'add `spawn: manual` or `spawn: herdr` to it' ;;
-  *) missing "spawn: $spawn in factory.yml" 'it takes herdr or manual' ;;
-esac
-
 # --- the tools the toolset binds ---------------------------------------------------------------------------------
 tool() { # <binary> <install command>
   if command -v "$1" >/dev/null 2>&1; then ok "$1 on PATH"; else missing "$1 on PATH" "$2"; fi
 }
 # only the tools this toolset actually binds: a repo that deleted the row it cannot run must not be told to
-# install the tool behind it (ADR-0039 — a command the toolset lacks does not exist for the repo)
+# install the tool behind it (ADR-0039, a command the toolset lacks does not exist for the repo)
 binds() { # <command name> → true when the toolset has a table row for it
   [ -f "$toolset" ] && grep -q "^|[[:space:]]*\`$1" "$toolset"
 }
@@ -175,20 +339,22 @@ globs=''
 [ ! -f "$toolset" ] || globs=$(awk '/^test-globs:[[:space:]]*$/ { g=1; next }
      g && /^[[:space:]]*-[[:space:]]/ { sub(/^[[:space:]]*-[[:space:]]*/, ""); gsub(/"/, ""); print; next }
      g { exit }' "$toolset" | tr '\n' ' ' | sed 's/ $//')
-if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in repos/$key/toolset.md" "add the frontmatter list (docs/design/toolset.md)"; fi
+if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in repos/$key/toolset.md" "add the frontmatter list (the plugin's toolsets/dotnet.md shows it)"; fi
 
 # --- what the dotnet coverage and crap rows need beyond the binaries ------------------------------------------------
 if [ "$stack" = dotnet ]; then
   # 2026-09-07: `coverage` ran green and produced no cobertura file, so `crap` had nothing to score and the gate
-  # could never be met — no test project referenced a collector. A test project is a *.csproj under a path one of
+  # could never be met, no test project referenced a collector. A test project is a *.csproj under a path one of
   # the test-globs matches (`**/` → any directories, `*` → one segment) or one that declares itself a test project.
   if binds coverage || binds crap; then
     glob_re=''
     p1=$(printf '\001'); p2=$(printf '\002')
+    set -f
     for gl in $globs; do
       re=$(printf '%s' "$gl" | sed "s/[.]/\\\\./g; s#\\*\\*/#$p1#g; s#\\*\\*#$p2#g; s/\\*/[^\\/]*/g; s#$p1#(.*/)?#g; s#$p2#.*#g")
       glob_re="${glob_re:+$glob_re|}^($re)\$"
     done
+    set +f
     testprojs=$(find "$top" -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -not -path '*/.git/*' 2>/dev/null \
       | while IFS= read -r f; do
           rel=${f#"$top"/}
@@ -211,7 +377,7 @@ if [ "$stack" = dotnet ]; then
     fi
   fi
   # 2026-09-07: Crap4DotNet targets net8.0 and refuses to start on a machine with only a newer runtime unless told
-  # to roll forward — the toolset's crap row carries DOTNET_ROLL_FORWARD=Major, this names the other way out
+  # to roll forward, the toolset's crap row carries DOTNET_ROLL_FORWARD=Major, this names the other way out
   if command -v dotnet-crap >/dev/null 2>&1 && command -v dotnet >/dev/null 2>&1; then
     if dotnet --list-runtimes 2>/dev/null | grep -q '^Microsoft\.NETCore\.App 8\.'; then
       ok "a .NET 8 runtime for dotnet-crap"
@@ -236,7 +402,7 @@ esac
 # --- context_window (T-056) -------------------------------------------------------------------------------------
 # the compact tripwire's window: absent stays the 200000 default (no line, not a miss), present has to be a
 # positive integer, same ok:/missing: shape as curation. A leading zero (007) is refused outright rather than
-# read as 7 with the zero stripped — a hand-edited typo should not turn into a legitimate-looking tiny window,
+# read as 7 with the zero stripped, a hand-edited typo should not turn into a legitimate-looking tiny window,
 # and this is the same value compact-tripwire.sh's cfg_window guard refuses (T-056-04).
 context_window=
 [ ! -f "$state/factory.yml" ] || context_window=$(sed -n 's/^context_window:[[:space:]]*//p' "$state/factory.yml" | head -n 1 | sed 's/[[:space:]]*#.*$//' | sed 's/[[:space:]]*$//')
@@ -254,12 +420,28 @@ if [ -f "$plugin/bin/memory-budget.sh" ]; then
   if out=$(sh "$plugin/bin/memory-budget.sh" --all --state "$state" 2>&1); then
     over=$(printf '%s\n' "$out" | awk '$0 == "over budget" { print scope; next } { scope = $1 }')
     if [ -n "$over" ]; then
-      for scope in $over; do missing "memory over budget in $scope" "run factory consolidate $scope"; done
+      # consolidate takes repo:, global and agent: scopes; a repo-agent scope is judged by its daily pass
+      for scope in $over; do
+        case "$scope" in
+          repo-agent:*) missing "memory over budget in $scope" \
+            "run its daily pass, /claude-factory:memory-daily $scope" ;;
+          *) missing "memory over budget in $scope" "run factory consolidate $scope" ;;
+        esac
+      done
     else
       ok "memory within budget"
     fi
   else
     missing "memory budget unreadable" "$(printf '%s\n' "$out" | tail -n 1 | sed 's/^memory-budget: //')"
   fi
+fi
+
+# --- the machine checks that touch this clone's sessions ----------------------------------------------------------
+check_state_push
+check_aliases
+if [ -f "$state/repos.yml" ] && grep -q "^$key:" "$state/repos.yml"; then
+  check_repo_alias "$key"
+  check_repo_mr_class "$key"
+  check_repo_workflows "$key"
 fi
 exit 0

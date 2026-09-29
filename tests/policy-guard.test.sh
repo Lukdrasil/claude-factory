@@ -31,12 +31,13 @@ task T-901 feat/T-901 other null
 task T-901-01 block/T-901-01 other tests
 printf 'brief\n' > "$W/cf/.harness/T-900/brief-T-900-01.md"
 printf 'x\n' > "$C/cf/README.md"
-dash=''
 home=$H
+proj=''
 
 try() { # <want exit> <label> <cwd> <session id> <command>
   node -e 'process.stdout.write(JSON.stringify({tool_name:"Bash",cwd:process.argv[1],session_id:process.argv[2],tool_input:{command:process.argv[3]}}))' \
-    "$3" "$4" "$5" | env -u DASHBOARD_URL -u HARNESS_WORKER -u HOME ${dash:+DASHBOARD_URL=$dash} ${home:+HOME=$home} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
+    "$3" "$4" "$5" | env -u HOME -u CLAUDE_PROJECT_DIR ${home:+HOME=$home} \
+    ${proj:+CLAUDE_PROJECT_DIR=$proj} WORK_DIR="$W" sh "$root/bin/policy-guard.sh" >/dev/null 2>"$tmp/err"
   got=$?
   if [ "$got" -eq "$1" ]; then printf 'PASS %s\n' "$2"; return; fi
   printf 'FAIL want=%s got=%s %s: %s\n' "$1" "$got" "$2" "$(head -c 200 "$tmp/err")"
@@ -189,13 +190,9 @@ try 2 'an escaped ) inside a subshell with a cd, then a relative redirect' "$C/c
 try 2 'cd /tmp && command cd <clone>, then a relative redirect' "$C/cf" coord "cd /tmp && command cd $C/cf && echo x > README.md"
 try 2 'cd /tmp && . ./env.sh, then a relative redirect' "$C/cf" coord 'cd /tmp && . ./env.sh && echo x > README.md'
 try 2 'cd /a; cd /b; then a relative redirect' "$C/cf" coord 'cd /a; cd /b; echo x > README.md'
-dash=http://dash.test
-try 2 'git push from the state clone, dashboard posture' "$W/state" coord 'git push'
-try 2 'cd /tmp && cd - && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp && cd - && git push'
-try 2 'cd /nonexistent && true; git push from the state clone, dashboard posture' "$W/state" coord 'cd /nonexistent && true; git push'
-try 2 'cd <state clone>; git push from the registered clone, dashboard posture' "$C/cf" coord "cd $W/state; git push"
-try 0 'cd /tmp/scratch && git push from the state clone, dashboard posture' "$W/state" coord 'cd /tmp/scratch && git push'
-dash=''
+try 0 'git push from the state clone' "$W/state" coord 'git push'
+try 0 'cd /nonexistent && true; git push from the state clone' "$W/state" coord 'cd /nonexistent && true; git push'
+try 0 'cd <state clone>; git push from the registered clone' "$C/cf" coord "cd $W/state; git push"
 try 2 'git -C ~/<state clone> commit -m x' "$C/cf" coord 'git -C ~/factory/state commit -m x'
 try 0 'git -C ~/<state clone> commit -m x -- <file>' "$C/cf" coord 'git -C ~/factory/state commit -m x -- repos/cf/tasks/T-900.md'
 try 2 'git commit -m x -- . in the state clone' "$W/state" coord 'git commit -m x -- .'
@@ -302,5 +299,33 @@ try 0 'an echo naming glab issue create mid-quote' "$C/cf" coord 'echo "run glab
 try 0 'bin/issue-create.sh is not a direct create' "$C/cf" coord 'sh bin/issue-create.sh cf --title "fix: x" --body-file /tmp/b.md'
 try 0 'gh issue list stays allowed' "$C/cf" coord 'gh issue list --state open --limit 100'
 try 0 'glab issue list stays allowed' "$C/cf" coord 'glab issue list --per-page 100'
+
+# T-252-03: a cwd under $W that is not a task worktree is confined to its own top-level directory, and the
+# coordinator reach of coord_scope and read_scope stays closed from there. The target is judged, never written,
+# and sits outside /tmp, which check_path allows from any cwd (issue #358), so it cannot live under $H.
+try 2 'a state-clone session writes outside $W' "$W/state" coord 'printf x > /home/t252/outside.txt'
+try 2 'a key-dir session writes outside $W' "$W/cf" coord 'printf x > /home/t252/outside.txt'
+try 0 'the registered clone writes the same path' "$C/cf" coord 'printf x > /home/t252/outside.txt'
+try 0 'a state-clone session writes inside the state clone' "$W/state" coord "printf x > $W/state/notes.txt"
+try 0 'a key-dir session writes inside its key dir' "$W/cf" coord "printf x > $W/cf/notes.txt"
+try 2 'a state-clone session writes the stamp dir of a task it owns' "$W/state" coord "printf x > $W/cf/.harness/T-900/x.md"
+try 2 'a state-clone session reads a block of a task it owns' "$W/state" coord "cat $BLK/tests/x.test.sh"
+
+# the human gates are plain scripts the solve session runs after the human's yes; the guard lets them through
+P=/plug/bin
+S=$W/state
+try 0 'task-approve.sh' "$S" coord "sh $P/task-approve.sh T-900 --state $S"
+try 0 'task-done.sh --close' "$S" coord "sh $P/task-done.sh T-900 --close ${q}no MR${q} --state $S"
+try 0 'curate-apply.sh approve' "$S" coord "sh $P/curate-apply.sh approve repos/cf/x.md --state $S"
+
+# a session whose shell cd'ed into the state clone keeps the posture of the worktree it was launched in
+# (CLAUDE_PROJECT_DIR), so it can cd back and read its blocks; the state clone as launch dir changes nothing
+proj=$PAR
+try 0 'launched in the parent worktree, cwd the state clone: cd back to the worktree' "$W/state" coord "cd $PAR && pwd"
+try 0 'launched in the parent worktree, cwd the state clone: git -C <own block> log' "$W/state" coord "git -C $BLK log --oneline -3"
+try 2 'launched in the parent worktree, cwd the state clone: a write into another parent stays denied' "$W/state" coord "touch $W/cf/T-901/x"
+proj=$W/state
+try 2 'launched in the state clone: git -C <a block> log stays denied' "$W/state" coord "git -C $BLK log --oneline -3"
+proj=''
 
 exit $fail

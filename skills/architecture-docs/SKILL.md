@@ -30,7 +30,7 @@ a one-line `TODO(question)`, never a guess.
    datastore and external system carries a `path/file.ext`, every in-scope claim reads confirmed, diverged
    or ungrounded, and `sh ${CLAUDE_PLUGIN_ROOT}/bin/doc-cites.sh <product-repo>` reports no MISMATCH off
    that list.
-4. **Consult the panel** per `exploring.md`: one `architect-specialist` per domain whose `Load when` row
+4. **Consult the panel** per `exploring.md`: one `domain-architect` per domain whose `Load when` row
    hits, in parallel, each given the domain and the absolute paths of the repo,
    `architect-review/references/checks.md` and `references/README.md`. Done when every in-scope domain has a
    report and every finding is drafted, a divergence, or dropped with a reason.

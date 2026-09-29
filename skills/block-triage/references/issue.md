@@ -6,9 +6,8 @@
 <plugin-root>/bin/forge.sh issue <url> --assets ../issue-assets
 ```
 
-The script picks gh or glab and the hostname from the URL. Which instances are signed in is in CLAUDE.md
-under `## Forge`; `forge.sh hosts` lists them too. If the issue cannot be read, missing auth or a 404, that
-is `blocked` with a question: a draft comes from the issue text, never from the title alone.
+The script picks gh or glab and the hostname from the URL; `forge.sh hosts` lists which instances are signed
+in. If the issue cannot be read, missing auth or a 404, that is `blocked` with a question: a draft comes from the issue text, never from the title alone.
 
 **Attachments are part of the assignment.** `--assets` downloads the issue's images and files into
 `../issue-assets`, next to the state clone and never inside it, so they cannot end up in a commit, and prints
@@ -35,12 +34,7 @@ gh issue edit <url> --body "$(cat ../issue-body.md)"
 glab api --hostname <host> -X PUT "projects/<url-encoded-project>/issues/<iid>" -f "description=$(cat ../issue-body.md)"
 ```
 
-The body goes in inline on both forges: the guard refuses every file-valued flag on a write, because the CLI
-runs as the uid that reads `/auth/forge` and would publish the credential store into the issue.
+A failed write is **not fatal**: note it in the progress file under `## Remaining` and carry on.
 
-A failed write is **not fatal**: note it in the progress file under `## Remaining` and carry on. The draft
-detail page has a "triage to issue" button using the same marker, so a human can push it through and nothing
-gets duplicated.
-
-The issue must never get its own text or claude-os internals back: anything that would be duplicated or
+The issue must never get its own text or factory internals back: anything that would be duplicated or
 meaningless there goes under `## Internal`, not `## Context`.

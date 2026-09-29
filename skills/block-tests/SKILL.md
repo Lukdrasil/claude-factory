@@ -11,8 +11,8 @@ gets only what you pushed. The argument is the task file's path in the state clo
 
 ## Preconditions
 
-- cwd is the task worktree on the branch from the frontmatter, the state clone in `../state`, the progress
-  file `../state/repos/<key>/progress/<id>.md`; otherwise self-report `failed`.
+- cwd is the task worktree on the branch from the frontmatter, the state clone in `$WORK_DIR/state`, the
+  progress file `$WORK_DIR/state/repos/<key>/progress/<id>.md`; otherwise self-report `failed`.
 - Toolset (ADR-0039): `build`, `test`, `test-filter <expr>`, `find-refs <symbol>`; one the repo lacks is a
   note in the handoff, not a failure.
 - `${CLAUDE_PLUGIN_ROOT}/skills/_shared/rules.md`,

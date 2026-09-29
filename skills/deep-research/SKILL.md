@@ -10,7 +10,7 @@ picks the performance with the rubric.
 
 ## Preconditions
 
-- The **state clone** is cwd if it holds `repos.yml`, otherwise `../state`; if neither, stop and say so.
+- The **state clone** is cwd if it holds `repos.yml`, otherwise `$WORK_DIR/state`; if neither, stop and say so.
 - You write **only** into the state clone; product repos are read-only.
 
 ## Arguments
@@ -34,10 +34,10 @@ Four dimensions, each **0 to 3**, scored by the assignment.
 
 | S | tier | agent | model × effort |
 |---|---|---|---|
-| 0 to 3 | **S0** | `deep-research-haiku` | haiku |
-| 4 to 6 | **S1** | `deep-research-sonnet-high` | sonnet × high |
-| 7 to 9 | **S2** | `deep-research-opus-medium` | opus × medium |
-| 10 to 12 | **S3** | `deep-research-opus-high` | opus × high |
+| 0 to 3 | **S0** | `researcher-s0` | haiku |
+| 4 to 6 | **S1** | `researcher-s1` | sonnet × high |
+| 7 to 9 | **S2** | `researcher-s2` | opus × medium |
+| 10 to 12 | **S3** | `researcher-s3` | opus × high |
 
 **Escalation**, after the sum and only ever upward: `K = 3` gives at least **S2** (opus × medium); `K = 3`
 with `B >= 2` gives **S3**; `C >= 2` gives at least **S1**. Haiku cannot carry the context batching.
@@ -58,8 +58,9 @@ Calibration: `references/rubric-self-check.md`.
 2. Work out the destination per `references/destination.md` and say the path.
 3. Spawn one subagent, the one for the tier, with the prompt of `references/prompt.md`. One, never two.
 4. Check the report exists there with its sections, filling in what is missing.
-5. Commit and push from the state clone per `references/destination.md`.
+5. Commit the report in the state clone per `references/destination.md` (through `bin/state-commit.sh`; the push
+   runs in the background).
 6. Give the user 3 to 6 sentences and the path, never the report pasted into the chat.
 
-**Done when** the report is committed and pushed in the state clone and the user has the path. Research
+**Done when** the report is committed in the state clone and the user has the path. Research
 **never changes product code**: follow-up work is proposed in the report's `## Conclusion`, not committed.

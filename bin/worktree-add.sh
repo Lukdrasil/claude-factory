@@ -1,18 +1,20 @@
 #!/bin/sh
 # The task worktree, path and branch in one call (T-150), so the rule that lived in four prose files lives in
-# one script: `$WORK_DIR/<key>/<task-id>/` on `feat/<id>-<slug>` for a parent task, cut from the repo's
-# default branch, and on `block/<id>` for a block, cut from the parent's `branch:`. The branch is written into
+# one script: `$WORK_DIR/<key>/<task-id>/` on `feat/<id>-<slug>` for a parent task, cut from its base (the task's
+# `base_branch:`, else the repo's `default_branch:`) as `origin/<base>` after a `git fetch origin <base>`, the
+# local branch when the fetch fails or the remote has none, and on `block/<id>` for a block, cut from the parent's `branch:`. The branch is written into
 # the task's `branch:` through state-report.sh, which is the only writer of task frontmatter.
 #
 #   worktree-add.sh <task-id> [--from <branch>] [--state <dir>]
 #                             the commit-ish the branch is cut from, instead of the computed one
 #                                              the state clone; default $WORK_DIR/state, else from the cwd
 #
-# T-164, the stack: a block is cut from the branch of the last block in its `depends_on:` (the highest numbered
-# one when there are several) and from the parent's `branch:` when it depends on nothing, so blocks of one wave
-# still share a base and stay parallel. The base is recorded as `base: <branch>` in the block's progress file,
-# which is what block-mr.sh targets its MR at and what restack.sh walks, and the commit it was cut from as
-# `base_sha: <sha>` beside it (T-228 A7).
+# 3.4 of the agent-org plan: a block is cut from the parent's `branch:`, the work branch, when its wave starts,
+# whatever its `depends_on:` says, because every block of a wave is merged into the work branch before the next
+# wave starts. The base is recorded as `base: <branch>` in the block's progress file, which is what block-mr.sh
+# targets its MR at, and the commit it was cut from as `base_sha: <sha>` beside it (T-228 A7). The one
+# exception is a task stacked before (T-164): a block whose progress file already records a `block/` base keeps
+# it while that branch exists in the clone, which is what restack.sh still walks.
 #
 # Exit 0 with `path: <dir>` and `branch: <branch>` on stdout, plus `base: <branch>` for a block. An existing worktree whose HEAD is already the
 # task's branch is a resume: the same two lines, exit 0, nothing created. A resumed block whose base moved is
@@ -62,13 +64,6 @@ branch_of() { # <task file>
   bo=$(sed -n 's/^branch:[[:space:]]*//p' "$1" | head -n1)
   case "$bo" in null|'~') bo='' ;; esac
   printf '%s' "$bo"
-}
-
-# the block ids of a `depends_on: [T-300-01, T-300-02]` line, one per line, sorted, so the last one is the
-# highest numbered block the stack has to be cut from (T-164)
-deps_of() { # <task file>
-  sed -n 's/^depends_on:[[:space:]]*//p' "$1" | head -n1 \
-    | tr -d '[]",' | tr ' ' '\n' | while read -r d; do if is_block_id "$d"; then printf '%s\n' "$d"; fi; done | sort_ids || :
 }
 
 # `base: <branch>` and `base_sha: <sha>` in the block's progress file, the record of what the block branch was cut
@@ -129,16 +124,12 @@ if is_block_id "$id"; then
     [ -n "$ptask" ] || die "block $id: its parent $parent resolves to no task file under $state/repos/*/tasks"
     base=$(branch_of "$ptask")
     [ -n "$base" ] || die "block $id: parent $parent has no 'branch:' in $ptask, so create the session worktree of $parent first"
-    # the stack of T-164: a block is cut from the branch of the last block it depends on, so its MR carries only
-    # its own diff; a block with no dependency is cut from the session branch and its wave stays parallel
-    dep=$(deps_of "$task" | tail -n1)
-    if [ -n "$dep" ]; then
-      dtask=$(task_of "$dep" || :)
-      [ -n "$dtask" ] || die "block $id: its dependency $dep resolves to no task file under $state/repos/*/tasks"
-      dbranch=$(branch_of "$dtask")
-      [ -n "$dbranch" ] || die "block $id: its dependency $dep has no 'branch:' in $dtask, so create the worktree of $dep first"
-      base=$dbranch
-    fi
+    # why: a task stacked before 3.4 resumes on the block branch its progress file records; once that branch is
+    # why: gone (merged and deleted) the work branch is the base, as for every new block
+    recorded=$(sed -n 's/^base:[[:space:]]*//p' "$state/repos/$key/progress/$id.md" 2>/dev/null | head -n1)
+    case "$recorded" in
+      block/*) if git -C "$clone" show-ref --verify --quiet "refs/heads/$recorded"; then base=$recorded; fi ;;
+    esac
 else
     branch=$task_branch
     if [ -z "$branch" ]; then
@@ -149,9 +140,14 @@ else
       branch="feat/$id"
       [ -z "$slug" ] || branch="feat/$id-$slug"
     fi
-    base=$(yml_field "$key" default_branch)
+    base=$(task_base "$task" "$key")
     [ -n "$base" ] || base=$(git -C "$clone" symbolic-ref --short HEAD 2>/dev/null) || base=''
     [ -n "$base" ] || die "repo $key has no 'default_branch:' in $state/repos.yml and its clone is on no branch: pass --from <branch>"
+    # why: the local branch of the human's clone may be behind the remote; a new task starts from the remote's
+    if [ -z "$from" ] && git -C "$clone" fetch --quiet origin "$base" 2>/dev/null \
+      && git -C "$clone" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null; then
+      base="origin/$base"
+    fi
 fi
 [ -z "$from" ] || base=$from
 

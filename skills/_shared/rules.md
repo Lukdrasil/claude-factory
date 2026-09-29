@@ -17,7 +17,7 @@ yourself before you record it.
 
 **Self-report.** At the end you write two things, once: the progress snapshot of
 `<plugin-root>/skills/_shared/progress-and-push.md` and one status, both through
-`<plugin-root>/bin/state-report.sh`. Never `done`, `ready`, `in_progress` or `stalled`.
+`<plugin-root>/bin/state-report.sh`. Never `done` or `ready`.
 
 **Hooks refuse, they do not remind.** A test write once the phase is `implement`, a comment with no class
 prefix, an em dash or en dash, a self-report with no fresh evidence: the deny message carries the fix.

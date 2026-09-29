@@ -1,8 +1,8 @@
 #!/bin/sh
-# The local twin of the dashboard's proposal gate (the Proposals page; StateRepository.CurateProposalAsync and
-# EditProposalAsync), the posture without a dashboard (ADR-0050): approve moves a proposal to its target — the
-# path without `proposals/`, an ADR proposal numbered on the way out — reject deletes it, edit rewrites it from
-# a file; every decision exactly one commit with the dashboard's message. Nothing is pushed.
+# The proposal gate of the standalone posture (ADR-0050): approve moves a proposal to its target (the path
+# without `proposals/`, an ADR proposal numbered on the way out) and deletes every file its `Replaces: <path>,
+# <path>` lines name (a consolidation retires its sources in the same commit), reject deletes it, edit rewrites it
+# from a file; every decision exactly one commit. Nothing is pushed.
 #
 #   curate-apply.sh list [--state <dir>]                            the queued proposals, one relative path per line
 #   curate-apply.sh approve <proposal> [<target>] [--reason <text>] [--state <dir>]
@@ -10,10 +10,10 @@
 #   curate-apply.sh edit <proposal> --body <file> [--reason <text>] [--state <dir>]   cwd = the state clone unless --state
 #
 # Exit 1 with the reason when the proposal is not in the queue or the target is refused (it exists, is not .md,
-# carries a backslash — a Windows separator git would keep as one filename segment — has an empty/./.. segment,
+# carries a backslash, a Windows separator git would keep as one filename segment, has an empty/./.. segment,
 # stays under proposals/, or lies outside memory/global, repos/<key>/memory, repos/<key>/adr,
-# repos/<key>/architecture, agents/<agent>/memory); nothing written. --reason appends " — <text>" to the fixed
-# commit message.
+# repos/<key>/architecture, agents/<agent>/memory, repos/<key>/agents/<agent>/memory), or a `Replaces:` path does
+# not exist or is refused the same way; nothing written. --reason appends ", <text>" to the fixed commit message.
 set -eu
 
 cmd='' proposal='' target='' body='' state='' commit_reason=''
@@ -38,11 +38,12 @@ done
 # clone, the standalone layout's $WORK_DIR/state, otherwise the cwd
 . "$(dirname -- "$0")/lib-tasks.sh"
 [ -n "$state" ] || state=$(resolve_state_dir "$(pwd)")
-[ -d "$state/.git" ] || die "$state is not a state clone — run from one or pass --state <dir>"
+[ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
-# StateRepository.Proposals over ProposalGlobs: the top level of the five queues, sorted bytewise.
+# The queued proposals: the top level of the six queues, sorted bytewise. The repo x agent queue is where a
+# session's lessons land (agent-org plan 3.8); the daily pass judges it.
 list() {
-  (cd "$state" && for q in repos/*/memory/proposals memory/global/proposals repos/*/adr/proposals repos/*/architecture/proposals agents/*/memory/proposals; do
+  (cd "$state" && for q in repos/*/memory/proposals memory/global/proposals repos/*/adr/proposals repos/*/architecture/proposals agents/*/memory/proposals repos/*/agents/*/memory/proposals; do
     [ -d "$q" ] || continue
     for f in "$q"/*.md; do
       [ -f "$f" ] || continue
@@ -60,7 +61,8 @@ repo_keys() {
   done
 }
 
-# StateRepository.Unprefixed / AdrNumber / AdrSlug / NextAdrNumber / AdrDestination / PrimaryTarget / CheckTarget.
+# The name and target helpers: the ADR prefix, number and slug, the next ADR number, the destination and the
+# target checks.
 unprefixed() { case "$1" in [Aa][Dd][Rr]-*) printf '%s\n' "${1#????}" ;; *) printf '%s\n' "$1" ;; esac; }
 
 adr_number() { unprefixed "$1" | sed -n 's/^\([0-9][0-9]*\).*/\1/p' | sed 's/^0*//'; }
@@ -117,12 +119,21 @@ check_target() { # <relative> → the reason on stdout, nothing when the target 
   for r in $roots; do
     case "$1" in "$r"/*) return ;; esac
   done
-  echo "the target must live under $(printf '%s' "$roots" | sed 's/ /, /g'), agents/<agent>/memory"
+  # repos/<key>/agents/<agent>/memory, the agent one segment
+  for key in $(repo_keys); do
+    case "$1" in "repos/$key/agents/"*) ct_rest=${1#"repos/$key/agents/"}; case "${ct_rest#*/}" in memory/*) return ;; esac ;; esac
+  done
+  echo "the target must live under $(printf '%s' "$roots" | sed 's/ /, /g'), agents/<agent>/memory, repos/<key>/agents/<agent>/memory"
+}
+
+replaced() { # <proposal> → the paths its `Replaces:` lines name, one per line, backticks and blanks trimmed
+  tr -d '\r' < "$state/$1" | sed -n 's/^Replaces:[[:space:]]*//p' | tr ',' '\n' \
+    | sed 's/^[[:space:]`]*//; s/[[:space:]`]*$//' | grep -v '^$' || :
 }
 
 commit() { # <message> <path>…
   msg=$1; shift
-  [ -z "$commit_reason" ] || msg="$msg — $commit_reason"
+  [ -z "$commit_reason" ] || msg="$msg, $commit_reason"
   if [ -n "$(git -C "$state" config user.email || :)" ]; then
     git -C "$state" commit -q -m "$msg" -- "$@"
   else
@@ -152,16 +163,37 @@ case "$cmd" in
     reason=$(check_target "$dst")
     [ -z "$reason" ] || die "$reason"
     [ ! -e "$state/$dst" ] || die "$dst already exists"
+    # every `Replaces:` path is checked before anything is written, so a refusal leaves the clone as it was
+    rs=$(replaced "$proposal")
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      reason=$(check_target "$r")
+      [ -z "$reason" ] || die "Replaces: $r: $reason"
+      [ -f "$state/$r" ] || die "Replaces: $r does not exist"
+    done <<EOF
+$rs
+EOF
     mkdir -p "$state/$(dirname "$dst")"
     # an agent may leave its proposal untracked; git mv refuses a path git does not know, and a pathspec git
-    # knows nothing about aborts the whole commit — so stage it first and name only the paths that survive
+    # knows nothing about aborts the whole commit, so stage it first and name only the paths that survive
     git -C "$state" add -- "$proposal"
     git -C "$state" mv "$proposal" "$dst"
-    if git -C "$state" cat-file -e "HEAD:$proposal" 2>/dev/null; then
-      commit "chore(proposal): approve $proposal -> $dst" "$proposal" "$dst"
-    else
-      commit "chore(proposal): approve $proposal -> $dst" "$dst"
-    fi ;;
+    set -- "$dst"
+    ! git -C "$state" cat-file -e "HEAD:$proposal" 2>/dev/null || set -- "$@" "$proposal"
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
+      if git -C "$state" cat-file -e "HEAD:$r" 2>/dev/null; then
+        git -C "$state" rm -q -f -- "$r"
+        set -- "$@" "$r"
+      else
+        # never committed: only the file to take away, nothing for the commit
+        git -C "$state" rm -q -f --cached --ignore-unmatch -- "$r"
+        rm -f -- "$state/$r"
+      fi
+    done <<EOF
+$rs
+EOF
+    commit "chore(proposal): approve $proposal -> $dst" "$@" ;;
   reject)
     [ -n "$proposal" ] && [ -z "$target" ] || die "usage: curate-apply.sh reject <proposal> [--state <dir>]"
     in_queue
@@ -172,7 +204,7 @@ case "$cmd" in
       # never committed: there is nothing in the history to record, only the file to take away
       git -C "$state" rm -q -f --ignore-unmatch -- "$proposal"
       rm -f -- "$state/$proposal"
-      echo "curate-apply: $proposal was never committed — removed, no commit to make" >&2
+      echo "curate-apply: $proposal was never committed, removed, no commit to make" >&2
     fi ;;
   edit)
     [ -n "$proposal" ] && [ -z "$target" ] && [ -n "$body" ] || die "usage: curate-apply.sh edit <proposal> --body <file> [--state <dir>]"
@@ -181,5 +213,5 @@ case "$cmd" in
     cat -- "$body" > "$state/$proposal"
     git -C "$state" add -- "$proposal"
     commit "chore(proposal): edit $proposal" "$proposal" ;;
-  *) die "unknown subcommand '$cmd' — one of list, approve, reject, edit" ;;
+  *) die "unknown subcommand '$cmd', one of list, approve, reject, edit" ;;
 esac

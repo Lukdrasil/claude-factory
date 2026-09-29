@@ -10,7 +10,7 @@ write into `memory/` (P6, ADR-0011). `block-research` owns the session mechanics
 
 ## Preconditions
 
-- In the state clone `../state`, the scope is `memory/global/*.md` and `repos/<key>/memory/*.md`.
+- In the state clone `$WORK_DIR/state`, the scope is `memory/global/*.md` and `repos/<key>/memory/*.md`.
 - The `proposals/` subdirectories are out of scope: a pending proposal is not memory.
 - At most **five proposals per pass**: the gate is human time.
 - Code, tasks and docs are out of scope: a remedy that changes one is a proposed follow-up task.
@@ -29,14 +29,14 @@ write into `memory/` (P6, ADR-0011). `block-research` owns the session mechanics
 4. **Write one proposal per finding**, in the format below; a mined lesson is new and carries no `Replaces:`.
    Over the limit, keep those that shrink memory most; the rest stay open in the report. Done when no
    proposal-less finding passes as finished work.
-5. **Report** into `../state/repos/<key>/research/<id>-<slug>.md`, **under 200 words**: the counts first
+5. **Report** into `$WORK_DIR/state/repos/<key>/research/<id>-<slug>.md`, **under 200 words**: the counts first
    (files read, findings, files left once every proposal is approved, tasks with tool failures), then one
    line per finding and per pattern, naming files by path. Done when every finding is in it.
 
 ## Proposal format
 
-One file per proposal, beside the memory it consolidates: `../state/memory/global/proposals/<id>-<slug>.md`,
-or `../state/repos/<key>/memory/proposals/<id>-<slug>.md` for a repo lesson. Never deeper, the gate looks no
+One file per proposal, beside the memory it consolidates: `$WORK_DIR/state/memory/global/proposals/<id>-<slug>.md`,
+or `$WORK_DIR/state/repos/<key>/memory/proposals/<id>-<slug>.md` for a repo lesson. Never deeper, the gate looks no
 further. The body is the lesson itself, **under 80 words**: a curator decides from it alone.
 
 ```markdown
@@ -49,6 +49,6 @@ Replaces: <path to source 1>, <path to source 2>
 
 `Replaces:` lists existing paths relative to the state repo root, each gone on approval. A duplicate
 merges both evidences; a contradiction says in `Why:` why the other falls; a staleness keeps the rewrite, or
-proposes that the lesson goes away without a replacement. The gate has no delete button: the curator removes
-the sources with git and rejects it (RUNBOOK 4). A human decides, at the gate (P6) or through
+proposes that the lesson goes away without a replacement. On approval `curate-apply.sh` deletes
+every path the `Replaces:` line names in the approving commit. A human decides, at the gate (P6) or through
 `memory-curator` (ADR-0052).

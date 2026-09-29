@@ -6,7 +6,6 @@ a generated file looks wrong, to tell a plan defect from a script defect:
 - `tier`, `archetype`, `complexity` - copied 1:1 from the plan's proposal. The grill made those decisions
   against `<plugin-root>/skills/_shared/tiers.md` and you do not remake them here. For a `red` tier, remind
   the human that spec-critic comes before the flip to `ready`.
-- `runtime` - `default`, until the task needs its own isolation or image.
 - `depends_on` - only ids of tasks from this batch or already existing ones, no cycles. Dispatch waits for
   their `done`.
 - `branch` - the prefix per archetype (`feat/`, `fix/`, `refactor/`, `research/`) plus the slug, written

@@ -1,16 +1,15 @@
 #!/bin/sh
-# SessionStart hook, the standalone posture (ADR-0049): the context a worker gets baked into its CLAUDE.md
-# (ClaudeMdBuilder, ADR-0013): the repo's toolset, then one index line per memory file of the repo and of the
+# SessionStart hook, the standalone posture (ADR-0049): the context a session starts with (ADR-0013): the
+# repo's toolset, then one index line per memory file of the repo and of the
 # global memory instead of their bodies, top level only, never
-# proposals/ — is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
+# proposals/, is injected as additionalContext for a registered clone, i.e. one whose toplevel is a `path:` in
 # $WORK_DIR/state/repos.yml, preceded by the session's identity line (its session_id from the hook stdin and the
-# `factory@<host>:<session_id>` owner string of ADR-0050). An unregistered cwd gets a one-line nudge towards the
-# factory skill's init; a worker (HARNESS_WORKER=1) already has the CLAUDE.md and prints nothing. Exit 0 always.
-# Two lines ride along with that context when they apply: the standalone-posture line (T-187, with no
-# DASHBOARD_URL there is no dashboard and no gate that is not a command) and the stale-plugin warning of
-# incident C below.
+# `factory@<host>:<session_id>` owner string of ADR-0050). The state clone ($WORK_DIR/state) gets that identity
+# line and the memory passes that are due (pass-stamp.sh --due). Any other unregistered cwd gets the identity line
+# and a one-line nudge towards the factory skill's init. Exit 0 always.
+# Two lines ride along with that context: the standalone-posture line (T-187, there is no dashboard and no gate
+# that is not a command) and, when it applies, the stale-plugin warning of incident C below.
 set -u
-[ "${HARNESS_WORKER:-}" != 1 ] || exit 0
 
 . "$(dirname -- "$0")/lib-tasks.sh"
 stdin=$(cat)
@@ -23,9 +22,28 @@ emit() { node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:s}}))})'; }
 
+identity_line() {
+  host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
+  [ -n "$host" ] || host=localhost
+  printf 'Session identity: session_id %s, owner string factory@%s:%s, use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
+}
+# The state clone itself: the identity, and the memory passes that are due (pass-stamp.sh --due), so the human
+# can start them. No repo context and no playbook here; the
+# due list is printed nowhere else.
+st_top=$(git -C "${WORK_DIR:-/nonexistent}/state" rev-parse --show-toplevel 2>/dev/null) || st_top=''
+if [ -n "$st_top" ] && [ "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" = "$st_top" ]; then
+  { [ -z "$sid" ] || identity_line
+    due=$(for k in daily weekly; do sh "$(dirname -- "$0")/pass-stamp.sh" --due "$k" --state "$WORK_DIR/state" 2>/dev/null; done)
+    if [ -n "$due" ]; then
+      printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one with /claude-factory:memory-daily <scope>, a weekly one with /claude-factory:memory-weekly <scope>:\n%s\n' "$due"
+    fi; } | emit
+  exit 0
+fi
+
 key=$(repo_key_of_cwd "$cwd")
 if [ -z "$key" ]; then
-  printf '%s' "This clone is not registered in a factory state repo (WORK_DIR/state/repos.yml has no path: for it) — run the factory skill's init (factory init) for this repo to register it." | emit
+  { [ -z "$sid" ] || identity_line
+  printf '%s' "This clone is not registered in a factory state repo (WORK_DIR/state/repos.yml has no path: for it), run the factory skill's init (factory init) for this repo to register it."; } | emit
   exit 0
 fi
 
@@ -90,26 +108,20 @@ stale_plugin_warning() {
   # lesson C (2026-09-07): nothing told the session its own session_id, so the coordinator wrote an owner: it
   # guessed (a bridge/cse_ id) and the owner-based Stop lookup (owned_task_ids) never found its tasks. The id
   # is in the hook stdin, so the session is told the exact owner string of ADR-0050 first thing.
-  if [ -n "$sid" ]; then
-    host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
-    [ -n "$host" ] || host=localhost
-    printf 'Session identity: session_id %s, owner string factory@%s:%s — use exactly this for owner: in every task this session claims (ADR-0050); a bridge/cse_ id is not it.\n' "$sid" "$host" "$sid"
-  fi
+  [ -z "$sid" ] || identity_line
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
-  # every text they had read named one and the single sentence that says otherwise lives in a skill a worker
-  # never loads. The switch is DASHBOARD_URL, the same one state-report.sh and policy-guard.sh read.
-  if [ -z "${DASHBOARD_URL:-}" ]; then
-    printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
-  fi
+  # every text they had read named one and the single sentence that says otherwise lives in a skill a session
+  # may never load.
+  printf 'Standalone posture (ADR-0050): there is no dashboard. Every human gate is a command: task-approve.sh, task-done.sh, factory approve / done. Never tell the user to do something in a dashboard.\n'
   stale_plugin_warning
-  printf 'Factory context for repo %s from the state repo at %s/state (ADR-0049): the sections below are concatenated from there, not files of this clone — do not edit them here; a lesson worth keeping goes through a memory proposal (ADR-0011).\n' "$key" "$WORK_DIR"
+  printf 'Factory context for repo %s from the state repo at %s/state (ADR-0049): the sections below are concatenated from there, not files of this clone, do not edit them here; a lesson worth keeping goes through a memory proposal (ADR-0011).\n' "$key" "$WORK_DIR"
   if [ -n "${FACTORY_MEMORY_OVER_BUDGET:-}" ]; then
-    printf 'Warning: the %s memory is over its budget — consolidate it (memory-consolidate) before adding to it.\n' "$FACTORY_MEMORY_OVER_BUDGET"
+    printf 'Warning: the %s memory is over its budget, consolidate it (memory-consolidate) before adding to it.\n' "$FACTORY_MEMORY_OVER_BUDGET"
   else
     ! over_budget "repo:$key" \
-      || printf 'Warning: the repo:%s memory is over its budget — consolidate it (memory-consolidate) before adding to it.\n' "$key"
+      || printf 'Warning: the repo:%s memory is over its budget, consolidate it (memory-consolidate) before adding to it.\n' "$key"
     ! over_budget global \
-      || printf 'Warning: the global memory is over its budget — consolidate it (memory-consolidate) before adding to it.\n'
+      || printf 'Warning: the global memory is over its budget, consolidate it (memory-consolidate) before adding to it.\n'
   fi
   if [ -f "$state/repos/$key/toolset.md" ]; then
     printf '\n<!-- repos/%s/toolset.md -->\n\n' "$key"

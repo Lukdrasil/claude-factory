@@ -1,7 +1,8 @@
 #!/bin/sh
-# Counts one memory scope's top-level *.md — lessons and words — and warns "over budget" when lessons > 40 or
-# words > 3000, whichever first (T-012). Scopes: repo:<key>, global, agent:<name>. --all reports every scope
-# present in the state repo. Exit 0 always, even for a scope with no memory dir at all (0 lessons, 0 words).
+# Counts one memory scope's top-level *.md (lessons and words) and warns "over budget" when lessons > 40 or
+# words > 3000, whichever first (T-012). Scopes: repo:<key>, global, agent:<name>, and repo-agent:<key>/<agent>
+# for repos/<key>/agents/<agent>/memory (agent-org plan 3.5). --all reports every scope present in the state repo.
+# Exit 0 always, even for a scope with no memory dir at all (0 lessons, 0 words); exit 1 for a malformed scope.
 #
 #   memory-budget.sh <scope> [--state <dir>]
 #   memory-budget.sh --all [--state <dir>]
@@ -28,13 +29,17 @@ scope_dir() { # <scope> → the memory dir relative to $state, nothing when the 
     repo:*) printf '%s\n' "repos/${1#repo:}/memory" ;;
     global) printf '%s\n' "memory/global" ;;
     agent:*) printf '%s\n' "agents/${1#agent:}/memory" ;;
+    repo-agent:*/*)
+      sd_k=${1#repo-agent:}; sd_a=${sd_k#*/}; sd_k=${sd_k%%/*}
+      case "$sd_k/$sd_a" in /*|*/|*/*/*|.*|*/.*) return ;; esac
+      printf '%s\n' "repos/$sd_k/agents/$sd_a/memory" ;;
   esac
 }
 
 report() { # <scope>
   name=$1
   dir=$(scope_dir "$name")
-  [ -n "$dir" ] || die "unknown scope '$name' — one of repo:<key>, global, agent:<name>"
+  [ -n "$dir" ] || die "unknown scope '$name', one of repo:<key>, global, agent:<name>, repo-agent:<key>/<agent>"
   lessons=0 words=0
   if [ -d "$state/$dir" ]; then
     set -- "$state/$dir"/*.md
@@ -51,6 +56,12 @@ if [ "$all" = 1 ]; then
     [ -d "$d" ] || continue
     key=${d%/memory}; key=${key##*/}
     report "repo:$key"
+  done
+  for d in "$state"/repos/*/agents/*/memory; do
+    [ -d "$d" ] || continue
+    name=${d%/memory}; name=${name##*/}
+    key=${d%/agents/*}; key=${key##*/}
+    report "repo-agent:$key/$name"
   done
   [ ! -d "$state/memory/global" ] || report global
   for d in "$state"/agents/*/memory; do

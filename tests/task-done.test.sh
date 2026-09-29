@@ -2,7 +2,8 @@
 # task-done.sh over a throwaway state clone (T-186): the two endings a task has. A triage, ops or research task
 # carries no mr_url and ends in `closed`; every other archetype still needs the validated MR and ends in `done`.
 # Both release `owner:` on the parent and on every block, because the Stop hook finds a session's tasks by owner
-# and an owned terminal task is re-reported until the round budget runs out.
+# and an owned terminal task is re-reported until the round budget runs out. The commit stays local (the push is
+# state-push.sh's), and a parent that can be archived moves to repos/<key>/archive/<YYYY-MM>/ right after.
 set -u
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
 tmp=$(mktemp -d)
@@ -38,9 +39,16 @@ $2(demo): $1
 EOF
 }
 
-field() { # <id> <key>
-  sed -n "s/^$2:[[:space:]]*//p" "$state/repos/demo/tasks/$1.md" | head -n1
+# the task file wherever it is, live or archived
+file_of() { # <id>
+  for f in "$state/repos/demo/tasks/$1.md" "$state"/repos/demo/archive/*/tasks/"$1.md"; do
+    [ -f "$f" ] && { printf '%s' "$f"; return 0; }
+  done
 }
+field() { # <id> <key>
+  sed -n "s/^$2:[[:space:]]*//p" "$(file_of "$1")" 2>/dev/null | head -n1
+}
+month=$(date +%Y-%m)
 
 commit_all() {
   git -C "$state" add -A
@@ -55,6 +63,8 @@ check 'triage task-done exits 0' 0 "$rc"
 [ "$rc" = 0 ] || printf '  output: %s\n' "$out"
 check 'triage parent is closed' closed "$(field T-001 status)"
 check 'triage parent owner released' null "$(field T-001 owner)"
+check 'the closed parent is archived in this month' "$state/repos/demo/archive/$month/tasks/T-001.md" "$(file_of T-001)"
+check 'it is no longer live' no "$([ -e "$state/repos/demo/tasks/T-001.md" ] && echo yes || echo no)"
 
 # --- an ops and a research task end the same way -----------------------------
 task T-004 ops in_progress null 'factory@host:sess-1'
@@ -86,9 +96,9 @@ check 'bugfix parent is done'       done "$(field T-003 status)"
 check 'bugfix parent owner released' null "$(field T-003 owner)"
 check 'the block is done'           done "$(field T-003-01 status)"
 check 'the block owner is released' null "$(field T-003-01 owner)"
-if git -C "$state" log -1 --format=%s | grep -q 'chore(T-003): review . done, blocks included'; then
+if git -C "$state" log -1 --format=%s HEAD~1 | grep -q 'chore(T-003): review . done, blocks included'; then
   printf 'PASS the commit names the transition\n'
-else printf 'FAIL the commit names the transition: %s\n' "$(git -C "$state" log -1 --format=%s)"; fail=1; fi
+else printf 'FAIL the commit names the transition: %s\n' "$(git -C "$state" log -1 --format=%s HEAD~1)"; fail=1; fi
 if [ -z "$(git -C "$state" status --porcelain -- repos/demo/tasks)" ]; then
   printf 'PASS the writes are committed\n'
 else printf 'FAIL the writes are committed\n'; fail=1; fi
@@ -124,11 +134,11 @@ check '--close parent is closed'            closed "$(field T-007 status)"
 check '--close parent owner released'       null   "$(field T-007 owner)"
 check '--close block is closed'             closed "$(field T-007-01 status)"
 check '--close block owner released'        null   "$(field T-007-01 owner)"
-if git -C "$state" log -1 --format=%B | grep -q 'superseded by T-009'; then
+if git -C "$state" log -1 --format=%B HEAD~1 | grep -q 'superseded by T-009'; then
   printf 'PASS the --close commit carries the reason\n'
-else printf 'FAIL the --close commit carries the reason: %s\n' "$(git -C "$state" log -1 --format=%B)"; fail=1; fi
-has_line 'the parent progress file has a **closed** <reason> line' \
-  '^\*\*closed\*\*.*superseded by T-009' "$state/repos/demo/progress/T-007.md"
+else printf 'FAIL the --close commit carries the reason: %s\n' "$(git -C "$state" log -1 --format=%B HEAD~1)"; fail=1; fi
+has_line 'the parent progress file has a **closed** <reason> line, archived with it' \
+  '^\*\*closed\*\*.*superseded by T-009' "$state/repos/demo/archive/$month/progress/T-007.md"
 if [ -z "$(git -C "$state" status --porcelain -- repos/demo)" ]; then
   printf 'PASS the --close writes are committed\n'
 else printf 'FAIL the --close writes are committed: %s\n' "$(git -C "$state" status --porcelain -- repos/demo)"; fail=1; fi
@@ -156,27 +166,59 @@ sh "$bin/task-done.sh" T-011 --close --state "$state" >/dev/null 2>&1; rc=$?
 check '--close with no reason exits 1' 1 "$rc"
 check '--close with no reason leaves the status' review "$(field T-011 status)"
 
-# --- the push: the state root gets the done commit ---------------------------
+# --- no push: the done commit stays local, the origin is state-push.sh's -----
 git init -q --bare "$tmp/state-origin.git"
 git -C "$state" remote add origin "$tmp/state-origin.git"
 git -C "$state" push -q -u origin HEAD >/dev/null 2>&1
 task T-012 bugfix review https://forge.test/mr/12 'factory@host:sess-1'
 commit_all
 git -C "$state" push -q >/dev/null 2>&1
+root_before=$(git -C "$tmp/state-origin.git" rev-parse HEAD)
 sh "$bin/task-done.sh" T-012 --state "$state" >/dev/null 2>&1; rc=$?
 check 'done with an origin exits 0' 0 "$rc"
-check 'the done commit is pushed' "$(git -C "$state" rev-parse HEAD)" \
-  "$(git -C "$tmp/state-origin.git" rev-parse HEAD 2>/dev/null)"
+check 'done with an origin commits done' done "$(field T-012 status)"
+check 'the done commit is not pushed' "$root_before" "$(git -C "$tmp/state-origin.git" rev-parse HEAD 2>/dev/null)"
 
-# --- a state root that refuses the push is exit 2, the commit stays local ---
+# --- an unreachable state root changes nothing: exit 0, the commit is local ---
 git -C "$state" remote set-url origin "$tmp/no-such-origin.git"
 task T-013 bugfix review https://forge.test/mr/13 'factory@host:sess-1'
 commit_all
 out=$(sh "$bin/task-done.sh" T-013 --state "$state" 2>&1); rc=$?
-check 'a refused push exits 2' 2 "$rc"
-check 'a refused push still commits done' done "$(field T-013 status)"
+check 'an unreachable root still exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'an unreachable root still commits done' done "$(field T-013 status)"
 git -C "$state" remote set-url origin "$tmp/state-origin.git"
 git -C "$state" push -q >/dev/null 2>&1
+
+# --- a parent an open task depends on is done but stays live, and says why ---
+task T-015 bugfix review https://forge.test/mr/15 'factory@host:sess-1'
+task T-016 bugfix ready  null 'factory@host:sess-1'
+sed -i 's/^mr_url: null$/depends_on: [T-015]\nmr_url: null/' "$state/repos/demo/tasks/T-016.md"
+commit_all
+out=$(sh "$bin/task-done.sh" T-015 --state "$state" 2>&1); rc=$?
+check 'done with an open dependent exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'the parent is done' done "$(field T-015 status)"
+check 'the parent stays live' "$state/repos/demo/tasks/T-015.md" "$(file_of T-015)"
+if printf '%s\n' "$out" | grep -q 'T-016'; then printf 'PASS the stderr names the open dependent\n'
+else printf 'FAIL the stderr names the open dependent: %s\n' "$out"; fail=1; fi
+
+# --- the archive takes the blocks and the progress file along -----------------
+task T-017    bugfix review https://forge.test/mr/17 'factory@host:sess-1'
+task T-017-01 bugfix review null 'factory@host:sess-1'
+printf '# T-017\n' > "$state/repos/demo/progress/T-017.md"
+commit_all
+sh "$bin/task-done.sh" T-017 --state "$state" >/dev/null 2>&1; rc=$?
+check 'done with a block exits 0' 0 "$rc"
+check 'the parent is archived' "$state/repos/demo/archive/$month/tasks/T-017.md" "$(file_of T-017)"
+check 'the block is archived' "$state/repos/demo/archive/$month/tasks/T-017-01.md" "$(file_of T-017-01)"
+check 'the progress file is archived' yes \
+  "$([ -f "$state/repos/demo/archive/$month/progress/T-017.md" ] && echo yes || echo no)"
+check 'the archive is its own commit' yes \
+  "$(git -C "$state" log -1 --format=%s | grep -q '^chore(T-017): archive' && echo yes || echo no)"
+check 'right after the done commit' yes \
+  "$(git -C "$state" log -1 --format=%s HEAD~1 | grep -q '^chore(T-017): review . done' && echo yes || echo no)"
+check 'the tree is clean after the archive' '' "$(git -C "$state" status --porcelain -- repos)"
 
 # --- T-228 Q2/Q16: after the push, clean worktrees and pushed branches of the task and its blocks go ---
 # The registered clone has an origin; T-010 and T-010-01 are clean and pushed, T-010-02 is pushed but its

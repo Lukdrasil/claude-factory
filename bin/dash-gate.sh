@@ -1,6 +1,6 @@
 #!/bin/sh
 # PreToolUse dash gate (P7 "the text describes, the hook enforces"): the deterministic twin of the dash rule in
-# prompts/worker-system-prompt.md. A Write/Edit/MultiEdit may not add a line carrying an em dash (U+2014) or an
+# skills/_shared/rules.md. A Write/Edit/MultiEdit may not add a line carrying an em dash (U+2014) or an
 # en dash (U+2013); the hyphen-minus is the only dash the harness writes. Every other character passes.
 # exit 2 = deny, the reason on stderr reaches the agent.
 # Deny on positive evidence only: a line that already stood in the text being replaced, or in the file a Write

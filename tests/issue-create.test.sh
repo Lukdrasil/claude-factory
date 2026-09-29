@@ -41,6 +41,7 @@ clone glhttps https://gitlab.example.com/group/sub/widgets.git
 clone glscp git@gitlab.example.com:group/widgets.git
 clone glsshport ssh://git@gitlab.example.com:2222/g/r.git
 clone glhttpsport https://gitlab.example.com:8443/g/r
+clone glhttpport http://localhost:8929/g/r.git
 clone noorigin ''
 printf 'noclone: {url: "https://github.com/acme/gone.git", default_branch: main, path: "%s"}\n' "$tmp/clones/gone" >> "$state/repos.yml"
 
@@ -97,27 +98,33 @@ got=$?
 want_exit 'a failing gh label create is ignored: exit 0' 0
 want_line 'a failing gh label create is ignored: the issue is created' 'gh [issue] [create]' '[--label] [ai-drafted]'
 
-# every other host goes to glab, the body as --description-file, the whole group path in -R
+# every other host goes to glab, the body as --description-file, the whole group path in -R, as a URL: glab reads
+# a bare <host>/<group>/<repo> whose host it does not know (localhost, one not yet logged in) as a gitlab.com path
 run glhttps --title "$title" --body-file "$tmp/body.md" --state "$state"
 want_exit 'gitlab https: exit 0' 0
 want_line 'gitlab https: glab issue create with -R, title, description file and label' 'glab [issue] [create]' \
-  '[-R] [gitlab.example.com/group/sub/widgets]' "[--title] [$title]" "[--description-file] [$tmp/body.md]" \
+  '[-R] [https://gitlab.example.com/group/sub/widgets]' "[--title] [$title]" "[--description-file] [$tmp/body.md]" \
   '[--label] [ai-drafted]'
 if grep -q '^gh' "$log"; then no 'gitlab https: gh is not called' "$(tr '\n' ';' < "$log")"; else ok 'gitlab https: gh is not called'; fi
 if has "$tmp/out" 'https://forge.test/issues/7'; then ok 'gitlab https: prints the issue URL'; else no 'gitlab https: prints the issue URL' "$(cat "$tmp/out")"; fi
 
 run glscp --title "$title" --body-file "$tmp/body.md" --state "$state"
 want_exit 'gitlab scp: exit 0' 0
-want_line 'gitlab scp: -R gitlab.example.com/group/widgets' 'glab [issue] [create]' \
-  '[-R] [gitlab.example.com/group/widgets]' '[--label] [ai-drafted]'
+want_line 'gitlab scp: -R https://gitlab.example.com/group/widgets' 'glab [issue] [create]' \
+  '[-R] [https://gitlab.example.com/group/widgets]' '[--label] [ai-drafted]'
 
-# a port after the host is neither part of the host nor of owner/repo
+# the port of an ssh origin is the ssh daemon's, not the forge's, so it is dropped; the port of an http(s) origin is
+# the forge's own (F10: a self-hosted GitLab on :8929 was called on https://localhost), so it stays, with the scheme
 run glsshport --title "$title" --body-file "$tmp/body.md" --state "$state"
 want_exit 'gitlab ssh with a port: exit 0' 0
-want_line 'gitlab ssh with a port: -R gitlab.example.com/g/r' 'glab [issue] [create]' '[-R] [gitlab.example.com/g/r]'
+want_line 'gitlab ssh with a port: -R https://gitlab.example.com/g/r' 'glab [issue] [create]' '[-R] [https://gitlab.example.com/g/r]'
 run glhttpsport --title "$title" --body-file "$tmp/body.md" --state "$state"
 want_exit 'gitlab https with a port: exit 0' 0
-want_line 'gitlab https with a port: -R gitlab.example.com/g/r' 'glab [issue] [create]' '[-R] [gitlab.example.com/g/r]'
+want_line 'gitlab https with a port: -R https://gitlab.example.com:8443/g/r' 'glab [issue] [create]' \
+  '[-R] [https://gitlab.example.com:8443/g/r]'
+run glhttpport --title "$title" --body-file "$tmp/body.md" --state "$state"
+want_exit 'gitlab http with a port: exit 0' 0
+want_line 'gitlab http with a port: -R http://localhost:8929/g/r' 'glab [issue] [create]' '[-R] [http://localhost:8929/g/r]'
 
 # the state clone from $WORK_DIR/state when --state is not given
 : > "$log"
