@@ -368,5 +368,20 @@ else
   cat "$tmp/merr"; printf 'FAIL multiline: no block 2 written\n'; fail=1
 fi
 printf '%s\n' "$mman" | grep -qx "2 $mf2 1"; check 'multiline: depends_on reads only its leading brackets' $?
+sh "$bin/plan-lint.sh" "$mp" >/dev/null 2>&1; check 'multiline: plan-lint accepts indented lines decompose carries' $?
+
+# an indented line decompose would drop is refused by plan-lint instead of lost
+dropped() { # <label> <key named in the refusal> <awk program turning the good plan into the bad one>
+  dp="$state/repos/demo/plans/dropped-$1-plan-ready.md"
+  awk "$3" "$plan" > "$dp"
+  sh "$bin/plan-lint.sh" "$dp" >/dev/null 2>"$tmp/derr"
+  [ $? -eq 1 ]; check "plan-lint refuses an indented line under $1" $?
+  grep -q "proposal 2" "$tmp/derr" && grep -qF "$2" "$tmp/derr"; check "$1: the refusal names proposal 2 and $2" $?
+}
+dropped goal '`goal:`' '{ print } /^- goal: feat\(export\)/ { print "  - and the header too" }'
+dropped design '`design:`' '{ print } /^- design: `src\/export\/exporter.py` export_rows/ { print "  plus the cli" }'
+dropped depends_on '`depends_on:`' '{ print } $0 == "- depends_on: [1]" { print "  because both edit the module" }'
+dropped heading 'heading' '{ print } /^### 2\./ { print "  a note under the heading" }'
+dropped steps '`steps:`' '{ print } $0 == "  - a" { print "    a paragraph under the step" }'
 
 exit $fail

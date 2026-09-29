@@ -9,7 +9,9 @@ only proposals from this plan and no cycles; `docs`, `none` or the docs this tas
 `design`, the members of `## Program design` this task implements, by file and name, `none` only for a
 `research` proposal; `steps`, the work the block has to do that is neither a design member nor a doc (wiring,
 migrations, config, data, rollout), one indented `  - <step>` sub-bullet under an empty `- steps:` per step,
-or `- steps: none` with no sub-bullet, required on every proposal except `research`. A proposal that changes
+or `- steps: none` with no sub-bullet, required on every proposal except `research`. Only `context`,
+`acceptance`, `docs` and `out of scope` may continue on indented lines under their key; every other field is
+one line, and `plan-lint.sh` refuses an indented line anywhere else in a proposal. A proposal that changes
 public behaviour or architecture and still says `none` for docs needs the one sentence why. A term of `## Terms` that the product repo's `CONTEXT.md` does not define puts
 `CONTEXT.md` into the `docs` of the proposal that introduces it. Decompose does not remake these decisions; `decompose.sh` copies them 1:1.
 
