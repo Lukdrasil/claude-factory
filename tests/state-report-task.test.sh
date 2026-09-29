@@ -57,7 +57,8 @@ check 'and not the task CLAUDE.md names' no "$(has "$tmp/err" 'task T-010')"
 stop "$W/demo/T-010" nobody
 check 'self-report-check.sh for a session that owns no task passes beside a CLAUDE.md naming one' 0 "$?"
 
-# a session that owns an in_progress parent, or a block of one, is asked for its self-report. The state is a git
+# a session that owns an in_progress parent with no open block, or a block, is asked for its self-report; the
+# parent of an open block is the solve session's to report at step 15. The state is a git
 # clone here so the report the hook sends is committed and the later cases run over a clone.
 mkdir -p "$W/demo/T-013" "$W/demo/T-014" "$state/repos/demo/progress"
 task T-013 lead
@@ -79,6 +80,7 @@ rm -rf "$W/demo/.harness"
 owner_stop "$W/demo/T-014" lead2
 check 'the owner of an in_progress block is blocked' 2 "$?"
 check 'and asked for the self-report of the block' yes "$(has "$tmp/err" 'task T-014-01')"
+check 'and not of its parent, whose block is open' no "$(has "$tmp/err" 'task T-014 ')"
 
 # --base-branch: written while the task is at most ready, refused once it is past that, on a triage task and for a
 # name git would not take

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Stop hook (ADR-0009): a session must not end without a self-report a human can see:
 # status review|blocked|failed in the task, delivered through state-report.sh: a commit in the session's own
-# state clone (ADR-0050); the push to the state root happens in the background (state-push.sh).
+# state clone (ADR-0050); the push to the state root is state-push.sh, printed by every step of solve-next.sh.
 # The hook is the writer: it sends the report itself, so the agent cannot forget to.
 # A task that already carries a terminal status, `done` or `closed`, is finished and is skipped by every loop
 # below (T-186): it has no self-report left to make, and re-reporting it is a transition state-report.sh refuses,
@@ -117,6 +117,17 @@ labels=''
 add() { msgs="${msgs:+$msgs
 }$1"; labels="${labels:+$labels; }$2"; }
 
+# the solve session coordinates a parent it owns from the approval to step 15 while the blocks run, and reports
+# it at step 15: a parent with a block that is not done or closed asks for no self-report. Its blocks keep the rule.
+coordinates() { # <task id>
+  is_parent_id "$1" || return 1
+  task_files | while IFS= read -r cf; do
+    cb=$(sed -n 's/^id:[[:space:]]*//p' "$cf" | head -n1)
+    is_block_of "$1" "$cb" || continue
+    case "$(sed -n 's/^status:[[:space:]]*//p' "$cf" | head -n1)" in done|closed) ;; *) echo open; break ;; esac
+  done | grep -q open
+}
+
 for i in $ids; do
   t=$(task_of "$i")
   [ -n "${t:-}" ] && [ -f "$t" ] || continue
@@ -140,7 +151,7 @@ for i in $ids; do
   # reports a human can see, and none of them blocks the Stop.
   case "$s" in
     review|tests_ready|blocked|failed|changes_requested|done) ;;
-    *) add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md, $commit_how" \
+    *) coordinates "$i" || add "Stop blocked: task $i has status '$s'. Write the self-report (ADR-0009): in the frontmatter of $t set status to review (acceptance green, or for a block its MR open with mr_url set; in the tests phase tests_ready instead, ADR-0030), changes_requested (the block MR came back with threads to answer), blocked (you need a human decision, write the question into the progress file) or failed (acceptance not met, add a line to ## Attempts), rewrite the progress snapshot $state/repos/*/progress/$i.md, $commit_how" \
          "no self-report, task $i still has status '$s', not review|tests_ready|blocked|failed (ADR-0009)" ;;
   esac
 done

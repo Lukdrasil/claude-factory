@@ -203,5 +203,12 @@ out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
 check 'step 14 is the human review of the task MR' "^## Step 14 of 16: the task MR of T-005 for the human's review\$" "$out"
 check 'mr-open.sh opens the task MR' 'mr-open\.sh T-005' "$out"
 check 'the human reviews and merges it' 'Completion:.*human.*review and merge' "$out"
+check 'step 14 opens with state-push.sh too' "^  .*state-push\.sh --state $state\$" \
+  "$(printf '%s\n' "$out" | sed -n '/^Commands:$/{n;p;}')"
+sed -i 's/^status: in_progress$/status: review/; s/^complexity: medium$/complexity: medium\nmr_url: https:\/\/forge.test\/mr\/5/' \
+  "$state/repos/demo/tasks/T-005.md"
+out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
+check 'step 16 is the knowledge review' '^## Step 16 of 16: knowledge review for T-005$' "$out"
+check 'step 16, the last one, also ends with state-push.sh' "^  .*state-push\.sh --state $state\$" "$(printf '%s\n' "$out" | tail -n1)"
 
 exit $fail

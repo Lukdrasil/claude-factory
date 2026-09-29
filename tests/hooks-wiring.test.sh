@@ -26,9 +26,7 @@ lines=$(node -e 'const h=require(process.argv[1]);for(const [e,ms] of Object.ent
 
 # the Stop hooks that write the state clone are chained from self-report-check.sh (session-stats.sh runs at its
 # end over the same git index), so it is the only Stop hook
-stop=$(printf '%s
-' "$lines" | awk '$1 == "Stop" { print $3 }' | tr '
-' ' ')
+stop=$(printf '%s\n' "$lines" | awk '$1 == "Stop" { print $3 }' | tr '\n' ' ')
 [ "$stop" = 'bin/self-report-check.sh ' ]; check $? "Stop runs self-report-check.sh alone ($stop)"
 
 # the script is the first word of the command, its arguments are not files

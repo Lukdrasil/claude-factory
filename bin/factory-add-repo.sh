@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
     *) die "unknown argument '$1'" ;;
   esac
 done
-# why: the URL comes from a line typed into the UI or the terminal and ends up as a git argument: no quote, space or
+# why: the URL comes from a line typed in the terminal and ends up as a git argument: no quote, space or
 # shell character, no leading - that git would read as an option, and a scheme git clones or the scp form
 if [ -n "$clone" ]; then
   nourl="'$clone' is not a URL to clone: http(s)://, ssh://, file:// or user@host:path, with letters, digits and ._~:/@+- only"

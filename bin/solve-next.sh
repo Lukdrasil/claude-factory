@@ -400,3 +400,4 @@ emit "Step 16 of 16: knowledge review for $id" "this session's lessons and decis
 cmd "cat $plugin/skills/_shared/knowledge-review.md"
 cmd "sed -n 's/^curation:[[:space:]]*//p' $state/factory.yml"
 cmd "$bin/curate-apply.sh --help"
+cmd "$bin/state-push.sh --state $state"
