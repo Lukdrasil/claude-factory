@@ -22,8 +22,9 @@ invoked by name: `quality-kit` and its sub-skills `analyze-structure`, `setup-gu
 
 ## The flow
 
-Once per machine `/claude-factory:factory init`, once per repository `/claude-factory:factory add-repo`. Then,
-in a session in the registered clone:
+Once per machine `/claude-factory:factory init`, once per repository `/claude-factory:factory add-repo`. The
+repository needs an `origin` on GitHub or GitLab and `gh` or `glab` logged in: every block and the task end in an
+MR. Then, in a session in the registered clone:
 
 ```
 /claude-factory:factory solve <the task in words>
@@ -45,7 +46,8 @@ The session creates the task and runs `bin/solve-next.sh` step by step without s
 | 14 task MR | the MR into the base branch with every block MR listed | the human reviews and merges |
 | 15-16 | self-report and knowledge review | session |
 
-A merged task MR is picked up by `mr-watch.sh` and closes the task (`factory done`). A green task of low
+While the session watches the task MR with `mr-watch.sh`, its merge closes the task; otherwise
+`/claude-factory:factory done <T-id>` does. A green task of low
 complexity takes the quick lane instead: one worktree, no blocks (`references/solve-quick.md`).
 
 Task ids are `T-<ALIAS>-<n>` per repository (`alias:` in `repos.yml`), blocks `T-<ALIAS>-<n>-<NN>`; the older
@@ -89,9 +91,9 @@ Since 0.15.0 the agent names say what they do:
 
 `spec-critic`, `memory-curator`, `mr-reviewer`, `report-preview` and `solution-map-*` kept their names.
 
-## Upgrading from 0.14
+## Upgrading to 0.16
 
-In order, once `claude plugin update` shows the new version, in a plain session in the state clone:
+From 0.14, in order, once `claude plugin update` shows the new version, in a plain session in the state clone:
 
 1. `git mv agents/<old>/memory agents/<new>/memory` for the three memory folders still under their old agent
    names (to `implementer`, `test-designer` and `code-reviewer`), in one commit; move a lesson into
@@ -101,6 +103,10 @@ In order, once `claude plugin update` shows the new version, in a plain session 
    `memory/global` when it is over budget.
 3. Remove `spawn:`, `ui:`, `ui_port:` and `capacity:` from `factory.yml` if an earlier version wrote them; nothing
    reads them any more.
+
+From 0.15, only step 3, plus: stop the 0.15 CEO session and the Factory UI (`docker rm -f claude-factory-ui`), and finish
+or close the parents a lead was running, then resume each with `/claude-factory:factory solve <T-id>`. The
+`request:` and `priority:` lines of old tasks and the `requests/` folder are ignored.
 
 ## Tests
 

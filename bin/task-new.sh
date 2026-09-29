@@ -41,7 +41,8 @@ done
 [ -n "$file" ] || die "--file <markdown> is required"
 [ -f "$file" ] || die "no such file: $file"
 [ -n "$state" ] || state=$(pwd)
-[ -d "$state/.git" ] || die "$state is not a state clone, run from one or pass --state <dir>"
+# why: a product clone is a git repo too, and a task written there would be committed into the product
+[ -d "$state/.git" ] && [ -f "$state/repos.yml" ] || die "$state is not a state clone, run from one or pass --state <dir>"
 
 # state_commit is shared with task-approve.sh and state-report.sh
 . "$(dirname -- "$0")/lib-tasks.sh"

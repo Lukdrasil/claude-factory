@@ -41,7 +41,9 @@ grep -q 'text that$' "$skill" && grep -q 'names a task is `solve` with that text
 check 'the factory skill hands text that names a task to solve' $?
 start=$(awk '/^## / { on = ($0 == "## Start"); next } on { print }' "$solve")
 printf '%s' "$start" | grep -q 'task-template\.sh task'; check 'the start of solve drafts the task from the template' $?
-printf '%s' "$start" | grep -q 'task-new\.sh --repo <key> --file <draft>'; check 'the start of solve creates it with task-new.sh' $?
+printf '%s' "$start" | grep -q 'task-new\.sh --repo <key> --state <state> --file <draft>'; check 'the start of solve creates it with task-new.sh' $?
+printf '%s' "$start" | grep -q '/tmp/factory-intake-'; check 'the intake draft is written where the guard allows it' $?
+printf '%s' "$start" | grep -q 'state-report\.sh --task <id> --owner <owner> --no-status'; check 'a resumed task is reclaimed first' $?
 loop=$(awk '/^## / { on = ($0 == "## The loop"); next } on { print }' "$solve")
 printf '%s' "$loop" | grep -q 'Do not stop between steps'; check 'the loop runs without stopping between steps' $?
 for g in 'grill rounds' 'plan approval' 'a blocked or failed block' 'the task MR'; do

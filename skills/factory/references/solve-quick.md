@@ -22,17 +22,18 @@ Nothing done so far is lost: the task, the worktree and the branch carry over.
 
 ## Steps
 
-1. `<plugin-root>/bin/task-new.sh --repo <key> --file <draft>`, the draft from
+1. `<plugin-root>/bin/task-new.sh --repo <key> --state "$WORK_DIR/state" --file <draft>`, the draft from
    `<plugin-root>/bin/task-template.sh task`, unless the intake of `references/solve.md` already created it.
-2. `<plugin-root>/bin/task-approve.sh <id>`, then
-   `<plugin-root>/bin/state-report.sh --task <id> --set-status in_progress`.
+2. After the yes of the entry ask, `<plugin-root>/bin/task-approve.sh <id> --state "$WORK_DIR/state"`, then
+   `<plugin-root>/bin/state-report.sh --task <id> --set-status in_progress --owner <owner>`, `<owner>` the owner
+   string of the Session identity line.
 3. `<plugin-root>/bin/worktree-add.sh <id>`.
 4. Edit in that worktree yourself. A bugfix starts with the failing test.
 5. The repo's `build` binding, then its `test-filter` binding scoped to the touched tests, then `format`.
 6. `## Evidence` in the progress file: the commands and their exit codes.
 7. `<plugin-root>/bin/mr-open.sh <id>`, with `issue-finder` on haiku for the issue lines.
 8. `<plugin-root>/bin/state-report.sh --task <id> --set-status review`, then
-   `<plugin-root>/bin/state-push.sh`.
+   `<plugin-root>/bin/state-push.sh --state "$WORK_DIR/state"`.
 
 ## Skipped
 

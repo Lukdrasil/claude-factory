@@ -55,7 +55,8 @@ human's job. Every question to the human, a refusal to resolve included, goes th
    `_shared/ask.md`, and its verdict line into the block's `## Spec critic`, written after any agreed edit.
    Then show the human one line per block: id, title, tier, archetype, depends_on, file path, and for a red
    block that line.
-6. Recommend closing the source task; that flip is a human's.
+6. Recommend closing the source task, unless it is the parent the blocks were written under, as in `factory
+   solve`; that flip is a human's.
 
 **Done when** every block exists as `status: draft`, every `red` block has its `## Spec critic` line,
 `repos/<repo-key>/verdicts/<slug>.md` is gone from the state repo, and the human has the list.

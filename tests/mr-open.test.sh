@@ -160,4 +160,34 @@ printf '\n## Context\nUsers lose track of notes once there are many! They asked 
 check 'Why: the task MR takes the first sentence of the task'"'"'s ## Context' \
   '**Why** - Users lose track of notes once there are many!' "$(why)"
 
+# the task MR's URL lands in the parent's mr_url, the field solve-next.sh, mr-watch.sh and task-done.sh read
+mkdir -p "$tmp/stub"
+cat > "$tmp/stub/gh" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+  "pr view") exit 1 ;;
+  "pr create") echo https://github.com/o/demo/pull/70 ;;
+  *) exit 1 ;;
+esac
+EOF
+# glab too: a git insteadOf rule of the machine can rewrite the github.com origin to another host
+cat > "$tmp/stub/glab" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+  "mr view") exit 1 ;;
+  "mr create") echo https://github.com/o/demo/pull/70 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$tmp/stub/gh" "$tmp/stub/glab"
+git -C "$state" init -q -b main
+git -C "$state" add -A
+git -C "$state" -c user.name=t -c user.email=t@t commit -q -m fixture
+out=$(cd "$tmp/demo/T-700" && PATH="$tmp/stub:$PATH" GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t \
+  GIT_COMMITTER_EMAIL=t@t sh "$bin/mr-open.sh" T-700 --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+check 'mr-open.sh prints the URL of the task MR' '0 https://github.com/o/demo/pull/70' "$rc $(printf '%s\n' "$out" | tail -n1)"
+check 'and writes it into the mr_url of the parent' 'mr_url: https://github.com/o/demo/pull/70' \
+  "$(grep '^mr_url:' "$state/repos/demo/tasks/T-700.md")"
+check 'in a commit of the state clone' 'chore(T-700): task MR open into main' "$(git -C "$state" log -1 --format=%s)"
+
 exit $fail

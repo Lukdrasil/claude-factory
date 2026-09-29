@@ -14,8 +14,8 @@
 # records `base: block/...`). Every other task cuts its blocks from the work branch, one wave at a time, and puts
 # each one up through block-verify.sh, the code-reviewer and the architecture-auditor, then block-mr.sh: a block
 # in `review` with an `mr_url` does not hold the blocks of its own wave, and before a block of a later wave is
-# cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh (a high-risk one after
-# the human's yes). Step 14 is then the task MR the human reviews and merges.
+# cut, step 11 is the automatic merge of the waiting block MRs through block-mr-merge.sh, a high-risk one too.
+# Step 14 is then the task MR the human reviews and merges.
 #
 # It prints exactly one step of skills/factory/references/solve.md: a `## Step <n> ...` heading, one line
 # beginning `Completion:`, and under `Commands:` the commands to run, two spaces in front of each. The work
@@ -192,9 +192,22 @@ fi
 # invariant: are answered by step 15 and step 16 at the bottom of this file.
 case "$status" in
   draft|triaged|ready|claimed|blocked|failed)
-    emit "Step 9 of 16: approve and claim $id" "$id is in_progress with plan_hash set."
-    cmd "$bin/task-approve.sh $id --state $state"
-    cmd "$bin/state-report.sh --task $id --set-status in_progress --message 'chore($id): claimed'"
+    # why: the blocks decompose wrote are draft, and draft -> in_progress is no agent transition, so the one approval
+    # why: of the human covers the parent and every block still waiting for it
+    approve=''
+    case "$status" in draft|triaged|blocked|failed) approve=$id ;; esac
+    for b in $blocks; do
+      bf=$(task_of "$b" || :)
+      [ -n "$bf" ] || continue
+      case "$(fm "$bf" status)" in draft|triaged) approve="$approve $b" ;; esac
+    done
+    approve=${approve# }
+    emit "Step 9 of 16: approve and claim $id" "the human said yes in the approval ask of references/approve.md, and $id is in_progress with plan_hash set and owner: the owner string of your Session identity line."
+    if [ -n "$approve" ]; then
+      cmd "cat $plugin/skills/factory/references/approve.md"
+      cmd "$bin/task-approve.sh $approve --state $state"
+    fi
+    cmd "$bin/state-report.sh --task $id --set-status in_progress --owner <owner> --message 'chore($id): claimed'"
     exit 0 ;;
 esac
 
@@ -272,27 +285,29 @@ if [ -n "$pending" ]; then
   [ -z "$wave" ] || wave_arg=" --wave $wave"
 
   if [ "$bs" = blocked ] || [ "$bs" = failed ]; then
-    emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, or $pending is retried with attempt $((bn + 1)) on a fresh implement subagent."
+    emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on a fresh implement subagent."
     cmd "cat $bprogress"
     cmd "cat $plugin/skills/_shared/blocked-question.md"
+    cmd "$bin/task-approve.sh $pending --state $state"
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
     emit "Step 11 of 16: $pending has changes requested" "the threads of the block MR are answered on its branch by one implement subagent, every block behind $pending is rebased onto its new head, and $pending is review again."
     cmd "$bin/mr-watch.sh $id --comments $pending --state $state"
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
-    cmd "$bin/restack.sh $id $pending --state $state"
+    [ -z "$stacked" ] || cmd "$bin/restack.sh $id $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
-  elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ]; then
-    emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress. No worktree, no spawn."
+  elif [ ! -e "$bwt/.git" ] || [ "$bs" = claimed ] || [ "$bs" = ready ]; then
+    emit "Step 11 of 16: worktree and claim for $pending" "$bwt exists on the block branch and $pending is in_progress with your owner string. No worktree, no spawn."
     [ -e "$bwt/.git" ] || cmd "$bin/worktree-add.sh $pending"
-    cmd "$bin/state-report.sh --task $pending --set-status in_progress --message 'chore($pending): claimed'"
+    cmd "$bin/state-report.sh --task $pending --set-status in_progress --owner <owner> --message 'chore($pending): claimed'"
   elif [ "$bs" = tests_ready ]; then
     emit "Step 11 of 16: wave ${wave:-1} implement, from $pending" "every block of the wave has its implement subagent spawned with the brief spawn-plan.sh wrote."
-    cmd "$bin/state-report.sh --task $pending --set-phase implement --no-status"
+    cmd "$bin/state-report.sh --task $pending --set-status in_progress --set-phase implement --message 'chore($pending): implement'"
     cmd "$bin/spawn-plan.sh $id$wave_arg --state $state"
   elif [ -z "$bp" ] && ! single_phase "$bt" "$bc"; then
-    emit "Step 11 of 16: wave ${wave:-1} tests, from $pending" "you have rerun the red tests each agent wrote yourself, and every two-phase block of the wave (red, or yellow above low complexity) is tests_ready."
+    emit "Step 11 of 16: wave ${wave:-1} tests, from $pending" "you have rerun the red tests each agent wrote yourself, written them under ## Evidence with the ## Handoff, and every two-phase block of the wave (red, or yellow above low complexity) is tests_ready."
     cmd "$bin/spawn-plan.sh $id$wave_arg --state $state"
+    cmd "$bin/state-report.sh --task <block-id> --set-status tests_ready --message 'chore(<block-id>): tests ready'"
   elif [ -z "$bp" ]; then
     # why: a single-phase block (green, or yellow at complexity low) gets no tests phase, so the red proof the
     # why: coordinator would have rerun at tests_ready is rerun here instead: the agent's first commit carries
@@ -381,7 +396,7 @@ if ! grep -q '^## Review' "$progress" 2>/dev/null; then
 fi
 
 if [ -z "$mr_url" ]; then
-  emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, or the branch is merge-ready without a forge, and the human has been asked to review and merge it; done follows the merge."
+  emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, mr-open.sh has written its URL into the mr_url of $id, and the human has been asked to review and merge it; done follows the merge."
   cmd "git -C $worktree fetch origin"
   cmd "git -C $worktree rebase origin/$base"
   cmd "git -C $worktree push --force-with-lease origin ${branch:-HEAD}"

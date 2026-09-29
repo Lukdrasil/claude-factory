@@ -141,6 +141,15 @@ refused() { # <what> <frontmatter line> <message part>
 refused 'an issue that is no url' 'issue: see the ticket' 'issue must be an http(s) url or null'
 check 'no task file was left behind by a refusal' '' "$(ls "$st"/repos/cf/tasks/ | grep refused)"
 
+# --- a product clone is no state clone: without --state, task-new.sh run there writes nothing ------------------
+git init -q "$tmp/product"
+draft "$tmp/p.md" cf 'from the product clone'
+rc=0
+out=$(cd "$tmp/product" && sh "$bin/task-new.sh" --repo cf --file "$tmp/p.md" 2>&1) || rc=$?
+check 'task-new.sh in a clone with no repos.yml exits 1' 1 "$rc"
+check 'and names the fix' yes "$(printf '%s' "$out" | grep -qF 'pass --state <dir>' && echo yes || echo no)"
+check 'and writes nothing there' '' "$(ls -A "$tmp/product" | grep -v '^\.git$')"
+
 # --- no push -----------------------------------------------------------------------------------
 check 'the origin never moved' "$pushed" "$(git --git-dir="$tmp/origin.git" rev-parse main)"
 check 'every task is a local commit on top of the pushed one' 10 "$(git -C "$st" rev-list --count "$pushed..HEAD")"

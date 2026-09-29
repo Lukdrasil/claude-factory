@@ -7,17 +7,33 @@ subagent's report is a claim you rerun.
 
 ## Start
 
-`factory solve <T-id>` resumes a task the state already has. `factory solve <the task in words> [--repo <key>]`
-starts one:
+`<owner>` below is the owner string `factory@<host>:<session_id>` of the Session identity line, and `<state>` is
+`$WORK_DIR/state`. The factory needs a forge: an `origin` on GitHub or GitLab and `gh` or `glab` logged in, since
+every block and the task end in an MR.
+
+`factory solve <the task in words> [--repo <key>]` starts a task:
 
 1. **Intake.** The repository is `--repo`, else the registered clone of the cwd (the `Factory context for repo
    <key>` line of the session start), else the only key in `<state>/repos.yml`; ask through `_shared/ask.md`
-   only when two or more fit. Write the draft from `<plugin-root>/bin/task-template.sh task`: `# Goal` a
-   Conventional Commits MR title of the change, `## Context` the task as the human gave it, verbatim, and a
-   first `archetype`, `tier` and `complexity` per `_shared/tiers.md` that triage revisits. Completion: the
-   draft is a file in `<root>/<key>/.harness/`.
-2. **Create.** `<plugin-root>/bin/task-new.sh --repo <key> --file <draft>`. Completion: it printed the id,
-   and that id is the `<T-id>` of the loop.
+   only when two or more fit. Write `<plugin-root>/bin/task-template.sh task` to `/tmp/factory-intake-<slug>.md`
+   and fill it in:
+   - frontmatter: `repo: <key>`; `branch: feat/<new-id>-<slug>` with `<slug>` a few kebab-case words of the goal
+     (task-new.sh puts the id in); a first `tier`, `archetype` and `complexity` per `_shared/tiers.md`, which
+     triage revisits; `issue:` the forge issue URL the human named, else `null`; `created:` today.
+   - `# Goal`: a Conventional Commits MR title of the change.
+   - `## Context`: the task in your own words. `## Internal`: the task as the human gave it, verbatim, and the
+     tier and complexity lines; the `triage:`, forge issue, title, milestone, comments and attachments lines go
+     unless a forge issue is the source, and so does `## Issue update`.
+   - `## Acceptance`: the runnable command the task names, else the `test` binding of
+     `<state>/repos/<key>/toolset.md`. `## Out of scope`: what the task excludes, or `none`.
+   Completion: the draft has no `<...>` placeholder left.
+2. **Create.** `<plugin-root>/bin/task-new.sh --repo <key> --state <state> --file <draft>`. Completion: it printed
+   the id, and that id is the `<T-id>` of the loop.
+3. **Lane.** A task at `tier: green` and `complexity: low` goes on in the quick lane (`references/solve-quick.md`),
+   any other in the loop.
+
+`factory solve <T-id>` resumes a task the state already has: first reclaim it and every block that is not done or
+closed, `<plugin-root>/bin/state-report.sh --task <id> --owner <owner> --no-status`, then the loop.
 
 ## The loop
 
@@ -28,7 +44,9 @@ not ask whether to go on: the flow stops only at the human's gates.
 
 | gate | step | what the human does |
 |---|---|---|
+| a related issue | 3 | yes or no to linking or creating the forge issue (`_shared/investigate.md`) |
 | grill rounds | 4 | answers each round (`skills/grill/SKILL.md`) |
+| spec-critic | 6 | yes or no to the edits of a red block (`skills/decompose/SKILL.md`) |
 | plan approval | 9 | one confirm over the parent and its blocks (`references/approve.md`) |
 | a blocked or failed block | 11 | picks an option of its `## Question` (`_shared/blocked-question.md`) |
 | the task MR | 14 | reviews and merges it on the forge |
@@ -38,10 +56,19 @@ what it found, one sentence of why each in `## Context`.
 
 ## After the task MR
 
-Step 16 ends the loop with the task MR open. Arm `<plugin-root>/bin/mr-watch.sh <T-id> --interval 300` through
-the Monitor tool: `<T-id> merged` is the human's merge, so run `references/done.md` without an ask; a
-`changes-requested` or `new-comments` line on the task MR is one more fix block and review round, as in Block
-MRs below. The session may end while the MR waits; `factory done <T-id>` closes it later.
+Step 16 ends the loop with the task MR open and its URL in the parent's `mr_url`. Arm
+`<plugin-root>/bin/mr-watch.sh <T-id> --interval 300` through the Monitor tool: `<T-id> merged` is the human's
+merge, so run `references/done.md` without an ask. A `changes-requested` or `new-comments` line on the task MR is
+one more round:
+
+1. The fix as a new block, written the way Block MRs below write a block for work outside a block's acceptance
+   (cut-check, `task-new.sh --parent`), approved with the human's yes (`references/approve.md`), then worked
+   through step 11 like any block.
+2. Once it is merged, remove `## Evidence`, `## Duplication` and `## Review` from the parent's progress file and
+   report it (`state-report.sh --task <T-id> --no-status`), so solve-next.sh runs steps 12 to 13 again.
+3. `<plugin-root>/bin/mr-open.sh <T-id>` updates the task MR's description with the new block.
+
+The session may end while the MR waits; `factory done <T-id>` closes it later.
 
 ## The worktree rule
 
@@ -128,5 +155,5 @@ message.
 
 ## The quick lane
 
-A task whose intake or triage reads `tier: green` and `complexity: low`, or an explicit `--quick`:
+Step 3 of Start, a triage that ends at `tier: green` and `complexity: low`, or an explicit `--quick`:
 `references/solve-quick.md`.

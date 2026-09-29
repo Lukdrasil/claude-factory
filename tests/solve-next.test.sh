@@ -211,4 +211,38 @@ out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
 check 'step 16 is the knowledge review' '^## Step 16 of 16: knowledge review for T-005$' "$out"
 check 'step 16, the last one, also ends with state-push.sh' "^  .*state-push\.sh --state $state\$" "$(printf '%s\n' "$out" | tail -n1)"
 
+# --- step 9: one approval over the parent and its draft blocks, and every claim carries the owner ------------
+parent T-006 'plans/x-plan-ready.md'
+sed -i 's/^status: in_progress$/status: draft/' "$state/repos/demo/tasks/T-006.md"
+printf 'wave 1: T-006-01 T-006-02\n' > "$state/repos/demo/progress/T-006.md"
+block T-006-01 draft null
+block T-006-02 draft null
+out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
+check 'a draft parent with draft blocks is step 9' '^## Step 9 of 16: approve and claim T-006$' "$out"
+check 'the human is asked through approve.md' 'references/approve\.md' "$out"
+check 'one task-approve.sh covers the parent and both blocks' "task-approve\.sh T-006 T-006-01 T-006-02 --state" "$out"
+check 'the claim of the parent writes the owner' "state-report\.sh --task T-006 --set-status in_progress --owner <owner>" "$out"
+sed -i 's/^status: draft$/status: ready/' "$state/repos/demo/tasks/T-006.md"
+block T-006-01 ready null
+block T-006-02 ready null
+out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
+no 'an approved parent is not approved again' 'task-approve' "$out"
+
+# --- step 11: a ready block with its worktree is claimed, tests_ready moves on, a blocked block is approved back --
+sed -i 's/^status: ready$/status: in_progress/' "$state/repos/demo/tasks/T-006.md"
+mkdir -p "$root/demo/T-006" "$root/demo/T-006-01"
+: > "$root/demo/T-006/.git"
+: > "$root/demo/T-006-01/.git"
+out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
+check 'a ready block with a worktree is claimed' '^## Step 11 of 16: worktree and claim for T-006-01$' "$out"
+check 'with the owner' 'state-report\.sh --task T-006-01 --set-status in_progress --owner <owner>' "$out"
+block T-006-01 tests_ready null
+out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
+check 'a tests_ready block goes to in_progress with phase implement' \
+  'state-report\.sh --task T-006-01 --set-status in_progress --set-phase implement' "$out"
+block T-006-01 blocked null
+out=$(sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)
+check 'a blocked block is approved back after the answer' 'task-approve\.sh T-006-01 --state' "$out"
+no 'a block cut from the work branch gets no restack' 'restack\.sh' "$(block T-006-01 changes_requested null; sh "$bin/solve-next.sh" T-006 --state "$state" 2>&1)"
+
 exit $fail

@@ -21,6 +21,7 @@
 # with a truncated bullet, a re-run only printed the URL, and the body was then written by hand with the
 # harness footer in it (see bin/attribution-gate.sh). stdout stays one line, the URL; "description updated"
 # goes to stderr, so every caller of this contract keeps reading what it read before.
+# The URL is written into the task's `mr_url:` through state-report.sh, as block-mr.sh does for a block.
 #
 # Exit 1 with the reason when the progress file carries no `## Done` or `## Evidence` bullets to build the
 # description from, or when the description runs over the contract's 120 words.
@@ -254,4 +255,12 @@ if [ -z "$url" ]; then
   url=$(printf '%s\n' "$out" | grep -oE 'https?://[^ )"]+' | tail -n1 || :)
 fi
 [ -n "$url" ] || die "the forge printed no URL; the MR may still have been created, check $branch"
+
+# invariant: state-report.sh is the one writer of task frontmatter, as in block-mr.sh for a block's mr_url; the
+# parent's mr_url is what moves solve-next.sh past step 14 and what mr-watch.sh and task-done.sh read
+if [ "$url" != "$(field mr_url)" ]; then
+  "$(dirname -- "$0")/state-report.sh" --task "$id" --no-status --mr-url "$url" \
+    --message "chore($id): task MR open into $base" >/dev/null \
+    || die "the MR $url is open but state-report.sh could not write it into $task: record it and run this again"
+fi
 printf '%s\n' "$url"

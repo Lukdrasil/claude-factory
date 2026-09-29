@@ -11,7 +11,7 @@ This is the human's confirmation of a body they read, never a click the coordina
 ## Steps
 
 - **Show.** Print the task body in full, `# Goal`, `## Context`, `## Acceptance`, the block list when this is
-  a decomposed parent. Completion: the human has read the text they are about to approve, not a summary.
+  a decomposed parent, and the `## Spec critic` line of every red block. Completion: the human has read the text they are about to approve, not a summary.
 - **Ask.** One ask (`_shared/ask.md`): approve as is, or stop here (a "no" leaves the task exactly as it was:
   edit it by hand and ask again, this reference does not edit bodies). Completion: a yes or a no recorded.
 - **Approve.** On a yes, run `<plugin-root>/bin/task-approve.sh <id>... --state <root>/state` once, with

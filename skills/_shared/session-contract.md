@@ -63,7 +63,7 @@ that is not yours.
 The one exception is your own claim: the task you were dispatched for goes `in_progress` under your own owner
 string, through `state-report.sh` and never by hand, as step 1 of your archetype spells out.
 
-There is no dashboard: `state-report.sh` validates, commits and pushes, every human gate is a command
+There is no dashboard: `state-report.sh` validates and commits (`state-push.sh` pushes), every human gate is a command
 (`task-approve.sh`, `task-done.sh`, `factory approve` / `factory done`), and telling the user to do something in a dashboard is always wrong.
 
 ## WIP push
