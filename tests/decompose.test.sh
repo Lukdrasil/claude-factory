@@ -325,4 +325,48 @@ sh "$bin/block-brief.sh" T-006-02 --state "$state" --phase tests > "$tmp/brief-n
 check 'a task with no checklist still briefs with exit 0' $?
 grep -qxF '## Checklist' "$tmp/brief-none.md"; [ $? -ne 0 ]; check 'a task with no checklist briefs none' $?
 
+# --- issue #79: indented lines under a field, a term or a decision are carried over, and depends_on reads
+# --- only its leading brackets ---------------------------------------------------------------------
+mp="$state/repos/demo/plans/multiline-plan-ready.md"
+awk '
+  $0 == "- depends_on: [1]" { print "- depends_on: [1], shares a file with 1 (plan-check R3-S2)"; next }
+  $0 == "- context: the module is new, nothing imports it yet" { print; print "  - evidence line one"; next }
+  $0 == "- acceptance: `pytest tests/test_exporter.py`" {
+    print "- acceptance: `pytest tests/test_exporter.py` passes:"; print "  - criterion one"; print "  - criterion two"; next
+  }
+  $0 == "- docs: docs/export.md" {
+    print "- docs: docs/export.md, which covers:"; print "  - item one"; print ""; print "  Also a note on ADR-0001."; next
+  }
+  $0 == "- out of scope: the column header" { print; print "  - the footer"; print ""; next }
+  /^- \*\*stream\*\*/ { print; print "  - a sub-bullet of the term"; next }
+  /^- \[locked\] csv/ { print; print "  continued on a second line"; next }
+  { print }
+' "$plan" > "$mp"
+mout="$tmp/multiline"
+mman=$(sh "$bin/decompose.sh" "$mp" --out "$mout" --state "$state" 2>"$tmp/merr")
+check 'multiline: decompose exits 0' $?
+mf2="$mout/02-write-the-exporter-core.md"
+raw() { # <file> <heading>: every line under the heading up to the next `## `, trailing blanks dropped
+  awk -v h="$2" '$0 == h { on = 1; next } on && /^## / { exit } on { print }' "$1" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+}
+if [ -f "$mf2" ]; then
+  [ "$(raw "$mf2" '## Acceptance')" = "$(printf '%s\n%s\n%s' '`pytest tests/test_exporter.py` passes:' '  - criterion one' '  - criterion two')" ]
+  check 'multiline: the acceptance keeps its indented criteria' $?
+  [ "$(raw "$mf2" '## Docs')" = "$(printf '%s\n%s\n\n%s' 'docs/export.md, which covers:' '  - item one' '  Also a note on ADR-0001.')" ]
+  check 'multiline: the docs keep a sub-bullet and a paragraph after a blank line' $?
+  grep -A1 -xF 'the module is new, nothing imports it yet' "$mf2" | grep -qxF '  - evidence line one'
+  check 'multiline: the context keeps its evidence line' $?
+  grep -A1 -xF 'the column header' "$mf2" | grep -qxF '  - the footer'
+  check 'multiline: the out of scope keeps its sub-bullet' $?
+  grep -A1 -F -- '- **stream**:' "$mf2" | grep -qxF '  - a sub-bullet of the term'
+  check 'multiline: a term keeps its sub-bullet' $?
+  grep -A1 -F -- '- [locked] csv' "$mf2" | grep -qxF '  continued on a second line'
+  check 'multiline: a decision keeps its continuation line' $?
+  [ "$(section "$mf2" '## Checklist')" = "$(printf '%s\n%s' '- [ ] a' '- [ ] b')" ]
+  check 'multiline: the steps are unchanged' $?
+else
+  cat "$tmp/merr"; printf 'FAIL multiline: no block 2 written\n'; fail=1
+fi
+printf '%s\n' "$mman" | grep -qx "2 $mf2 1"; check 'multiline: depends_on reads only its leading brackets' $?
+
 exit $fail
