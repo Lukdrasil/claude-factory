@@ -1,16 +1,47 @@
 # factory solve
 
-One problem end to end. You are the coordinator, not the executor: gates and verification are yours, every
-line of code comes from a subagent in its own worktree, and a subagent's report is a claim you rerun.
+One problem end to end, in this one session: you hand over a task and the flow runs triage, grill, plan-check,
+decompose, the blocks and the MR without being asked for the next step. You are the coordinator, not the
+executor: gates and verification are yours, every line of code comes from a subagent in its own worktree, and a
+subagent's report is a claim you rerun.
+
+## Start
+
+`factory solve <T-id>` resumes a task the state already has. `factory solve <the task in words> [--repo <key>]`
+starts one:
+
+1. **Intake.** The repository is `--repo`, else the registered clone of the cwd (the `Factory context for repo
+   <key>` line of the session start), else the only key in `<state>/repos.yml`; ask through `_shared/ask.md`
+   only when two or more fit. Write the draft from `<plugin-root>/bin/task-template.sh task`: `# Goal` a
+   Conventional Commits MR title of the change, `## Context` the task as the human gave it, verbatim, and a
+   first `archetype`, `tier` and `complexity` per `_shared/tiers.md` that triage revisits. Completion: the
+   draft is a file in `<root>/<key>/.harness/`.
+2. **Create.** `<plugin-root>/bin/task-new.sh --repo <key> --file <draft>`. Completion: it printed the id,
+   and that id is the `<T-id>` of the loop.
 
 ## The loop
 
-Run `<plugin-root>/bin/solve-next.sh <T-NNN>`, do what it prints, verify its `Completion:` line yourself,
-repeat until step 16. It reads the state, so its step is the one the state asks for. With `ui: docker` in
-`<state>/factory.yml` and `HERDR_ENV=1`, run `<plugin-root>/bin/solve-next.sh <T-NNN> --ui <session_id>`
-with the session_id of your identity line, so the step also lands in the session's `session.md`, and ask
-every question through `_shared/ask.md`. The task drawer of the browser marks that step on its rail and shows
-each step's state beside it; a blocked task or block shows its `## Question` there too, answered in your pane.
+Run `<plugin-root>/bin/solve-next.sh <T-id>`, do what it prints, verify its `Completion:` line yourself, and run
+it again, until step 16. It reads the state, so its step is the one the state asks for, and every step opens
+with `state-push.sh`, which carries the local state commits to the state root. Do not stop between steps and do
+not ask whether to go on: the flow stops only at the human's gates.
+
+| gate | step | what the human does |
+|---|---|---|
+| grill rounds | 4 | answers each round (`skills/grill/SKILL.md`) |
+| plan approval | 9 | one confirm over the parent and its blocks (`references/approve.md`) |
+| a blocked or failed block | 11 | picks an option of its `## Question` (`_shared/blocked-question.md`) |
+| the task MR | 14 | reviews and merges it on the forge |
+
+Step 3, triage, runs `_shared/investigate.md` and then decides `archetype`, `tier` and `complexity` again from
+what it found, one sentence of why each in `## Context`.
+
+## After the task MR
+
+Step 16 ends the loop with the task MR open. Arm `<plugin-root>/bin/mr-watch.sh <T-id> --interval 300` through
+the Monitor tool: `<T-id> merged` is the human's merge, so run `references/done.md` without an ask; a
+`changes-requested` or `new-comments` line on the task MR is one more fix block and review round, as in Block
+MRs below. The session may end while the MR waits; `factory done <T-id>` closes it later.
 
 ## The worktree rule
 
@@ -22,15 +53,11 @@ worktree means no spawn.
 
 - **Triage.** `<plugin-root>/bin/investigate.sh <repo-dir> <symbol>` gathers the recon a `triage-analyst`
   judges into the parent's `## Context`.
-- **Chart.** A parent with a `request:` whose map is not cleared gets step 3b: the request map of
-  `claude-factory:wayfinder` (`chart <R-id> <T-id>`), until `<plugin-root>/bin/map.sh clear <R-id>` exits 0 and the chart has set the map `planned`.
-  The grill of such a parent starts from `<plugin-root>/bin/map.sh export <R-id> <key>`. You never edit a map by
-  hand.
 - **Grill.** `<plugin-root>/bin/plan-lint.sh <plan-ready.md>` comes back clean before the cut.
 - **Cut.** `<plugin-root>/bin/dag-check.sh <parent-id>` exits 0 over the block drafts, bodies from
   `<plugin-root>/bin/task-template.sh <kind>`. When one block builds a mechanism another block's document must
   reach, both acceptances name it. A recut needs a fresh cut-check verdict, which `task-new.sh --parent` demands.
-- **Spawn.** `<plugin-root>/bin/spawn-plan.sh <T-NNN>` prints the agent, the model and the brief per block of
+- **Spawn.** `<plugin-root>/bin/spawn-plan.sh <T-id>` prints the agent, the model and the brief per block of
   the wave, `<plugin-root>/bin/block-brief.sh <block-id> --agent <name> --phase <phase>` prints the whole
   brief and `<plugin-root>/bin/model-for.sh` picks the model. The brief is the subagent's whole input: it
   binds to `_shared/block-subagent.md`, never to the session contract. A green block, or a yellow one at
@@ -38,10 +65,6 @@ worktree means no spawn.
   alone, and you check that commit out and run them red yourself before you arm `phase: implement`. Every
   other block gets a tests phase first. A skeleton block declares the new surface and leaves an existing body alone; its gate is
   `arch-build`.
-  With `spawn: herdr` in `<state>/factory.yml`, `<plugin-root>/bin/session-monitor.sh --parent <T-NNN>` runs
-  that plan as one interactive session per block instead of one subagent per block
-  (`<plugin-root>/skills/herdr/SKILL.md`). Their reports come back through the state repo, not to you, so
-  read them with `<plugin-root>/bin/factory-list.sh` and rerun every proving command yourself.
 - **Tests.** Rerun the red tests yourself with the toolset's `test-filter` over the files the handoff names,
   each failing for the reason it states, paste the `## Handoff` into the block's progress file, then arm the
   lock with `state-report.sh --task <block-id> --set-phase implement`.
@@ -54,7 +77,7 @@ worktree means no spawn.
   `<plugin-root>/bin/dup-check.sh <harness>/review.diff <worktree>`, never a task id; its output verbatim under
   `## Duplication`; the reviewer judges the candidates, nobody is spawned per candidate.
 - **Review.** A `code-reviewer` over the whole diff and the `architecture-auditor` once on the whole task diff
-  against the base, their verdicts in the progress file, then `<plugin-root>/bin/mr-open.sh <T-NNN>` for the
+  against the base, their verdicts in the progress file, then `<plugin-root>/bin/mr-open.sh <T-id>` for the
   parent: the task MR into the base branch with the normal pipeline and a `## Blocks` list of every block MR
   with its link and risk. `changes needed` gets one fix block and one more review. Step 14 is the human's
   review and merge of that MR.
@@ -85,19 +108,17 @@ another block's branch and nothing is stacked.
 blocks were stacked before this flow keeps its stack: each MR into the block it depends on, a conflict a cut
 defect (rebase the later block and run it again).
 
-`<plugin-root>/bin/mr-watch.sh <T-NNN>` prints one line per forge event, armed through the Monitor tool; on
+`<plugin-root>/bin/mr-watch.sh <T-id>` prints one line per forge event, armed through the Monitor tool; on
 `merged` it sets the block done and, in a legacy stack, retargets the children. On `changes-requested` set the
 block `changes_requested`, spawn one implement subagent with the threads as acceptance, then, in a legacy stack
-only, `<plugin-root>/bin/restack.sh <T-NNN> <block-id>`, whose exit 3 is a question for the human. On `new-comments`
-read the threads with `mr-watch.sh <T-NNN> --comments <block-id>` first and answer each one on its own terms: a
+only, `<plugin-root>/bin/restack.sh <T-id> <block-id>`, whose exit 3 is a question for the human. On `new-comments`
+read the threads with `mr-watch.sh <T-id> --comments <block-id>` first and answer each one on its own terms: a
 thread asking for a code change is that same fix round on the block branch, a question is answered on the MR by
 hand, since `forge.sh` only reads, and a thread asking for work outside the block's acceptance is a new draft
 block with `depends_on` on that block, never a fix round: an `architect-review` cut-check over that one block,
 then `<plugin-root>/bin/task-new.sh --parent`, and the verdict removed afterwards as decompose does.
 
-A high-risk block waiting on the human's yes does not hold its wave: the other blocks of the wave are worked on
-past it, and the next wave starts once it is merged. The task MR is the one the human reviews and merges (step
-14); the session may end while it waits.
+The task MR is the one the human reviews and merges (step 14); the session may end while it waits.
 
 ## Identity and refusals
 
@@ -105,13 +126,7 @@ past it, and the next wave starts once it is merged. The task MR is the one the 
 `<plugin-root>/bin/session-start.sh` prints. `<plugin-root>/bin/policy-guard.sh` carries the fix in its deny
 message.
 
-## The monitor lane
-
-`factory herd <T-NNN>` runs this same flow with every work step as an interactive session in a herdr tab
-instead of a subagent, and this session only dispatching, watching and gating: `references/herd.md`. In the
-org the CEO (`references/ceo.md`) runs the steps up to the approval for every request and a lead per approved
-parent runs the rest (`references/lead.md`).
-
 ## The quick lane
 
-A green task of low complexity, or an explicit `--quick`: `references/solve-quick.md`.
+A task whose intake or triage reads `tier: green` and `complexity: low`, or an explicit `--quick`:
+`references/solve-quick.md`.

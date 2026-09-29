@@ -1,40 +1,31 @@
 ---
 name: factory
-description: The standalone factory on a developer machine: init, add-repo and doctor for setup, list for what exists, curate and consolidate for the proposal queues, solve for one problem end to end, herd for the same flow driven from a monitor session, ceo for the session that runs the whole org from the state clone, lead for the session that runs one approved parent, onboard for the session that reports how ready an added repository is, intake, route, research and cross-repo for the sessions the CEO hands a request, a free message or question, a research question and a lead's cross-repo need to, approve and done for the human gates, ui to start or stop the Factory UI. Use when the user says factory, or ceo, lead, solve, herd, approve, done, list, curate, consolidate, doctor, add-repo, onboard, intake, route, research, cross-repo, ui or init against it.
+description: The standalone factory on a developer machine, one session per task: solve takes a task in words or by id and runs it end to end (triage, grill, plan-check, decompose, blocks in their own worktrees, block MRs merged, the task MR for the human); init, add-repo and doctor for setup; list for what exists; curate and consolidate for the proposal queues; approve and done for the human gates. Use when the user says factory, or solve, approve, done, list, curate, consolidate, doctor, add-repo or init against it, or hands the factory a task.
 ---
 
 # factory
 
 Plugin root: `${CLAUDE_PLUGIN_ROOT}` (the base directory of this skill is `<plugin-root>/skills/factory`).
 
-The standalone posture (ADR-0049): no dashboard, no Docker. The session runs where the user starts it, and
-the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktrees. The scripts in
-`${CLAUDE_PLUGIN_ROOT}/bin/` do the writes; this skill runs them in the right order.
+The standalone posture (ADR-0049): no dashboard, no Docker, no second session. The session runs where the user
+starts it, and the factory root `WORK_DIR` (default `~/factory`) holds `state/` and the worktrees. The scripts
+in `${CLAUDE_PLUGIN_ROOT}/bin/` do the writes; this skill runs them in the right order.
 
 | subcommand | what it does | reference |
 |---|---|---|
+| `solve` | one task end to end in this session: `solve <the task in words> [--repo <key>]` creates it, `solve <T-id>` resumes it; triage, grill, plan-check, decompose, the blocks with their MRs merged into the work branch, the task MR the human merges | `references/solve.md`, quick lane `references/solve-quick.md` |
 | `init` | the factory root, `state/`, `WORK_DIR` in the settings, then add-repo and doctor for this clone | `references/init.md` |
-| `add-repo` | registers a clone in `state/repos.yml` and seeds `repos/<key>/toolset.md`; with `--clone <url>` it clones the repository into the clones directory first, and runs as the add-repo session the CEO hands a relayed `add repo` line to | `references/add-repo.md` |
-| `onboard` | the onboarding session the CEO starts in a registered clone (`FACTORY_ROLE=onboard`): a report of how ready the repository is, in `repos/<key>/onboarding.md`, with the proposals the human turns into requests; it changes nothing | `references/onboard.md` |
-| `intake` | the session the CEO hands a request to (`FACTORY_ROLE=intake`): routes it to its repositories and writes one parent per repository, then reports to the CEO | `references/intake.md` |
-| `route` | the session the CEO hands a free message of the human's to (`FACTORY_ROLE=route`): judges it into the one line the CEO acts on, or answers a question about the org or a repository | `references/route.md` |
-| `research` | the session the CEO hands a research question to (`FACTORY_ROLE=research`): a deep-research report in the state repo over none or more repositories, a notice with the answer, then reports to the CEO | `references/research.md` |
-| `cross-repo` | the session the CEO hands a lead's cross-repo need to (`FACTORY_ROLE=cross-repo`): asks the human in the map whether it is in scope, then writes the new parent or drops the ticket | `references/cross-repo.md` |
-| `doctor` | a report over registration, toolset, the tools on PATH and `docs/architecture/`, with a fix per missing line | `references/doctor.md` |
+| `add-repo` | registers a clone in `state/repos.yml` and seeds `repos/<key>/toolset.md`; with `--clone <url>` it clones the repository into the clones directory first | `references/add-repo.md` |
+| `doctor` | a report over registration, toolset, the tools on PATH, the forge and `docs/architecture/`, with a fix per missing line | `references/doctor.md` |
 | `list` | every task with its status, archetype, tier, repo and owner; `--repo` and `--status` narrow it | `references/list.md` |
 | `curate` | the proposal queues one proposal at a time, applied through `curate-apply.sh`, every decision a commit | `references/curate.md` |
 | `consolidate` | duplicates, contradictions and staleness in one or more memory scopes, as proposals | `references/consolidate.md` |
-| `solve` | one problem end to end: triage, grill, decompose, blocks in their own worktrees, the MR | `references/solve.md`, quick lane `references/solve-quick.md` |
-| `herd` | one task the user named, end to end like `solve`, but every work step runs as an interactive session in a herdr tab and this session becomes its monitor: it dispatches, watches until `done` or `closed`, and gates | `references/herd.md` |
-| `ceo` | the org: one herdr session in `$WORK_DIR/state`, started there with `claude '/claude-factory:factory ceo'`, that takes requests, routes them per repository under one request id, dispatches the chain as step sessions, takes the plan approval from the UI's Plan tab, starts a lead per approved parent from the queue, watches every herd and offers the memory passes | `references/ceo.md` |
-| `lead` | one approved parent end to end in its worktree: `herd` for that parent with the block MRs merged by the lead and the task MR for the human; a session the CEO started as `lead_<unit>` (`FACTORY_ROLE=repo-lead`) reads this with its `herd` | `references/lead.md` |
-| `monitor` | dispatch: `${CLAUDE_PLUGIN_ROOT}/bin/session-monitor.sh --task <T-NNN>` starts one named task, or the current wave of its blocks, as their own sessions and claims each one; with no argument it only lists the ready tasks to choose from, and `--all` (the batch a user has to ask for by name) also watches every open block MR for merges | `${CLAUDE_PLUGIN_ROOT}/skills/herdr/SKILL.md` |
 | `approve` | a task to `ready` through `${CLAUDE_PLUGIN_ROOT}/bin/task-approve.sh`, human confirmed | `references/approve.md` |
 | `done` | a task and its blocks to `done` through `${CLAUDE_PLUGIN_ROOT}/bin/task-done.sh`, after the human validated the MR | `references/done.md` |
-| `ui` | starts the Factory UI through `ui-up.sh` and gives the URL with its token; `ui down` stops it through `ui-down.sh` | `references/ui.md` |
 
 Read the reference for the subcommand the user asked for (`${CLAUDE_SKILL_DIR}/references/<subcommand>.md`)
-and follow it. Without a subcommand: `init` when `WORK_DIR` is unset or has no `state/`, otherwise `doctor`.
+and follow it. Without a subcommand: `init` when `WORK_DIR` is unset or has no `state/`; otherwise text that
+names a task is `solve` with that text, and nothing at all is `doctor`.
 
 ## The one rule
 

@@ -1,8 +1,9 @@
 # claude-factory
 
-The Claude Code plugin behind the factory loop: grill a spec, decompose it into tasks, run each block
-in its own worktree, review and merge. Skills, agents, toolsets and the policy hooks that enforce the
-rules, in one installable plugin.
+The Claude Code plugin behind the factory loop: hand over a task, and one session triages it, grills the spec,
+decomposes it into blocks, runs each block in its own worktree, merges the block MRs into the task's work branch
+and opens the task MR for review. Skills, agents, toolsets and the policy hooks that enforce the rules, in one
+installable plugin.
 
 ## Install
 
@@ -17,8 +18,44 @@ A Windows clone gets LF line endings by design: `.gitattributes` pins them, so t
 
 Some skills set `disable-model-invocation`, so the model never picks them on its own and they run only when
 invoked by name: `quality-kit` and its sub-skills `analyze-structure`, `setup-guardrails`, `architecture-tests`,
-`analyzer-fix-example`, `add-module`, `add-slice` and `write-analyzer`, `solution-map`, and `factory-start`,
-which makes the Factory UI fully active, with the CEO session registered, and gives the UI link.
+`analyzer-fix-example`, `add-module`, `add-slice` and `write-analyzer`, and `solution-map`.
+
+## The flow
+
+Once per machine `/claude-factory:factory init`, once per repository `/claude-factory:factory add-repo`. Then,
+in a session in the registered clone:
+
+```
+/claude-factory:factory solve <the task in words>
+```
+
+The session creates the task and runs `bin/solve-next.sh` step by step without stopping between steps
+(`skills/factory/references/solve.md`):
+
+| step | what happens | who |
+|---|---|---|
+| intake | the parent task in the state repo, from the words given | session |
+| 3 triage | recon, the investigation, related issues, tier and archetype | `scout`, `triage-analyst`, `issue-finder` |
+| 4 grill | the spec interview that ends in `plan-ready.md` | the human answers the rounds |
+| 5 plan-check | the plan against `docs/architecture/` | `plan-architect` |
+| 6-8 decompose and cut check | one block per proposal, the wave plan | session, `dag-check.sh` |
+| 9 approval | the parent and its blocks to `ready` | the human, one confirm |
+| 10-11 blocks | per wave: red tests, implementation, verify, review, block MR, merge into the work branch | `test-designer`, `implementer`, `code-reviewer`, `architecture-auditor` |
+| 12-13 quality | acceptance, crap, duplication, the integrated review | session, `code-reviewer` |
+| 14 task MR | the MR into the base branch with every block MR listed | the human reviews and merges |
+| 15-16 | self-report and knowledge review | session |
+
+A merged task MR is picked up by `mr-watch.sh` and closes the task (`factory done`). A green task of low
+complexity takes the quick lane instead: one worktree, no blocks (`references/solve-quick.md`).
+
+Task ids are `T-<ALIAS>-<n>` per repository (`alias:` in `repos.yml`), blocks `T-<ALIAS>-<n>-<NN>`; the older
+`T-<n>` ids stay valid. The state commits are local and `bin/state-push.sh`, the first command of every step,
+carries them to the state root.
+
+Lessons land as proposals. `/claude-factory:memory-daily <scope>` turns verified ones into drafts, and
+`/claude-factory:memory-weekly <scope>` promotes drafts into the per-repository playbooks after the human's
+rounds; a session in the state clone is told which passes are due. A change to a plugin skill is always a human
+PR.
 
 ## Layout
 
@@ -27,39 +64,11 @@ which makes the Factory UI fully active, with the CEO session registered, and gi
 | `skills/` | archetype and workflow skills (`grill`, `decompose`, `block-*`, `factory`, `mr-review`, `issue-create`, ...) |
 | `agents/` | subagent definitions the skills spawn |
 | `bin/` | the shell implementation: gates, task state, forge, verification |
-| `hooks/hooks.json` | SessionStart, PreToolUse, SubagentStart, SubagentStop, PreCompact and Stop wiring (`hooks/README.md`) |
+| `hooks/hooks.json` | SessionStart, PreToolUse, SubagentStart, PreCompact and Stop wiring (`hooks/README.md`) |
 | `toolsets/` | per-stack command bindings |
 | `tests/` | shell checks over the scripts above |
-| `ui/` | the Factory UI server, a .NET Native AOT container (`ui/README.md`) |
 
-## The org
-
-The factory runs as an org of interactive Claude Code sessions in herdr, never as a headless run (`claude -p`,
-the Agent SDK, a routine or a cron that starts `claude`), and never under `bypassPermissions`.
-
-- **CEO** (`skills/factory/references/ceo.md`): one session in `$WORK_DIR/state`, started there inside herdr
-  with `claude '/claude-factory:factory ceo'`. It does no work itself: every action goes on to a session of its
-  own. It starts the UI, takes a request with a priority, opens a request map (`requests/<R-id>/`) and hands it to
-  an intake session that writes one parent per repository, then runs the automatic chain as step sessions
-  (triage, the map chart with `claude-factory:wayfinder`, grill, plan-check, decompose). An added repository, a
-  weekly memory pass and a lead's cross-repo need get a session each too, and a free message goes to a route
-  session that judges it. The human answers the grilling rounds and approves the plan once per request; approved
-  parents queue by priority and start as capacity frees up. It watches every herd, re-arms its watchers after a
-  restart and offers the daily and weekly memory passes.
-- **Lead** (`lead_<unit>`, `skills/factory/references/lead.md`): one session per approved parent, in the
-  parent's worktree and its own herdr workspace. It runs the herd flow for that parent, one MR per block into
-  the task's work branch that it merges itself (a high-risk block waits for the human), and one MR per parent
-  into the base branch that the human reviews and merges. It ends with its task.
-- **Team**: the agents under `agents/`, briefed per repository by the playbooks in the state repo
-  (`repos/<key>/agents/<agent>/playbook.md`). Each role has a capacity shared across all leads (`capacity:` in
-  `factory.yml`), enforced by the hooks on `Agent`, `SubagentStart` and `SubagentStop`.
-- **Knowledge**: lessons land as proposals, the daily pass turns verified ones into drafts, the weekly pass
-  promotes drafts into the playbooks after the human's rounds; a change to a plugin skill is always a human PR.
-
-Task ids are `T-<ALIAS>-<n>` per repository (`alias:` in `repos.yml`), blocks `T-<ALIAS>-<n>-<NN>`; the older
-`T-<n>` ids stay valid.
-
-### Agents
+## Agents
 
 Since 0.15.0 the agent names say what they do:
 
@@ -68,7 +77,7 @@ Since 0.15.0 the agent names say what they do:
 | `scout` | read-only recon: blast radius, references, existing tests |
 | `triage-analyst` | judges the triage recon into the parent's context |
 | `issue-finder` | the open issues a problem or a finished change touches |
-| `researcher-s0` to `researcher-s3` | deep research at four tiers, counted as one `researcher` role |
+| `researcher-s0` to `researcher-s3` | deep research at four tiers |
 | `plan-architect` | plan-check and cut-check before the approval |
 | `domain-architect` | the per-domain review both architects call |
 | `architecture-auditor` | after a change, per block and once per parent: does the architecture still hold, and the architectural risk |
@@ -80,39 +89,18 @@ Since 0.15.0 the agent names say what they do:
 
 `spec-critic`, `memory-curator`, `mr-reviewer`, `report-preview` and `solution-map-*` kept their names.
 
-### After the upgrade to 0.15.0
+## Upgrading from 0.14
 
-In order, once `claude plugin update` shows 0.15.0:
+In order, once `claude plugin update` shows the new version, in a plain session in the state clone:
 
-1. **M0** (you, in a plain session in the state clone): `git mv agents/<old>/memory agents/<new>/memory` for
-   the three memory folders still under their old agent names (to `implementer`, `test-designer` and
-   `code-reviewer`), in one commit; move a lesson into
+1. `git mv agents/<old>/memory agents/<new>/memory` for the three memory folders still under their old agent
+   names (to `implementer`, `test-designer` and `code-reviewer`), in one commit; move a lesson into
    `repos/<key>/agents/<agent>/memory/` only when it names that repository; write the `alias:` of every
    repository into `repos.yml`; run `factory doctor`.
-2. **M1** (you, with `factory curate`, then the scripts): clear the open proposals; `bin/state-archive.sh --all`;
-   archive retired keys and finished leftovers; `memory-consolidate` over `memory/global` when it is over
-   budget.
-3. **M2** (the CEO session): the daily pass per scope over the older lessons, then the weekly rounds with you.
-4. **M3** (you, in the Setup tab or the terminal): `capacity:` in `factory.yml`, the priority defaults, doctor
-   green, then start the CEO: `claude '/claude-factory:factory ceo'` in `$WORK_DIR/state`, in a herdr pane.
-5. **M4** (you and the CEO): one live request across two repositories from intake to both task MRs merged; what
-   it teaches becomes the first lessons of the repo-lead playbooks.
-
-## Browser UI
-
-An optional local page beside the CLI, for Claude Code sessions inside herdr with `ui: docker` in
-`factory.yml`. It needs Docker, and nothing else on the host.
-
-```sh
-sh bin/ui-up.sh [--state <dir>]   # build the image when missing, start or reuse the container, open the relay tab
-sh bin/ui-down.sh                  # remove the container and close the relay tab
-```
-
-`ui-up.sh` prints `http://127.0.0.1:<port>/#token=<token>`. Open that URL: the token in the fragment is what the
-page sends with every API call. The port is `ui_port` from `factory.yml` (7171 by default), or a random free
-port when that one is taken. The port in use is written to `port` in the UI home (`~/.claude-factory/ui`,
-or `$FACTORY_UI_HOME`). One container serves every session on the machine. It is recreated when the plugin
-version or the state dir changes. `ui-up.sh` exits 3 when Docker is not running and 4 outside herdr.
+2. Clear the open proposals with `factory curate`; `bin/state-archive.sh --all`; `memory-consolidate` over
+   `memory/global` when it is over budget.
+3. Remove `spawn:`, `ui:`, `ui_port:` and `capacity:` from `factory.yml` if an earlier version wrote them; nothing
+   reads them any more.
 
 ## Tests
 
