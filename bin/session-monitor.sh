@@ -57,8 +57,9 @@
 # appended to the tab record through `herdr-tabs.sh record` with its herdr name, and once the prompt is in, the
 # agent's session id through `herdr-tabs.sh session`, so `herdr-tabs.sh reattach` finds it after a herdr restart
 # that changed its pane. A tab with no tab id, or a record that fails, is one line on stderr and the unit still
-# starts. A `--task` spawn also writes the monitor's own `$HERDR_TAB_ID` to `<root>/<key>/.harness/<T-id>/
-# herd-monitor`, which is how the Stop hook rearm-check.sh knows the herds of that session.
+# starts. Every `--task` pass that runs in herdr, dry runs aside, first writes the monitor's own `$HERDR_TAB_ID`
+# to `<root>/<key>/.harness/<T-id>/herd-monitor`, which is how the Stop hook rearm-check.sh knows the herds of
+# that session.
 #
 # The agent starts with `herdr agent start --timeout 120000`. A start that answers `agent_not_ready` stopped at a
 # dialog (trust, login): the monitor waits for the agent with `herdr agent wait <name> --until idle --until done
