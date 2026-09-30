@@ -80,9 +80,11 @@ With herdr on PATH and this session in a herdr pane it opens one tab per unit, i
 `cd ... && claude ...` lines for the human to run. Either way it prints one `<id> <spawned|printed|skipped>
 <cwd>` line per unit, so the main session learns what went out without reading any of the work.
 
-Every session is named `<emoji> <repo> <id>`, for example `🦊 arthurcore T-251-01`: the tab label and the
-`claude --name`, and the `--name` of a printed line too. The emoji is the repo's `emoji:` in `repos.yml`, else
-a fixed pick by the repo key. The herdr agent name is `<role>_<unit>`, the unit lowercased without its leading
+Every session is named `<role emoji> <emoji> <repo> <id>`, for example `🔨 🦊 arthurcore T-251-01`: the tab label
+and the `claude --name`, and the `--name` of a printed line too. The role emoji marks the phase: 🔎 triage,
+🎤 grill, 📐 plan-check, 🧩 decompose, 🧪 test-designer, 🔨 implementer, 🧠 implementer-senior. The monitor's own
+tab is renamed `📡 <emoji> <repo> <T-id>` on its first `--task` pass. The emoji after it is the repo's `emoji:` in
+`repos.yml`, else a fixed pick by the repo key. The herdr agent name is `<role>_<unit>`, the unit lowercased without its leading
 `t-` for an alias id (`implementer_ecs-142-03`, `grill_cf-3`) and with it for a legacy id (`grill_t-264`).
 `herdr agent read <name>` takes that name. Every spawn passes `--env FACTORY_ROLE=<role> --env
 FACTORY_UNIT=<unit> --env CLAUDE_CODE_DISABLE_AUTO_MEMORY=1`; the guard keeps every human gate from a session

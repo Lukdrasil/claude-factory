@@ -266,7 +266,7 @@ out=$(cat "$claimed")
 check 'the dispatch claims in_progress'  '^status: in_progress$'
 check 'the dispatch claims a pending owner' "^owner: factory@.*:pending-T-001\$"
 
-# the session name `<emoji> <repo> <id>` on the tab and in `claude --name`, and the tab record of each spawn,
+# the session name `<role emoji> <emoji> <repo> <id>` on the tab and in `claude --name`, and the tab record of each spawn,
 # over a second state repo: `demo` carries an `emoji:`, `plain` does not
 . "$(dirname -- "$0")/herdr-stub.sh"
 herdr_stub "$tmp/stub"
@@ -309,8 +309,8 @@ herdr_agent implementer_t-101 idle pane-1 sess-101
 out=$(sh "$bin/session-monitor.sh" --task T-101 --state "$hstate" 2>/dev/null)
 check 'herdr on PATH with HERDR_ENV=1 spawns unasked' '^T-101 spawned '
 out=$(cat "$HERDR_STUB_LOG")
-check 'the tab carries the session name'        '^tab create .*--label "🦊 demo T-101"'
-check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🦊 demo T-101"'
+check 'the tab carries the session name'        '^tab create .*--label "🔨 🦊 demo T-101"'
+check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🔨 🦊 demo T-101"'
 out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
 check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
 check 'the record gains the session id once claude is up, for reattach after a herdr restart' '^T-101 tab-1 pane-1 sess-101$'
@@ -328,8 +328,11 @@ out=$(FACTORY_CLAUDE_ARGS='--plugin-dir /sim/plugin' sh "$bin/session-monitor.sh
 check 'and on a printed line'                   'claude --model [^ ]* --name "[^"]*" --plugin-dir /sim/plugin "'
 
 # the herd-monitor file: a --task herdr spawn from a monitor pane leaves its HERDR_TAB_ID under the parent
+: > "$HERDR_STUB_LOG"
 out=$(HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --task T-103 --spawn herdr --state "$hstate" 2>/dev/null)
 check 'a herdr spawn of a block goes out'       '^T-103-01 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'the monitor tab is renamed with the monitor emoji' '^tab rename tab-mon "📡 🦊 demo T-103" $'
 out=$(cat "$hroot/demo/.harness/T-103/herdr-tabs" 2>/dev/null)
 check 'a block lands in its parent tab record'  '^T-103-01 tab-1 pane-1$'
 out=$(cat "$hroot/demo/.harness/T-103/herd-monitor" 2>/dev/null)
@@ -370,14 +373,23 @@ check 'a step spawn writes the herd-monitor of its task' '^tab-mon2$'
 out=$(HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/null)
 check '--all spawns the unit of the other repo' '^T-102 spawned '
 out=$(cat "$HERDR_STUB_LOG")
-check '--all names the tab by its repo'         '^tab create .*--label "[^ ]* plain T-102"'
-check '--all names the claude session too'      '^agent start implementer_t-102 .* -- .*--name "[^ ]* plain T-102"'
+check '--all names the tab by its repo'         '^tab create .*--label "🔨 [^ ]* plain T-102"'
+check '--all names the claude session too'      '^agent start implementer_t-102 .* -- .*--name "🔨 [^ ]* plain T-102"'
+nocheck '--all renames no monitor tab'          '^tab rename '
 out=$(cat "$hroot/plain/.harness/T-102/herdr-tabs" 2>/dev/null)
 check '--all records its tab'                   '^T-102 tab-1 pane-1$'
 absent '--all writes no herd-monitor'           "$hroot/plain/.harness/T-102/herd-monitor"
 
 out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn manual --state "$hstate" 2>/dev/null)
-check 'the manual line carries the session name' 'claude --model [^ ]* --name "🦊 demo T-101" "First take ownership of T-101'
+check 'the manual line carries the session name' 'claude --model [^ ]* --name "🔨 🦊 demo T-101" "First take ownership of T-101'
+
+for r in 'monitor 📡' 'triage 🔎' 'grill 🎤' 'plan-check 📐' 'decompose 🧩' 'test-designer 🧪' 'implementer 🔨' \
+  'implementer-senior 🧠'; do
+  out=$(sh "$bin/herdr-tabs.sh" name T-101 --role "${r% *}" --state "$hstate" 2>/dev/null)
+  check "--role ${r% *} leads with ${r#* }" "^${r#* } 🦊 demo T-101\$"
+done
+out=$(sh "$bin/herdr-tabs.sh" name T-101 --role reviewer --state "$hstate" 2>/dev/null)
+check 'a role with no emoji adds nothing'       '^🦊 demo T-101$'
 
 out=$(sh "$bin/herdr-tabs.sh" name T-101 --state "$hstate" 2>/dev/null)
 check 'an emoji: in repos.yml wins'             '^🦊 demo T-101$'
@@ -676,7 +688,7 @@ nocheck 'a spawn passes no FACTORY_TASK'            '^FACTORY_TASK='
 nocheck 'a spawn passes no FACTORY_STEP'            '^FACTORY_STEP='
 nocheck 'a spawn passes no FACTORY_FLOW'            '^FACTORY_FLOW='
 out=$(cat "$HERDR_STUB_LOG")
-check 'the tab lands in --workspace'                "^tab create --cwd $oroot/ecs-core/T-ECS-12 --label \"🐳 ecs-core T-ECS-12-grill\" --no-focus --workspace ws-7 "
+check 'the tab lands in --workspace'                "^tab create --cwd $oroot/ecs-core/T-ECS-12 --label \"🎤 🐳 ecs-core T-ECS-12-grill\" --no-focus --workspace ws-7 "
 check 'a step agent is <step>_<id less t->'         '^agent start grill_ecs-12 --kind claude --pane pane-1 '
 check 'agent start waits up to 120 s'               '^agent start grill_ecs-12 .*--timeout 120000 '
 check 'the grill prompt runs the grill skill'       "^agent prompt grill_ecs-12 \"/claude-factory:grill $ostate/repos/ecs-core/tasks/T-ECS-12.md\" --wait --until working --until blocked --until done --timeout 60000 \$"

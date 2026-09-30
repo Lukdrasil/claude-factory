@@ -4,7 +4,7 @@
 # this script closed, with `herdr-names` beside it, one `<unit> <herdr agent name>` line per `record --name`. Both
 # files are only ever appended to and the last line of a unit wins, so every writer appends without a lock.
 #
-#   herdr-tabs.sh name <unit> [--state <dir>]
+#   herdr-tabs.sh name <unit> [--role <role>] [--state <dir>]
 #   herdr-tabs.sh record <unit> <tab_id> <pane_id> [<session_id>] [--name <herdr name>] [--state <dir>]
 #   herdr-tabs.sh session <unit> <session_id> [--state <dir>]
 #   herdr-tabs.sh state <unit> [--state <dir>]
@@ -17,7 +17,9 @@
 # (`<T-id>-<step>`); its T-id names the record and its task file names the repo key. `name` prints the session
 # name `<emoji> <key> <unit>`, the tab label and the `claude --name` of the unit: the emoji is the repo's `emoji:`
 # in repos.yml, and without one a fixed pick out of sixteen by the `cksum` of the key, so a repo keeps its emoji
-# from run to run.
+# from run to run. `--role` puts the role's own emoji in front, `<role emoji> <emoji> <key> <unit>`: 📡 monitor,
+# 🔎 triage, 🎤 grill, 📐 plan-check, 🧩 decompose, 🧪 test-designer, 🔨 implementer, 🧠 implementer-senior; a
+# role not in that list adds nothing.
 #
 # `session` appends the unit's open record line again with the session id, once the session is known. `state`
 # prints `open`, `closed`, or `none` for a unit with no record.
@@ -50,12 +52,13 @@ set -eu
 . "$(dirname -- "$0")/lib-tasks.sh"
 
 die() { printf 'herdr-tabs: %s\n' "$1" >&2; exit 1; }
-usage='usage: herdr-tabs.sh name <unit> | record <unit> <tab_id> <pane_id> [<session_id>] [--name <name>] | session <unit> <session_id> | state <unit> | agents <T-NNN> | reattach <T-NNN> | close <unit>... | sweep <T-NNN> [--state <dir>]'
+usage='usage: herdr-tabs.sh name <unit> [--role <role>] | record <unit> <tab_id> <pane_id> [<session_id>] [--name <name>] | session <unit> <session_id> | state <unit> | agents <T-NNN> | reattach <T-NNN> | close <unit>... | sweep <T-NNN> [--state <dir>]'
 
-verb='' args='' state='' hname=''
+verb='' args='' state='' hname='' role=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
+    --role) [ $# -ge 2 ] || die "--role needs a value"; role=$2; shift 2 ;;
     --name) [ $# -ge 2 ] || die "--name needs a value"; hname=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) if [ -z "$verb" ]; then verb=$1; else args="$args $1"; fi; shift ;;
@@ -173,7 +176,11 @@ case "$verb" in
       sum=$(printf '%s' "$key" | cksum | cut -d' ' -f1)
       emoji=$(printf '%s\n' 🦊 🐙 🦉 🐝 🐢 🦀 🐳 🦋 🌵 🍄 🌻 🍋 🔥 🌊 🪐 🎲 | sed -n "$((sum % 16 + 1))p")
     fi
-    printf '%s %s %s\n' "$emoji" "$key" "$1" ;;
+    case "$role" in
+      monitor) re=📡 ;; triage) re=🔎 ;; grill) re=🎤 ;; plan-check) re=📐 ;; decompose) re=🧩 ;;
+      test-designer) re=🧪 ;; implementer) re=🔨 ;; implementer-senior) re=🧠 ;; *) re='' ;;
+    esac
+    printf '%s%s %s %s\n' "${re:+$re }" "$emoji" "$key" "$1" ;;
   record)
     resolve "$1"
     mkdir -p "$dir"

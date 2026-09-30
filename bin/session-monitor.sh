@@ -52,14 +52,14 @@
 # `<role>_<task id lowercased>`, the leading `t-` dropped for an alias id and kept for a legacy one
 # (`grill_ecs-12`, `implementer_t-264-02`), cut at 31 characters.
 #
-# Every unit carries the session name `<emoji> <repo> <id>` of `herdr-tabs.sh name`: the tab label and the
+# Every unit carries the session name `<role emoji> <emoji> <repo> <id>` of `herdr-tabs.sh name --role`: the tab label and the
 # `claude --name` of a herdr spawn, and the `--name` of a printed manual line. Each tab a herdr spawn creates is
 # appended to the tab record through `herdr-tabs.sh record` with its herdr name, and once the prompt is in, the
 # agent's session id through `herdr-tabs.sh session`, so `herdr-tabs.sh reattach` finds it after a herdr restart
 # that changed its pane. A tab with no tab id, or a record that fails, is one line on stderr and the unit still
 # starts. Every `--task` pass that runs in herdr, dry runs aside, first writes the monitor's own `$HERDR_TAB_ID`
 # to `<root>/<key>/.harness/<T-id>/herd-monitor`, which is how the Stop hook rearm-check.sh knows the herds of
-# that session.
+# that session, and renames that tab to the monitor's session name, `📡 <emoji> <repo> <T-id>`.
 #
 # The agent starts with `herdr agent start --timeout 120000`. A start that answers `agent_not_ready` stopped at a
 # dialog (trust, login): the monitor waits for the agent with `herdr agent wait <name> --until idle --until done
@@ -334,6 +334,7 @@ if [ -n "$parent" ]; then
     hm_t=$parent
     if is_block_id "$hm_t"; then hm_t=${hm_t%-*}; fi
     mkdir -p "$root/$key/.harness/$hm_t" && printf '%s\n' "$HERDR_TAB_ID" > "$root/$key/.harness/$hm_t/herd-monitor" || :
+    herdr tab rename "$HERDR_TAB_ID" "$(sh "$bin/herdr-tabs.sh" name "$hm_t" --role monitor --state "$state")" >/dev/null 2>&1 || :
   fi
   # one agent list for the pass, so a block whose session died is found and dispatched again
   agents=''
@@ -456,7 +457,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # the claim goes out before the session does, so no second dispatch sees the unit as ready; a dry run
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
-  label=$(sh "$bin/herdr-tabs.sh" name "$id" --state "$state")
+  label=$(sh "$bin/herdr-tabs.sh" name "$id" --role "$role" --state "$state")
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
     printf '  cd "%s" && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
