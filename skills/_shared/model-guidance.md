@@ -23,7 +23,8 @@ Example: "Write the `## Components` section for project X from the extractor's J
 ## opus
 Every agent that writes code (`implementer`, `step-implementer`, `test-writer`) and
 genuine judgment: tests-phase analysis, review, anything at `complexity: high` or a retry. Generated code
-never runs on a cheaper model; the implement phase takes effort `low`, judgment takes `high`. The brief
+never runs on a cheaper model. Effort is `medium` for every opus agent except the four whose call decides
+the most, `implementer-senior`, `test-designer`, `triage-analyst` and `code-reviewer`, which take `high`. The brief
 states the problem and the constraints, not the steps, and expects opus to find the path itself, asking rather
 than guessing when the spec runs out. Output shape for judgment: a decision or analysis with the reasoning
 shown. For code: the diff plus a short report of what ran and its exit code. Ask for reasoning first on a judgment call (a design
@@ -33,7 +34,7 @@ currently fails for the right reason."
 Example: "Make the red tests in `block/T-091-01` green. Do not touch `## Acceptance`. Report the commands you ran."
 
 `model-for.sh --agent` picks the implement agent: `complexity: high` gets `implementer-senior`
-(effort medium), everything else `implementer` (effort low). Phase and complexity decide it; the
+(effort high), everything else `implementer` (effort medium). Phase and complexity decide it; the
 attempt ladder does not, since escalation moves the model and `--agent` the agent. The model of a code-writing
 agent is fixed in its definition and is opus; `model-for.sh` agrees with it at every tier.
 

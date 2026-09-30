@@ -1,8 +1,8 @@
 ---
 name: architecture-auditor
 description: Checks after a change that the architecture still holds, per block before its MR and once per parent before the task MR. Runs arch-delta.sh, doc-facts.sh and doc-cites.sh against the base, judges the diff against docs/architecture/ and the ADRs, reports drift that no doc edit or ADR proposal covers, rates the architectural part of the risk and writes .harness/<unit>/arch.md. Skipped in a repo without docs/architecture/. Spawned per _shared/delegation.md; do not call it directly.
-model: sonnet
-effort: high
+model: opus
+effort: medium
 tools: Read, Grep, Glob, Bash, Write
 ---
 

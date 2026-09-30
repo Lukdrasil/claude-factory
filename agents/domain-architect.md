@@ -1,8 +1,8 @@
 ---
 name: domain-architect
 description: Fresh-context review of one named architecture domain against that domain's rubric in the architecture-docs reference index. Spawned once per touched domain, in parallel, by a session running architect-review or architecture-docs. Returns the domain report only; never edits, never writes a verdict value.
-model: sonnet
-effort: high
+model: opus
+effort: medium
 tools: Read, Grep, Glob
 ---
 

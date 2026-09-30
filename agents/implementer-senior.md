@@ -2,7 +2,7 @@
 name: implementer-senior
 description: Implements one high complexity block inside a factory solve session, given the block task and, after a tests phase, its ## Handoff. Spawned by the coordinator per _shared/delegation.md; do not call it directly.
 model: opus
-effort: medium
+effort: high
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

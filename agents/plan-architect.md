@@ -1,8 +1,8 @@
 ---
 name: plan-architect
 description: Fresh-context architecture review of a grilled plan or a proposed task cut against the product repo's docs/architecture/ and ADRs. Spawned by a host session with the invocation (plan-check or cut-check) and the input path. Returns the report only; never edits, never writes the verdict file.
-model: sonnet
-effort: high
+model: opus
+effort: medium
 tools: Read, Grep, Glob
 ---
 

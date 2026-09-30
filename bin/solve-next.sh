@@ -239,8 +239,9 @@ case "$status" in
     exit 0 ;;
 esac
 
-# why: nothing from step 11 on runs in the clone, so no block stage is reachable before this one
-if [ ! -e "$worktree/.git" ]; then
+# why: nothing from step 11 on runs in the clone, so no block stage is reachable before this one; the detached
+# why: worktree the herd's steps read in before the approval is no session worktree until it is on a branch
+if [ ! -e "$worktree/.git" ] || [ "$(git -C "$worktree" rev-parse --abbrev-ref HEAD 2>/dev/null)" = HEAD ]; then
   emit "Step 10 of 16: session worktree for $id" "git -C $worktree rev-parse --abbrev-ref HEAD prints the session branch, written into the parent's branch: field."
   cmd "$bin/worktree-add.sh $id"
   cmd "git -C $worktree rev-parse --abbrev-ref HEAD"

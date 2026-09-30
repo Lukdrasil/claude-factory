@@ -2,7 +2,7 @@
 name: docs-architect
 description: Authors and maintains a product repo's architecture and product documentation (docs/architecture/, docs/product/, CONTEXT.md) in mode bootstrap or audit. Explores the code, proposes, and writes only what the human has confirmed; it has no channel of its own to the human. Spawned by a host session with the product repo path and the mode.
 model: opus
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Bash, Write, Edit
 skills:
   - architecture-docs

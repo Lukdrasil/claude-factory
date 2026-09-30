@@ -450,6 +450,19 @@ coord_scope() { # <absolute path>
   owner_is_session "${HT_TASK%-*}"
 }
 
+# the task worktree exists before the approval since the herd's steps read in it (worktree-add.sh --detach), so
+# being inside it no longer proves the approval: it stays read-only until then, and to every step session
+pre_approval_write() { # <absolute path>
+  [ -n "$own" ] || return 0
+  case "$1" in "$own"|"$own"/*) ;; *) return 0 ;; esac
+  case "$status" in draft|triaged)
+    deny "task $task is '$status', not approved yet, so its worktree is read-only until task-approve.sh approves it (ADR-0004): $1" ;;
+  esac
+  case "${FACTORY_ROLE:-}" in triage|grill|plan-check|decompose)
+    deny "a $FACTORY_ROLE session reads the product repo and writes only into the state clone: $1" ;;
+  esac
+}
+
 check_path() {
   p=$1
   [ -n "$p" ] || deny "empty path"
@@ -473,6 +486,7 @@ check_path() {
     return 0
   fi
   if [ -n "$state" ]; then case "$p" in "$state"|"$state"/*) return 0 ;; esac; fi
+  pre_approval_write "$p"
   coord_scope "$p" && return 0
   case "$p" in "$own"|"$own"/*) ;; *) deny "write outside your own work dir $own: $p. Run one 'git worktree add' per Bash call, and spell every worktree path literally: a second add in the same command reads as a write outside the first, and a path built from a shell variable cannot be resolved here." ;; esac
   case "$p" in *"/.claude/"*|*/CLAUDE.md|*/.mcp.json)
@@ -613,6 +627,7 @@ bash_write_target() {
   case "$t" in *..*) return 0 ;; esac
   t=$(abs_norm "$t")
   check_product_clone "$t"
+  pre_approval_write "$t"
   check_test_lock Write "$t"
 }
 

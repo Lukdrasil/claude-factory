@@ -2,7 +2,7 @@
 name: researcher-s3
 description: Deep research, tier S3: irreversible or costly decisions. Tier chosen by the deep-research skill's rubric; do not call it directly.
 model: opus
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch, Write
 ---
 

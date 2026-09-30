@@ -366,4 +366,20 @@ proj=$W/state
 try 2 'launched in the state clone: git -C <a block> log stays denied' "$W/state" coord "git -C $BLK log --oneline -3"
 proj=''
 
+# the herd's steps read in the task worktree before the approval (worktree-add.sh --detach): it is read-only until
+# then, and to every step session after it too, while the state clone stays writable
+mkdir -p "$W/cf/T-950"
+for st in draft triaged; do
+  printf -- '---\nid: T-950\nrepo: cf\nstatus: %s\narchetype: feature\n---\n\n# Goal\nx\n' "$st" > "$W/state/repos/cf/tasks/T-950.md"
+  role=grill
+  try 2 "a $st task worktree refuses a product write" "$W/cf/T-950" s1 'echo x > src.txt'
+  try 0 "a grill session in a $st task worktree writes the state clone" "$W/cf/T-950" s1 "echo x > $W/state/repos/cf/plans-x.md"
+  role=''
+  try 2 "a $st task worktree refuses a product write with no role too" "$W/cf/T-950" s1 'echo x > src.txt'
+done
+role=triage
+try 2 'a triage session refuses a product write in an approved task worktree' "$PAR" coord 'echo x > src.txt'
+role=''
+try 0 'the owner still writes in its approved task worktree' "$PAR" coord 'echo x > src.txt'
+
 exit $fail

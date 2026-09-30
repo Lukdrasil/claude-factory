@@ -215,12 +215,23 @@ EOF
 out=$(sh "$bin/session-monitor.sh" --all --state "$state" --dry-run 2>/dev/null)
 check 'the open block MR is watched' "mr-watch.sh T-004 --once --state $state"
 
-# --step: one session for a parent-level step, in the registered clone when there is no session worktree yet
-mkdir -p "$tmp/clone"
+# --step: one session for a parent-level step, in the task worktree, made detached when there is none yet, so
+# no step runs in the human's clone
+gitclone() { # <dir>
+  git init -q -b main "$1" && git -C "$1" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false \
+    commit -q --allow-empty -m init
+}
+gitclone "$tmp/clone"
 printf 'demo: { path: %s }\n' "$tmp/clone" > "$state/repos.yml"
 task T-005 null feature
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step grill --state "$state" 2>/dev/null)
-check 'the grill step runs in the clone' "^T-005-grill printed $tmp/clone\$"
+check 'the grill step runs in the task worktree' "^T-005-grill printed $root/demo/T-005\$"
+nocheck 'and never in the clone'            "printed $tmp/clone\$"
+out=$(git -C "$root/demo/T-005" rev-parse --abbrev-ref HEAD 2>&1)
+check 'that worktree is detached'            '^HEAD$'
+out=$(cat "$state/repos/demo/tasks/T-005.md")
+nocheck 'and writes no branch: into the task' '^branch:'
+out=$(sh "$bin/session-monitor.sh" --task T-005 --step grill --state "$state" 2>/dev/null)
 check 'the grill step prompts the skill' '"/claude-factory:grill '
 check 'the grill step runs as FACTORY_ROLE=grill' 'FACTORY_ROLE=grill FACTORY_UNIT=T-005-grill CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude '
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step plan-check --state "$state" --dry-run 2>&1); rc=$?
@@ -235,7 +246,7 @@ out=$(sh "$bin/session-monitor.sh" --task T-005 --step decompose --state "$state
 check 'the decompose step prompts the decompose skill over the plan' "\"/claude-factory:decompose $state/repos/demo/plans/p5-plan-ready\.md\"\$"
 
 out=$(sh "$bin/session-monitor.sh" --parent T-005 --step grill --state "$state" 2>/dev/null)
-check '--parent is still the same flag' "^T-005-grill printed $tmp/clone\$"
+check '--parent is still the same flag' "^T-005-grill printed $root/demo/T-005\$"
 
 # the modes and flags the monitor no longer has, and the ones it refuses to mix
 for bad in '--task T-005 --step nonsense' '--task T-005 --step chart' '--task T-005 --step lead' \
@@ -266,7 +277,7 @@ out=$(cat "$claimed")
 check 'the dispatch claims in_progress'  '^status: in_progress$'
 check 'the dispatch claims a pending owner' "^owner: factory@.*:pending-T-001\$"
 
-# the session name `<emoji> <repo> <id>` on the tab and in `claude --name`, and the tab record of each spawn,
+# the session name `<role emoji> <emoji> <repo> <id>` on the tab and in `claude --name`, and the tab record of each spawn,
 # over a second state repo: `demo` carries an `emoji:`, `plain` does not
 . "$(dirname -- "$0")/herdr-stub.sh"
 herdr_stub "$tmp/stub"
@@ -309,8 +320,8 @@ herdr_agent implementer_t-101 idle pane-1 sess-101
 out=$(sh "$bin/session-monitor.sh" --task T-101 --state "$hstate" 2>/dev/null)
 check 'herdr on PATH with HERDR_ENV=1 spawns unasked' '^T-101 spawned '
 out=$(cat "$HERDR_STUB_LOG")
-check 'the tab carries the session name'        '^tab create .*--label "🦊 demo T-101"'
-check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🦊 demo T-101"'
+check 'the tab carries the session name'        '^tab create .*--label "🔨 🦊 demo T-101"'
+check 'claude carries the session name'         '^agent start implementer_t-101 .* -- .*--name "🔨 🦊 demo T-101"'
 out=$(cat "$hroot/demo/.harness/T-101/herdr-tabs" 2>/dev/null)
 check 'the leaf spawn is in the tab record'     '^T-101 tab-1 pane-1$'
 check 'the record gains the session id once claude is up, for reattach after a herdr restart' '^T-101 tab-1 pane-1 sess-101$'
@@ -328,8 +339,11 @@ out=$(FACTORY_CLAUDE_ARGS='--plugin-dir /sim/plugin' sh "$bin/session-monitor.sh
 check 'and on a printed line'                   'claude --model [^ ]* --name "[^"]*" --plugin-dir /sim/plugin "'
 
 # the herd-monitor file: a --task herdr spawn from a monitor pane leaves its HERDR_TAB_ID under the parent
+: > "$HERDR_STUB_LOG"
 out=$(HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --task T-103 --spawn herdr --state "$hstate" 2>/dev/null)
 check 'a herdr spawn of a block goes out'       '^T-103-01 spawned '
+out=$(cat "$HERDR_STUB_LOG")
+check 'the monitor tab is renamed with the monitor emoji' '^tab rename tab-mon "📡 🦊 demo T-103" $'
 out=$(cat "$hroot/demo/.harness/T-103/herdr-tabs" 2>/dev/null)
 check 'a block lands in its parent tab record'  '^T-103-01 tab-1 pane-1$'
 out=$(cat "$hroot/demo/.harness/T-103/herd-monitor" 2>/dev/null)
@@ -370,14 +384,23 @@ check 'a step spawn writes the herd-monitor of its task' '^tab-mon2$'
 out=$(HERDR_TAB_ID=tab-mon sh "$bin/session-monitor.sh" --all --spawn herdr --state "$hstate" 2>/dev/null)
 check '--all spawns the unit of the other repo' '^T-102 spawned '
 out=$(cat "$HERDR_STUB_LOG")
-check '--all names the tab by its repo'         '^tab create .*--label "[^ ]* plain T-102"'
-check '--all names the claude session too'      '^agent start implementer_t-102 .* -- .*--name "[^ ]* plain T-102"'
+check '--all names the tab by its repo'         '^tab create .*--label "🔨 [^ ]* plain T-102"'
+check '--all names the claude session too'      '^agent start implementer_t-102 .* -- .*--name "🔨 [^ ]* plain T-102"'
+nocheck '--all renames no monitor tab'          '^tab rename '
 out=$(cat "$hroot/plain/.harness/T-102/herdr-tabs" 2>/dev/null)
 check '--all records its tab'                   '^T-102 tab-1 pane-1$'
 absent '--all writes no herd-monitor'           "$hroot/plain/.harness/T-102/herd-monitor"
 
 out=$(sh "$bin/session-monitor.sh" --task T-101 --spawn manual --state "$hstate" 2>/dev/null)
-check 'the manual line carries the session name' 'claude --model [^ ]* --name "🦊 demo T-101" "First take ownership of T-101'
+check 'the manual line carries the session name' 'claude --model [^ ]* --name "🔨 🦊 demo T-101" "First take ownership of T-101'
+
+for r in 'monitor 📡' 'triage 🔎' 'grill 🎤' 'plan-check 📐' 'decompose 🧩' 'test-designer 🧪' 'implementer 🔨' \
+  'implementer-senior 🧠'; do
+  out=$(sh "$bin/herdr-tabs.sh" name T-101 --role "${r% *}" --state "$hstate" 2>/dev/null)
+  check "--role ${r% *} leads with ${r#* }" "^${r#* } 🦊 demo T-101\$"
+done
+out=$(sh "$bin/herdr-tabs.sh" name T-101 --role reviewer --state "$hstate" 2>/dev/null)
+check 'a role with no emoji adds nothing'       '^🦊 demo T-101$'
 
 out=$(sh "$bin/herdr-tabs.sh" name T-101 --state "$hstate" 2>/dev/null)
 check 'an emoji: in repos.yml wins'             '^🦊 demo T-101$'
@@ -629,8 +652,9 @@ herdr_stub "$tmp/stub3"
 oroot="$tmp/o"
 ostate="$oroot/state"
 mkdir -p "$ostate/repos/ecs-core/tasks" "$oroot/ecs-core/T-ECS-12/.git" "$oroot/ecs-core/T-ECS-20-01" \
-  "$oroot/ecs-core/T-ECS-30" "$tmp/eclone"
+  "$oroot/ecs-core/T-ECS-30"
 for d in T-ECS-20-01 T-ECS-30; do : > "$oroot/ecs-core/$d/.git"; done
+gitclone "$tmp/eclone"
 printf 'ecs-core: { path: %s, alias: ECS, emoji: 🐳 }\n' "$tmp/eclone" > "$ostate/repos.yml"
 otask() { # <state> <id> <status> [<frontmatter line>...]
   ot_f="$1/repos/ecs-core/tasks/$2.md" ot_id=$2 ot_st=$3
@@ -676,7 +700,7 @@ nocheck 'a spawn passes no FACTORY_TASK'            '^FACTORY_TASK='
 nocheck 'a spawn passes no FACTORY_STEP'            '^FACTORY_STEP='
 nocheck 'a spawn passes no FACTORY_FLOW'            '^FACTORY_FLOW='
 out=$(cat "$HERDR_STUB_LOG")
-check 'the tab lands in --workspace'                "^tab create --cwd $oroot/ecs-core/T-ECS-12 --label \"🐳 ecs-core T-ECS-12-grill\" --no-focus --workspace ws-7 "
+check 'the tab lands in --workspace'                "^tab create --cwd $oroot/ecs-core/T-ECS-12 --label \"🎤 🐳 ecs-core T-ECS-12-grill\" --no-focus --workspace ws-7 "
 check 'a step agent is <step>_<id less t->'         '^agent start grill_ecs-12 --kind claude --pane pane-1 '
 check 'agent start waits up to 120 s'               '^agent start grill_ecs-12 .*--timeout 120000 '
 check 'the grill prompt runs the grill skill'       "^agent prompt grill_ecs-12 \"/claude-factory:grill $ostate/repos/ecs-core/tasks/T-ECS-12.md\" --wait --until working --until blocked --until done --timeout 60000 \$"
@@ -691,11 +715,13 @@ check 'the workspace defaults to HERDR_WORKSPACE_ID' '^tab create .* --workspace
 # a manual line carries the env as a prefix; the triage prompt names its report path and sections
 out=$(sm --task T-ECS-14 --step triage --dry-run 2>/dev/null)
 check 'a manual line prints the env as a prefix' \
-  "cd \"$tmp/eclone\" && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+  "cd \"$oroot/ecs-core/T-ECS-14\" && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+check 'a dry run prints the worktree it would make' "^  sh $bin/worktree-add.sh T-ECS-14 --detach --state $ostate\$"
+absent 'and makes none'                             "$oroot/ecs-core/T-ECS-14"
 check 'the triage prompt asks for ## Related issues as its own section' 'write ## Related issues as its own section after ## Context'
 check 'the triage prompt names the report path in the state clone' "file the investigation report at $ostate/repos/ecs-core/research/T-ECS-14-investigation.md, "
 out=$(sm --task T-ECS-14 --step grill --dry-run 2>/dev/null)
-check 'a step with no worktree runs in the registered clone' "^T-ECS-14-grill printed $tmp/eclone\$"
+check 'a step with no worktree runs in its future task worktree' "^T-ECS-14-grill printed $oroot/ecs-core/T-ECS-14\$"
 
 # agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
 herdr_agent grill_ecs-13 idle pane-13
