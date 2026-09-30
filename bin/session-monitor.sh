@@ -16,7 +16,8 @@
 #                    `--parent` is the old spelling of the same flag and still works.
 #   --task T-id --step <name>
 #                    one session for a parent-level step before the approval: triage, grill, plan-check or
-#                    decompose. A step runs in the registered clone, or in the session worktree once there is one.
+#                    decompose. Triage and grill run in the task worktree, made detached at dispatch when there
+#                    is none yet (worktree-add.sh --detach); plan-check and decompose run in the state clone.
 #   --all            every task with `status: ready` and no owner, across the state repo, and one
 #                    `mr-watch.sh <T-id> --once` pass per parent with an open block MR, whose event lines are
 #                    printed through, so a merge after the monitor ended still becomes state
@@ -136,16 +137,6 @@ if [ "$mode" = herdr ] && [ "${HERDR_ENV:-}" != 1 ]; then
 fi
 
 field() { sed -n "s/^$2:[[:space:]]*//p" "$1" | head -n1 | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//'; }
-# see: solve-next.sh, the `path:` of a repo in this state clone's own repos.yml; nothing when it has none
-clone_path() { # <key>
-  [ -f "$state/repos.yml" ] || return 0
-  awk -v want="$1" '
-    /^[A-Za-z0-9_-]+:/ { k = $1; sub(/:$/, "", k) }
-    index($0, "path:") && k == want {
-      p = $0; sub(/.*path:[ \t]*/, "", p); sub(/[ \t]*[,}].*$/, "", p); sub(/[ \t]+#.*$/, "", p)
-      gsub(/^["'"'"']|["'"'"']$/, "", p); if (p != "") { print p; exit }
-    }' "$state/repos.yml"
-}
 json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const o=JSON.parse(s);process.stdout.write(String(process.argv[1].split(".").reduce((a,k)=>a&&a[k],o)||""))}catch(e){}})' "$1"; }
 
 lower() { printf '%s' "$1" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz'; }
@@ -231,16 +222,15 @@ unit_line() { # <task file> <id> <repo key> [<agent> <model>]
     "$(claim_prompt "$2")$ul_read$ul_block/claude-factory:$ul_skill $1"
 }
 
-# one parent-level step of a task; a step runs before the session worktree exists, so the cwd is the
-# registered clone, and the worktree once step 10 has made one
+# one parent-level step of a task; it runs in the task worktree, never in the human's clone, since N sessions
+# may work over one repo at once: before step 10 that worktree is detached (worktree-add.sh --detach, made at
+# dispatch) and read-only under policy-guard.sh
 step_unit() { # <T-id> <step>
   su_task=$(task_of "$1" || :)
   [ -n "$su_task" ] && [ -f "$su_task" ] || die "no task file with 'id: $1'"
   su_key=$(field "$su_task" repo)
   [ -n "$su_key" ] || die "task $1 has no 'repo:' field"
   su_cwd="$root/$su_key/$1"
-  [ -e "$su_cwd/.git" ] || su_cwd=$(clone_path "$su_key")
-  [ -n "$su_cwd" ] || die "repo '$su_key' has no path: in repos.yml and $1 has no worktree, so there is nowhere to run $2"
   su_model=opus
   # plan-check and decompose read the plan the grill wrote, in the state clone, and run there
   case "$2" in
@@ -448,8 +438,18 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
       continue
     fi
   fi
+  # a step with no worktree yet gets the detached one of its task; a dry run only prints the command
+  mkwt=''
+  if [ "$claimid" = - ] && [ ! -e "$cwd/.git" ]; then
+    mkwt="$bin/worktree-add.sh ${id%-"$role"} --detach --state $state"
+    if [ -z "$dry" ] && ! err=$(WORK_DIR=$root sh "$bin/worktree-add.sh" "${id%-"$role"}" --detach --state "$state" 2>&1 >/dev/null); then
+      printf '%s skipped %s\n' "$id" "$cwd"
+      printf 'session-monitor: no worktree for %s: %s\n' "$id" "$err" >&2
+      continue
+    fi
+  fi
   # a block or a leaf runs in its worktree, and a leftover directory is none
-  if [ ! -d "$cwd" ] || { [ "$claimid" != - ] && [ ! -e "$cwd/.git" ]; }; then
+  if [ -z "$mkwt" ] && { [ ! -d "$cwd" ] || { [ "$claimid" != - ] && [ ! -e "$cwd/.git" ]; }; }; then
     printf '%s skipped %s\n' "$id" "$cwd"
     echo "session-monitor: no worktree at $cwd; run worktree-add.sh $id first" >&2
     continue
@@ -460,6 +460,7 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   label=$(sh "$bin/herdr-tabs.sh" name "$id" --role "$role" --state "$state")
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
+    [ -z "$dry" ] || [ -z "$mkwt" ] || printf '  sh %s\n' "$mkwt"
     printf '  cd "%s" && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
       "$(dq "$cwd")" "$role" "$id" "$model" "$(dq "$label")" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
     continue

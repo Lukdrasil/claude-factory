@@ -37,8 +37,8 @@ task MR ending hold here unchanged. What `--herd` changes is who executes:
 
 | step | owner | how `--herd` prints it |
 |---|---|---|
-| 3 triage, 4 grill, 5 plan-check, 6 decompose | a session | `session-monitor.sh --task <id> --step <step>`, plan-check and decompose over the plan in the state clone; a step whose session still runs is a wait, never a second dispatch |
-| 8 cut check, 9 approve and claim, 10 worktree | you | as in solve |
+| 3 triage, 4 grill, 5 plan-check, 6 decompose | a session | `session-monitor.sh --task <id> --step <step>`: triage and grill in the task worktree, which the first of them makes detached at the base (`worktree-add.sh --detach`) and the guard keeps read-only until the approval, so no step reads the human's clone and N herds over one repo each read their own copy; plan-check and decompose over the plan in the state clone; a step whose session still runs is a wait, never a second dispatch |
+| 8 cut check, 9 approve and claim, 10 worktree | you | as in solve; step 10 puts that detached worktree on the task branch |
 | 11 block work | sessions | `session-monitor.sh --task <id> --wave N`: one tab per block, each cut from the work branch and claimed for its session, which runs `block-tests` or its archetype skill under `_shared/block-session.md` and self-reports `tests_ready` or `review` |
 | 11 block gates | you | the red rerun at `tests_ready`, `block-verify.sh`, the `code-reviewer` and the `architecture-auditor` on the block diff as your subagents, `block-mr.sh`, then `block-mr-merge.sh` |
 | 12 to 16 | you | as in solve |

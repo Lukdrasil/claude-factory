@@ -5,9 +5,15 @@
 # local branch when the fetch fails or the remote has none, and on `block/<id>` for a block, cut from the parent's `branch:`. The branch is written into
 # the task's `branch:` through state-report.sh, which is the only writer of task frontmatter.
 #
-#   worktree-add.sh <task-id> [--from <branch>] [--state <dir>]
+#   worktree-add.sh <task-id> [--from <branch>] [--detach] [--state <dir>]
 #                             the commit-ish the branch is cut from, instead of the computed one
 #                                              the state clone; default $WORK_DIR/state, else from the cwd
+#
+# --detach, for a parent task before its approval: the same path checked out detached at the base, with no
+# branch and nothing written into the task, so the step sessions of `factory herd` (triage, grill) each read a
+# copy of their own and never the human's clone. It prints `path:` and `detached: <sha>`, and an existing
+# worktree is reused as it is. policy-guard.sh keeps it read-only until the approval. The call without --detach
+# at step 10 turns that detached worktree into the task's branch, cut from the base as a new one would be.
 #
 # 3.4 of the agent-org plan: a block is cut from the parent's `branch:`, the work branch, when its wave starts,
 # whatever its `depends_on:` says, because every block of a wave is merged into the work branch before the next
@@ -27,16 +33,18 @@ set -eu
 
 die() { printf 'worktree-add: %s\n' "$1" >&2; exit 1; }
 
-id='' from='' state=''
+id='' from='' state='' detach=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --from) [ $# -ge 2 ] || die "--from needs a value"; from=$2; shift 2 ;;
+    --detach) detach=1; shift ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one task id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: worktree-add.sh <task-id> [--from <branch>] [--state <dir>]"
+[ -n "$id" ] || die "usage: worktree-add.sh <task-id> [--from <branch>] [--detach] [--state <dir>]"
+[ -z "$detach" ] || ! is_block_id "$id" || die "--detach is for a parent task before its approval, not the block $id"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
 # see: anchored absolute because resolve_state_dir answers relative to the cwd
@@ -154,8 +162,30 @@ fi
 wt="$WORK_DIR/$key/$id"
 progress="$state/repos/$key/progress/$id.md"
 
+if [ -n "$detach" ]; then
+  if [ -e "$wt" ]; then
+    printf 'worktree-add: %s already exists, reused\n' "$wt" >&2
+  else
+    mkdir -p "$WORK_DIR/$key" || die "the work directory $WORK_DIR/$key could not be created"
+    git -C "$clone" worktree add --detach "$wt" "$base" >/dev/null \
+      || die "git could not add the detached worktree $wt at $base"
+  fi
+  printf 'path: %s\n' "$wt"
+  printf 'detached: %s\n' "$(git -C "$wt" rev-parse HEAD)"
+  exit 0
+fi
+
 if [ -e "$wt" ]; then
   head=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null) || head=''
+  # the detached worktree of the steps before the approval becomes the task's branch
+  if [ "$head" = HEAD ] && ! is_block_id "$id"; then
+    if git -C "$clone" show-ref --verify --quiet "refs/heads/$branch"; then
+      git -C "$wt" switch -q "$branch" >/dev/null 2>&1
+    else
+      git -C "$wt" switch -q -c "$branch" "$base" >/dev/null 2>&1
+    fi || die "the detached worktree $wt could not be switched to $branch (git -C $wt status shows why)"
+    head=$branch
+  fi
   [ "$head" = "$branch" ] \
     || die "$wt already exists on '${head:-no branch}', not $branch. Remove that worktree (git -C $clone worktree remove $wt) or check $branch out in it"
 fi

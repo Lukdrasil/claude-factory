@@ -99,8 +99,9 @@ tab and the step tabs of its parent, and prints the unit `skipped` when its own 
 focused tab, the caller's own `$HERDR_TAB_ID`, an agent that is `working` or `blocked` and a tab `herdr tab
 get` cannot read are kept, and a tab not in the record is never touched.
 
-`--max N` caps a batch, default 5. A unit with no worktree is skipped: run
-`<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. The tabs are created in
+`--max N` caps a batch, default 5. A block or leaf with no worktree is skipped: run
+`<plugin-root>/bin/worktree-add.sh <id>` and call the monitor again. A triage or grill step with none gets the
+task worktree detached at the base (`worktree-add.sh <T-id> --detach`), read-only until the approval. The tabs are created in
 `$HERDR_WORKSPACE_ID` unless `--workspace` names another, so a dispatched session lands in the caller's own group.
 
 ## Driving herdr by hand

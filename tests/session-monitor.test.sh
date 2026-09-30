@@ -215,12 +215,23 @@ EOF
 out=$(sh "$bin/session-monitor.sh" --all --state "$state" --dry-run 2>/dev/null)
 check 'the open block MR is watched' "mr-watch.sh T-004 --once --state $state"
 
-# --step: one session for a parent-level step, in the registered clone when there is no session worktree yet
-mkdir -p "$tmp/clone"
+# --step: one session for a parent-level step, in the task worktree, made detached when there is none yet, so
+# no step runs in the human's clone
+gitclone() { # <dir>
+  git init -q -b main "$1" && git -C "$1" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false \
+    commit -q --allow-empty -m init
+}
+gitclone "$tmp/clone"
 printf 'demo: { path: %s }\n' "$tmp/clone" > "$state/repos.yml"
 task T-005 null feature
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step grill --state "$state" 2>/dev/null)
-check 'the grill step runs in the clone' "^T-005-grill printed $tmp/clone\$"
+check 'the grill step runs in the task worktree' "^T-005-grill printed $root/demo/T-005\$"
+nocheck 'and never in the clone'            "printed $tmp/clone\$"
+out=$(git -C "$root/demo/T-005" rev-parse --abbrev-ref HEAD 2>&1)
+check 'that worktree is detached'            '^HEAD$'
+out=$(cat "$state/repos/demo/tasks/T-005.md")
+nocheck 'and writes no branch: into the task' '^branch:'
+out=$(sh "$bin/session-monitor.sh" --task T-005 --step grill --state "$state" 2>/dev/null)
 check 'the grill step prompts the skill' '"/claude-factory:grill '
 check 'the grill step runs as FACTORY_ROLE=grill' 'FACTORY_ROLE=grill FACTORY_UNIT=T-005-grill CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude '
 out=$(sh "$bin/session-monitor.sh" --task T-005 --step plan-check --state "$state" --dry-run 2>&1); rc=$?
@@ -235,7 +246,7 @@ out=$(sh "$bin/session-monitor.sh" --task T-005 --step decompose --state "$state
 check 'the decompose step prompts the decompose skill over the plan' "\"/claude-factory:decompose $state/repos/demo/plans/p5-plan-ready\.md\"\$"
 
 out=$(sh "$bin/session-monitor.sh" --parent T-005 --step grill --state "$state" 2>/dev/null)
-check '--parent is still the same flag' "^T-005-grill printed $tmp/clone\$"
+check '--parent is still the same flag' "^T-005-grill printed $root/demo/T-005\$"
 
 # the modes and flags the monitor no longer has, and the ones it refuses to mix
 for bad in '--task T-005 --step nonsense' '--task T-005 --step chart' '--task T-005 --step lead' \
@@ -641,8 +652,9 @@ herdr_stub "$tmp/stub3"
 oroot="$tmp/o"
 ostate="$oroot/state"
 mkdir -p "$ostate/repos/ecs-core/tasks" "$oroot/ecs-core/T-ECS-12/.git" "$oroot/ecs-core/T-ECS-20-01" \
-  "$oroot/ecs-core/T-ECS-30" "$tmp/eclone"
+  "$oroot/ecs-core/T-ECS-30"
 for d in T-ECS-20-01 T-ECS-30; do : > "$oroot/ecs-core/$d/.git"; done
+gitclone "$tmp/eclone"
 printf 'ecs-core: { path: %s, alias: ECS, emoji: 🐳 }\n' "$tmp/eclone" > "$ostate/repos.yml"
 otask() { # <state> <id> <status> [<frontmatter line>...]
   ot_f="$1/repos/ecs-core/tasks/$2.md" ot_id=$2 ot_st=$3
@@ -703,11 +715,13 @@ check 'the workspace defaults to HERDR_WORKSPACE_ID' '^tab create .* --workspace
 # a manual line carries the env as a prefix; the triage prompt names its report path and sections
 out=$(sm --task T-ECS-14 --step triage --dry-run 2>/dev/null)
 check 'a manual line prints the env as a prefix' \
-  "cd \"$tmp/eclone\" && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+  "cd \"$oroot/ecs-core/T-ECS-14\" && FACTORY_ROLE=triage FACTORY_UNIT=T-ECS-14-triage CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model "
+check 'a dry run prints the worktree it would make' "^  sh $bin/worktree-add.sh T-ECS-14 --detach --state $ostate\$"
+absent 'and makes none'                             "$oroot/ecs-core/T-ECS-14"
 check 'the triage prompt asks for ## Related issues as its own section' 'write ## Related issues as its own section after ## Context'
 check 'the triage prompt names the report path in the state clone' "file the investigation report at $ostate/repos/ecs-core/research/T-ECS-14-investigation.md, "
 out=$(sm --task T-ECS-14 --step grill --dry-run 2>/dev/null)
-check 'a step with no worktree runs in the registered clone' "^T-ECS-14-grill printed $tmp/eclone\$"
+check 'a step with no worktree runs in its future task worktree' "^T-ECS-14-grill printed $oroot/ecs-core/T-ECS-14\$"
 
 # agent_not_ready: the start dialog is waited out, then the prompt goes in; a wait that times out prompts nothing
 herdr_agent grill_ecs-13 idle pane-13

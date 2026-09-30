@@ -278,4 +278,24 @@ publish
 add T-702
 check "a parent's base_branch: is its base, from the remote" "$D" "$(tip feat/T-702)"
 
+# --- --detach: the herd's steps read a detached task worktree before the approval, step 10 puts it on a branch ---
+task T-800 null
+publish
+out=$(cd "$clone" && sh "$bin/worktree-add.sh" T-800 --detach --state "$state" 2>&1); rc=$?
+check '--detach exits 0' 0 "$rc"
+check '--detach checks the base out detached' HEAD "$(git -C "$tmp/demo/T-800" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+check '--detach sits on the base as the remote has it' "$(tip origin/main)" "$(git -C "$tmp/demo/T-800" rev-parse HEAD 2>/dev/null)"
+check '--detach prints the sha' "detached: $(tip origin/main)" "$(printf '%s\n' "$out" | grep '^detached: ')"
+check '--detach makes no branch' '' "$(git -C "$clone" branch --list 'feat/T-800*')"
+check '--detach writes no branch: into the task' null "$(sed -n 's/^branch:[[:space:]]*//p' "$state/repos/demo/tasks/T-800.md")"
+out=$(cd "$clone" && sh "$bin/worktree-add.sh" T-800 --detach --state "$state" 2>&1); rc=$?
+check 'a second --detach reuses it' 0 "$rc"
+add T-800
+check 'step 10 over the detached worktree exits 0' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'step 10 puts it on the task branch' feat/T-800 "$(git -C "$tmp/demo/T-800" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+check 'and writes that branch into the task' feat/T-800 "$(sed -n 's/^branch:[[:space:]]*//p' "$state/repos/demo/tasks/T-800.md")"
+out=$(cd "$clone" && sh "$bin/worktree-add.sh" T-300-01 --detach --state "$state" 2>&1); rc=$?
+check '--detach refuses a block' 1 "$rc"
+
 exit $fail

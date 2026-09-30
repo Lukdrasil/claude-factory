@@ -315,4 +315,15 @@ check 'herd: a review block whose worktree is gone still gets its gates' '^## St
 check 'herd: with its worktree made again' 'worktree-add\.sh T-006-01' "$out"
 mv "$root/demo/T-006-01.away" "$root/demo/T-006-01"
 
+# the detached task worktree the herd's steps read in before the approval is no session worktree yet: step 10 runs
+mv "$root/demo/T-001" "$root/demo/T-001.away"
+git init -q -b main "$root/demo/T-001"
+git -C "$root/demo/T-001" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q --allow-empty -m init
+git -C "$root/demo/T-001" checkout -q --detach
+out=$(sh "$bin/solve-next.sh" T-001 --state "$state" 2>&1)
+check 'a detached task worktree still gets step 10' '^## Step 10 of 16: session worktree for T-001$' "$out"
+check 'through worktree-add.sh' 'worktree-add\.sh T-001$' "$out"
+rm -rf "$root/demo/T-001"
+mv "$root/demo/T-001.away" "$root/demo/T-001"
+
 exit $fail
