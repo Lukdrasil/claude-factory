@@ -15,7 +15,7 @@
 #   model-for.sh --agent <archetype> <tier> <phase> <attempt> <complexity>
 #
 # Prints the model name (haiku|sonnet|opus). Under --agent it prints the agent definition name instead, and
-# only the phase and the complexity decide it: phase implement with complexity high gives the medium-effort
+# only the phase and the complexity decide it: phase implement with complexity high gives the high-effort
 # variant implementer-senior, phase implement otherwise gives implementer, phase tests
 # gives test-designer. The escalation ladder picks the model, not the agent, so it does not apply under
 # --agent; any other phase exits 1. Output is exactly one line, because every caller reads this script through

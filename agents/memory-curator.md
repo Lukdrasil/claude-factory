@@ -2,7 +2,7 @@
 name: memory-curator
 description: Judges memory proposals a session wrote and applies approve/reject/edit through curate-apply.sh, standalone with curation:auto (ADR-0052); in the weekly pass it judges the drafts of one repo x agent scope for promotion into its playbook and writes nothing. Spawned by the coordinator at session end or by memory-weekly; never call it directly.
 model: opus
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Bash
 ---
 

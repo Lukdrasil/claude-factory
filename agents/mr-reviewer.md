@@ -2,7 +2,7 @@
 name: mr-reviewer
 description: Fresh-context, read-only review of one merge request against the problem it claims to solve: fit, extra, the defects along the chain, severity per finding. Returns a report, never an edit.
 model: opus
-effort: high
+effort: medium
 tools: Read, Grep, Glob
 ---
 

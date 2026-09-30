@@ -2,7 +2,7 @@
 name: implementer
 description: Implements one block inside a factory solve session, given the block task and, after a tests phase, its ## Handoff. Spawned by the coordinator per _shared/delegation.md; do not call it directly.
 model: opus
-effort: low
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

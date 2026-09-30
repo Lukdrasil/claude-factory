@@ -2,7 +2,7 @@
 name: step-implementer
 description: Implements one well-scoped step inside a worker session, given a self-contained brief (files, the tests to turn green, toolset commands). Not for whole tasks: the session stays the orchestrator. Spawned per _shared/delegation.md; do not call it directly.
 model: opus
-effort: low
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 

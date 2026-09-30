@@ -2,7 +2,7 @@
 name: test-writer
 description: Writes tests inside a worker session: characterization or red tests for one area, given a self-contained brief. Parallelizable over disjoint test files. Spawned per _shared/delegation.md; do not call it directly.
 model: opus
-effort: high
+effort: medium
 tools: Read, Grep, Glob, Edit, Write, Bash
 ---
 
