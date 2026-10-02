@@ -262,6 +262,11 @@ out=$(sh "$bin/herd-watch.sh" T-011 --once --no-mr --state "$state")
 check 'an archived parent is watched'             0 '^T-011 status done$' "$out"
 check 'the block of an archived parent too'       0 '^T-011-01 status done$' "$out"
 
+# a loop ends after the pass that reads the parent done or closed
+out=$( (sh "$bin/herd-watch.sh" T-011 --no-mr --interval 60 --state "$state" >/dev/null & p=$!
+  sleep 3; if kill -0 $p 2>/dev/null; then kill $p; echo running; else echo ended; fi) )
+check 'a loop over a done parent ends'            0 '^ended$' "$out"
+
 # the refusals
 for bad in '' 'T-001-01' 'nonsense' 'T-404' 'T-001 T-002' 'T-001 --interval x' 'T-001 --ask'; do
   # shellcheck disable=SC2086
@@ -282,5 +287,22 @@ git -C "$state" commit -q --allow-empty -m 'a report of a session'
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 check 'a silent pass prints nothing'              1 '.' "$out"
 check 'the pass pushes the reports of the sessions' 0 '^a report of a session$' "$(git -C "$tmp/state-root" log --format=%s main)"
+
+# the human merged the task MR: mr-watch.sh --finish ends the task inside the pass, and the loop ends with it
+mkdir -p "$tmp/forge"
+cat > "$tmp/forge/glab" <<'STUB'
+#!/bin/sh
+[ "$1 $2" = "mr view" ] && printf '{"state":"merged","user_notes_count":0}\n'
+STUB
+chmod +x "$tmp/forge/glab"
+task T-012 review null
+sed -i 's#^tier: green$#tier: green\nmr_url: https://forge.test/g/demo/-/merge_requests/12#' "$state/repos/demo/tasks/T-012.md"
+git -C "$state" add -A
+git -C "$state" commit -q -m 'T-012 in review'
+out=$( (PATH="$tmp/forge:$PATH" sh "$bin/herd-watch.sh" T-012 --interval 60 --state "$state" > "$tmp/t012.out" & p=$!
+  sleep 5; if kill -0 $p 2>/dev/null; then kill $p; echo running; else echo ended; fi) )
+check 'a merged task MR ends the herd loop'       0 '^ended$' "$out"
+check 'the parent is reported done'               0 '^T-012 status done$\|^T-012 mr merged$' "$(cat "$tmp/t012.out")"
+check 'the parent is done and archived'           0 'status: done' "$(cat "$state"/repos/demo/archive/*/tasks/T-012.md 2>/dev/null)"
 
 exit $fail

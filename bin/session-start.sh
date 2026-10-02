@@ -22,6 +22,13 @@ emit() { node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:s}}))})'; }
 
+# the tasks whose task MR was merged while no session watched, finished by review-sweep.sh before the context
+swept_line() { # [<repo key>]
+  sw_out=$(sh "$(dirname -- "$0")/review-sweep.sh" ${1:+--repo "$1"} --state "$WORK_DIR/state" 2>/dev/null) || sw_out=''
+  [ -n "$sw_out" ] || return 0
+  printf 'Task MRs merged while no session watched them, finished by review-sweep.sh (task-done.sh and state-push.sh ran): report these to the user, a finish-failed line is theirs to look at:\n%s\n' "$sw_out"
+}
+
 identity_line() {
   host=$(hostname 2>/dev/null || uname -n 2>/dev/null || :)
   [ -n "$host" ] || host=localhost
@@ -33,6 +40,7 @@ identity_line() {
 st_top=$(git -C "${WORK_DIR:-/nonexistent}/state" rev-parse --show-toplevel 2>/dev/null) || st_top=''
 if [ -n "$st_top" ] && [ "$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)" = "$st_top" ]; then
   { [ -z "$sid" ] || identity_line
+    swept_line
     due=$(for k in daily weekly; do sh "$(dirname -- "$0")/pass-stamp.sh" --due "$k" --state "$WORK_DIR/state" 2>/dev/null; done)
     if [ -n "$due" ]; then
       printf 'Memory passes due, `<scope> <daily|weekly> <last run>`; each starts only after the human'"'"'s go, a daily one with /claude-factory:memory-daily <scope>, a weekly one with /claude-factory:memory-weekly <scope>:\n%s\n' "$due"
@@ -109,6 +117,7 @@ stale_plugin_warning() {
   # guessed (a bridge/cse_ id) and the owner-based Stop lookup (owned_task_ids) never found its tasks. The id
   # is in the hook stdin, so the session is told the exact owner string of ADR-0050 first thing.
   [ -z "$sid" ] || identity_line
+  swept_line "$key"
   # T-187: four sessions told their user to "close it in the dashboard" on a machine that has none, because
   # every text they had read named one and the single sentence that says otherwise lives in a skill a session
   # may never load.

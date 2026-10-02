@@ -20,6 +20,10 @@ Either way `owner:` is released to `null` on the parent and on every block in th
   in `repos/<key>/research/`;
 - `factory solve` is asked to resume a task already in `review` with a validated MR.
 
+A merged task MR needs none of this by hand: `mr-watch.sh <T-id> --finish` (armed after step 16, and run by
+`herd-watch.sh` in the herd) and `review-sweep.sh` (run at every session start) run the Done step themselves and
+print `<T-id> done`. Report that line as the Report step says.
+
 ## Steps
 
 - **Confirm.** For an MR archetype, ask the user (if not already stated) that the MR named by the task's

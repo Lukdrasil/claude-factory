@@ -2,9 +2,9 @@
 # The watcher of the stacked block MRs (T-164, ADR-0057): it reads every block MR of one parent through gh or
 # glab and prints one line per state change since its last run, so the coordinator learns what the developer
 # did on the forge without reading any MR itself. The parent's own task MR is watched the same way (F31), so its
-# merge by the human is a `<T-id> merged` line; the parent is set done by task-done.sh, not here.
+# merge by the human is a `<T-id> merged` line. Without `--finish` the parent is left in `review` for task-done.sh.
 #
-#   mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]
+#   mr-watch.sh <T-NNN> [--once] [--finish] [--interval <s>] [--comments <block-id>] [--state <dir>]
 #
 # The lines are `<block> merged`, `<block> changes-requested`, `<block> new-comments <n>`, `<block> ci-failed`
 # and `<block> approved`, and what has already been reported is kept in
@@ -17,6 +17,13 @@
 # merged block is set `done` through state-report.sh. The forge is chosen by the MR's own host, the routing of
 # bin/forge.sh: github.com goes to gh, every other host to glab.
 #
+# `--finish` ends the task once the human merged its task MR, since only the human merges a task MR and that is
+# the word skills/factory/references/done.md asks for: on every pass that finds the task MR merged while the
+# parent is not done or closed, task-done.sh closes it (status, owner, worktrees, local branches, archive) and
+# state-push.sh carries the commit, then `<T-id> done` is printed, or `<T-id> finish-failed <reason>` and the next
+# pass tries again. A loop with `--finish` ends after the pass that finds the parent done or closed, so the
+# Monitor that runs it ends with the task.
+#
 # Exit 0 after a pass (or after the loop is interrupted). Exit 1 with the reason on stderr when no parent id is
 # given, when the id is not of the shape T-NNN, when it resolves to no task file, or when --comments names a
 # block with no MR.
@@ -27,10 +34,11 @@ die() { printf 'mr-watch: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-id='' once='' interval=300 comments='' state=''
+id='' once='' finish='' interval=300 comments='' state=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --once) once=1; shift ;;
+    --finish) finish=1; shift ;;
     --interval) [ $# -ge 2 ] || die "--interval needs a value"; interval=$2; shift 2 ;;
     --comments) [ $# -ge 2 ] || die "--comments needs a value"; comments=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
@@ -38,7 +46,7 @@ while [ $# -gt 0 ]; do
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]"
+[ -n "$id" ] || die "usage: mr-watch.sh <T-NNN> [--once] [--finish] [--interval <s>] [--comments <block-id>] [--state <dir>]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: solve-next.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to
@@ -199,8 +207,30 @@ pass() {
   mv -f "$new" "$statefile"
 }
 
+parent_status() { ps_task=$(task_of "$id" || :); [ -z "$ps_task" ] || fm "$ps_task" status; }
+
+# the task MR is merged and the parent still open: task-done.sh ends it, state-push.sh carries the commit. Read
+# from the state file, not from this pass's lines, so a finish that failed is tried again on the next pass and a
+# merge that happened while nothing watched is finished by the first pass that runs.
+finish_task() {
+  [ "$(remembered "$id" 2)" = merged ] || return 0
+  case "$(parent_status)" in done|closed) return 0 ;; esac
+  if WORK_DIR=${WORK_DIR:-$root} sh "$bin/task-done.sh" "$id" --state "$state" >"$harness/finish.out" 2>&1 </dev/null; then
+    sh "$bin/state-push.sh" --state "$state" >/dev/null 2>&1 </dev/null \
+      || printf 'mr-watch: %s is done but state-push.sh did not land it; run state-push.sh --state %s\n' "$id" "$state" >&2
+    printf '%s done\n' "$id"
+    sed -n "s/^skipped: /$id skipped: /p" "$harness/finish.out"
+  else
+    printf '%s finish-failed %s\n' "$id" "$(tr '\n' ' ' < "$harness/finish.out" | sed 's/[[:space:]]*$//')"
+  fi
+}
+
 while :; do
   pass
+  if [ -n "$finish" ]; then
+    finish_task
+    case "$(parent_status)" in done|closed) break ;; esac
+  fi
   [ -z "$once" ] || break
   sleep "$interval"
 done

@@ -46,8 +46,9 @@ The session creates the task and runs `bin/solve-next.sh` step by step without s
 | 14 task MR | the MR into the base branch with every block MR listed | the human reviews and merges |
 | 15-16 | self-report and knowledge review | session |
 
-While the session watches the task MR with `mr-watch.sh`, its merge closes the task; otherwise
-`/claude-factory:factory done <T-id>` does. A green task of low
+While the session watches the task MR with `mr-watch.sh --finish`, its merge closes the task, removes its
+worktrees and local branches and archives it. A merge that happened while no session watched is finished by
+`review-sweep.sh` at the next session start; `/claude-factory:factory done <T-id>` still closes a task by hand. A green task of low
 complexity takes the quick lane instead: one worktree, no blocks (`references/solve-quick.md`).
 
 Task ids are `T-<ALIAS>-<n>` per repository (`alias:` in `repos.yml`), blocks `T-<ALIAS>-<n>-<NN>`; the older

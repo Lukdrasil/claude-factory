@@ -210,6 +210,11 @@ sed -i 's/^status: in_progress$/status: review/; s/^complexity: medium$/complexi
 out=$(sh "$bin/solve-next.sh" T-005 --state "$state" 2>&1)
 check 'step 16 is the knowledge review' '^## Step 16 of 16: knowledge review for T-005$' "$out"
 check 'step 16, the last one, also ends with state-push.sh' "^  .*state-push\.sh --state $state\$" "$(printf '%s\n' "$out" | tail -n1)"
+check 'step 16 arms mr-watch.sh --finish on the task MR' 'Monitor tool.*mr-watch\.sh T-005 --finish --interval 300' "$out"
+out=$(sh "$bin/solve-next.sh" T-005 --herd --state "$state" 2>&1)
+check 'step 16 of the herd leaves the finish to herd-watch.sh' 'herd-watch\.sh stays armed on T-005' "$out"
+if printf '%s\n' "$out" | grep -q 'mr-watch\.sh T-005 --finish'; then printf 'FAIL the herd arms no second watcher\n'; fail=1
+else printf 'PASS the herd arms no second watcher\n'; fi
 
 # --- step 9: one approval over the parent and its draft blocks, and every claim carries the owner ------------
 parent T-006 'plans/x-plan-ready.md'
