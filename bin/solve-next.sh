@@ -3,7 +3,7 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto]
+#   solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto|--autonom]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
 #                            --herd prints the steps of `factory herd` (skills/factory/references/herd.md): a
 #                            step that writes goes out as an interactive session through session-monitor.sh,
@@ -17,6 +17,10 @@
 #                            when it binds one, and the task MR carries the plan's decisions (mr-open.sh
 #                            --decisions). It needs a `crap` row in the toolset: the auto lane holds every
 #                            changed method to the crap threshold through block-verify.sh
+#                            --autonom is --auto with the human's pick taken by the monitor itself, after an
+#                            analysis of both solutions, and the grill and decompose dispatched with
+#                            --autonom, so a decision with no recommendation is analysed and taken by the
+#                            session (the autonomous section of skills/_shared/auto-decision.md)
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
@@ -56,18 +60,20 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state='' herd='' auto=''
+id='' state='' herd='' auto='' autonom=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     --herd) herd=1; shift ;;
-    # the auto lane is the herd with its own step 4a and its decisions taken by recommendation
+    # the auto lane is the herd with its own step 4a and its decisions taken by recommendation; the autonomous
+    # lane is the auto lane with the pick and the undecidable questions taken by the sessions after an analysis
     --auto) herd=1; auto=1; shift ;;
+    --autonom) herd=1; auto=1; autonom=1; shift ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto|--autonom]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
@@ -137,10 +143,11 @@ watch_line() { cmd "Monitor tool, armed once per herd: $bin/herd-watch.sh $id --
 # last dispatch, since step 4a dispatches two sessions under one watcher
 auto_arg=''
 [ -z "$auto" ] || auto_arg=' --auto'
+[ -z "$autonom" ] || auto_arg=' --autonom'
 dispatch_step() { # <step>
   ds_agent=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null | awk -v u="$id-$1" '$1 == u { print $2; exit }')
   ds_auto=''
-  case "$1" in grill|decompose) ds_auto=$auto_arg ;; esac
+  case "$1" in grill|plan-check|decompose) ds_auto=$auto_arg ;; esac
   case "$ds_agent" in
     ''|gone|closed) cmd "$bin/session-monitor.sh --task $id --step $1$ds_auto --state $state" ;;
     idle|done)
@@ -189,11 +196,21 @@ triaged() {
 # step 4a of the auto lane (skills/factory/references/auto.md): two solution sessions, then the human's pick,
 # written as `## Solution` into the task; the one gate the human answers in that lane
 toolset="$state/repos/$key/toolset.md"
-binds() { grep -qE "^\|[[:space:]]*\`$1( |\`)" "$toolset" 2>/dev/null; }
+# see: toolset_binding of lib-tasks.sh, the reader block-verify.sh runs the row through, so a row it would run
+# see: is a row this lane accepts, and an empty cell is none for both
+binds() { [ -n "$(toolset_binding "$toolset" "$1")" ]; }
+# a solution file counts once its session committed it in the state clone: a file on disk may be a draft of
+# a session still writing, or of one that died mid-write; a state directory that is no git clone (a test
+# fixture) falls back to the file
+written() { # <file under the state clone>
+  [ -f "$1" ] || return 1
+  git -C "$state" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  [ -n "$(git -C "$state" log -1 --format=%h -- "${1#"$state/"}" 2>/dev/null)" ]
+}
+sol_open="$state/repos/$key/research/$id-solution-open.md"
+sol_min="$state/repos/$key/research/$id-solution-min.md"
 auto_solutions_step() {
   ! grep -q '^## Solution[[:space:]]*$' "$task" || return 0
-  sol_open="$state/repos/$key/research/$id-solution-open.md"
-  sol_min="$state/repos/$key/research/$id-solution-min.md"
   # why: the lane promises every changed method at or under the crap threshold, and block-verify.sh can only
   # why: hold that with a crap row; without one the gate reads `not bound` and the promise is empty
   if ! binds crap; then
@@ -202,26 +219,39 @@ auto_solutions_step() {
     cmd "$bin/factory-doctor.sh --root $root"
     exit 0
   fi
-  if [ ! -f "$sol_open" ] || [ ! -f "$sol_min" ]; then
-    emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone."
-    [ -f "$sol_open" ] || dispatch_step solution-open
-    [ -f "$sol_min" ] || dispatch_step solution-min
+  if ! written "$sol_open" || ! written "$sol_min"; then
+    emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file is _shared/blocked-question.md to the human."
+    written "$sol_open" || dispatch_step solution-open
+    written "$sol_min" || dispatch_step solution-min
     watch_line
     exit 0
   fi
-  emit "Step 4a of 16: the human picks the solution for $id" "the human chose through _shared/ask.md between the two solutions below (A the open one, B the minimal one, or their own words over either), and ## Solution is written at the end of $task, naming the view, the file and the human's words, reported with state-report.sh --no-status. That yes is the consent for the rest of the lane: the grill, decompose, the approval, the blocks and the task MR run without another ask (references/auto.md)."
+  if [ -n "$autonom" ]; then
+    emit "Step 4a of 16: the monitor picks the solution for $id" "you compared the two solutions below under the autonomous section of _shared/auto-decision.md, one row per solution over goal fit, size, risk, tests and what it leaves worse, and ## Solution is written at the end of $task, naming the view, the file, chosen by: agent and that table as the why, reported with state-report.sh --no-status; nobody was asked (references/auto.md, autonom)."
+  else
+    emit "Step 4a of 16: the human picks the solution for $id" "the human chose through _shared/ask.md between the two solutions below (A the open one, B the minimal one, or their own words over either), and ## Solution is written at the end of $task, naming the view, the file (both files for a mixed answer) and the human's words, reported with state-report.sh --no-status. That yes is the consent for the rest of the lane: the grill, decompose, the approval, the blocks and the task MR run without another ask (references/auto.md)."
+  fi
   cmd "cat $sol_open"
   cmd "cat $sol_min"
   cmd "cat $plugin/skills/factory/references/auto.md"
+  [ -z "$autonom" ] || cmd "cat $plugin/skills/_shared/auto-decision.md"
   cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): solution chosen'"
   exit 0
 }
+
+# why: `factory auto <T-id>` over a task another lane already grilled has no pick to call its consent, so
+# why: without `## Solution` the auto lane keeps the herd's gates from here on: the ask of step 9, the human
+# why: at a blocked block. The autonomous lane needs no consent and keeps its flag
+if [ -n "$auto" ] && [ -z "$autonom" ] && [ -n "$slug" ] && [ -f "$plan" ] \
+  && ! grep -q '^## Solution[[:space:]]*$' "$task"; then
+  auto='' auto_arg=''
+fi
 
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
   triaged || triage_step
   [ -z "$auto" ] || auto_solutions_step
   if [ -n "$auto" ]; then
-    emit "Step 4 of 16: grill $id" "no open gaps, the program design and the proposals are taken by their recommendations under _shared/auto-decision.md (the human asked only where that file says so), every proposal's steps name the tests that cover it, and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
+    emit "Step 4 of 16: grill $id" "no open gaps, the program design and the proposals are taken by their recommendations under _shared/auto-decision.md (the human asked only where that file says so), every proposal's steps name the tests that cover it (plan-lint.sh --auto passes over the plan), and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
     dispatch_step grill; watch_line; exit 0
   fi
   emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
@@ -289,7 +319,11 @@ case "$status" in
       emit "Step 9 of 16: approve and claim $id" "the human said yes in the approval ask of references/approve.md, and $id is in_progress with plan_hash set and owner: the owner string of your Session identity line."
     fi
     if [ -n "$approve" ]; then
-      [ -n "$auto" ] || cmd "cat $plugin/skills/factory/references/approve.md"
+      if [ -n "$auto" ]; then
+        for a in $approve; do cmd "cat $(task_of "$a")"; done
+      else
+        cmd "cat $plugin/skills/factory/references/approve.md"
+      fi
       cmd "$bin/task-approve.sh $approve --state $state"
     fi
     cmd "$bin/state-report.sh --task $id --set-status in_progress --owner <owner> --message 'chore($id): claimed'"
@@ -381,7 +415,11 @@ if [ -n "$pending" ]; then
   if [ "$bs" = blocked ] || [ "$bs" = failed ]; then
     if [ -n "$herd" ]; then bretry="the next dispatch of its wave, a fresh session"; else bretry="a fresh implement subagent"; fi
     if [ -n "$auto" ]; then
-      emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or asked the human only where _shared/auto-decision.md says so, applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      if [ -n "$autonom" ]; then
+        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      else
+        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or asked the human only where _shared/auto-decision.md says so, applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      fi
     else
       emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
     fi

@@ -50,7 +50,7 @@ check 'a block with no session is gone'    0 '^T-001-01 agent gone$' "$out"
 check 'a phase of null is not reported'    1 '^T-001-01 phase' "$out"
 check 'a step nobody dispatched is not news' 1 '^T-001-\(triage\|grill\|plan-check\|decompose\) ' "$out"
 seen="$tmp/factory/demo/.harness/T-001/herd-watch.state"
-check 'the state file keeps five columns per unit' 0 '^T-001-01 in_progress none gone none$' "$(cat "$seen" 2>/dev/null)"
+check 'the state file keeps six columns per unit' 0 '^T-001-01 in_progress none gone none 0$' "$(cat "$seen" 2>/dev/null)"
 
 out=$(sh "$bin/herd-watch.sh" T-001 --once --state "$state")
 if [ -z "$out" ]; then printf 'PASS an unchanged pass is silent\n'; else printf 'FAIL an unchanged pass printed: %s\n' "$out"; fail=1; fi
@@ -75,6 +75,17 @@ check 'an MR is reported when it appears'  0 '^T-001-01 mr none -> open$' "$out"
 printf 'T-001-01 merged 0\n' > "$harness/mr-watch.state"
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 check 'a merge prints the transition'      0 '^T-001-01 mr open -> merged$' "$out"
+# a comment on an MR that stays open is news through the count mr-watch.sh keeps, the task MR's review included
+printf 'T-001-01 merged 2\nT-001 open 3\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'new comments on a block MR print the count'    0 '^T-001-01 comments 0 -> 2$' "$out"
+check 'the task MR is sighted'                       0 '^T-001 mr none -> open$' "$out"
+check 'its comments are counted from zero'            0 '^T-001 comments 0 -> 3$' "$out"
+printf 'T-001-01 merged 2\nT-001 open 5\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'more comments on the task MR print the step'  0 '^T-001 comments 3 -> 5$' "$out"
+check 'an unchanged count prints nothing'            1 '^T-001-01 comments' "$out"
+printf 'T-001-01 merged 2\n' > "$harness/mr-watch.state"
 
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 if [ -z "$out" ]; then printf 'PASS a pass after the merge is silent\n'; else printf 'FAIL a pass after the merge printed: %s\n' "$out"; fail=1; fi

@@ -175,10 +175,17 @@ if [ -n "$decisions" ]; then
     [ -z "$dslug" ] || dplan="$state/repos/$key/plans/$dslug-plan-ready.md"
   fi
   [ -n "$dplan" ] && [ -f "$dplan" ] || die "--decisions: $id names no plan-ready file under $state/repos/$key/plans/"
+  # see: the bullets() reader above, the same join of an indented continuation line onto its bullet; a `*`
+  # see: bullet is one too, as decompose.sh reads it
   decided=$(awk '
+    function flush() { if (cur != "") print "- " cur; cur = "" }
     /^## Decisions[[:space:]]*$/ { f = 1; next }
-    f && /^#/ { exit }
-    f && /^-[[:space:]]/ { sub(/^-[[:space:]]*/, ""); sub(/^\[locked\][[:space:]]*/, ""); if ($0 != "") print "- " $0 }
+    f && /^#/ { flush(); exit }
+    !f { next }
+    /^[-*][[:space:]]/ { flush(); sub(/^[-*][[:space:]]*/, ""); sub(/^\[locked\][[:space:]]*/, ""); cur = $0; next }
+    (/^[ ][ ]/ || /^\t/) && cur != "" { sub(/^[[:space:]]+/, ""); cur = cur " " $0; next }
+    { flush() }
+    END { flush() }
   ' "$dplan")
   [ -n "$decided" ] || die "--decisions: $dplan has no bullet under ## Decisions to put into the MR"
   printf '\n## Decisions\n%s\n' "$decided" >> "$desc"

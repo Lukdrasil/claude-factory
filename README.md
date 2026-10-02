@@ -103,6 +103,11 @@ threshold, which is why the lane refuses a toolset without a `crap` row. The tas
 watcher turns the human's review of that MR into fix rounds, approved without an ask, until it is merged
 (`skills/factory/references/auto.md`).
 
+`/claude-factory:autonom <T-id>` is the same lane with no pick and no question: the monitor compares the two
+solutions and chooses, and a question with no recommendation is analysed over a table of its options and
+decided by the session that meets it, the line marked `(analysed)` in the MR body. A destructive or
+outward-facing choice and a session's permission dialog still reach the human.
+
 ## Layout
 
 | path | what |

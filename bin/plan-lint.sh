@@ -1,7 +1,7 @@
 #!/bin/sh
 # The musts of a grill, checked over the plan it ends with instead of restated in prose (slim-harness M6).
 #
-#   plan-lint.sh <plan-ready.md>
+#   plan-lint.sh <plan-ready.md> [--auto]
 #
 # It reads one plan-ready.md and names every violation of the rules the grill cannot leave open:
 #
@@ -16,6 +16,9 @@
 #   a proposal `goal:` that cannot be the MR title it becomes (lib-tasks.sh plan_goal_violations)
 #   an indented proposal line outside `context:`, `acceptance:`, `docs:`, `out of scope:` and the `steps:`
 #   sub-bullets, which decompose.sh would drop
+#   with --auto, the musts of the auto grill (skills/grill/SKILL.md, Auto mode): a proposal that is not
+#   `research` whose `steps:` sub-bullets name no test (`test <path>: <what it proves>`) or say nothing of
+#   e2e (an e2e test, or `no e2e`)
 #
 # invariant: the gap ledger's `state` column is found by its header cell, so a ledger with the `deps` column and
 # invariant: one without it read the same; a header with no `state` cell falls back to the fourth column.
@@ -36,11 +39,19 @@ set -eu
 die() { printf 'plan-lint: %s\n' "$1" >&2; exit 1; }
 . "$(dirname -- "$0")/lib-tasks.sh"
 
-[ $# -ge 1 ] || die "usage: plan-lint.sh <plan-ready.md>"
-[ $# -eq 1 ] || die "one plan at a time: plan-lint.sh <plan-ready.md>"
-[ -f "$1" ] || die "no such plan: $1"
+auto=0 plan=''
+for a; do
+  case "$a" in
+    --auto) auto=1 ;;
+    -*) die "unknown argument '$a'" ;;
+    *) [ -z "$plan" ] || die "one plan at a time: plan-lint.sh <plan-ready.md> [--auto]"; plan=$a ;;
+  esac
+done
+[ -n "$plan" ] || die "usage: plan-lint.sh <plan-ready.md> [--auto]"
+[ -f "$plan" ] || die "no such plan: $plan"
+set -- "$plan"
 
-out=$(awk '
+out=$(awk -v auto="$auto" '
   function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
   function bad(m) { viol[++nv] = m }
   function member_name(s,   t, n, a, i, last) {
@@ -103,7 +114,13 @@ out=$(awk '
     next
   }
 
-  sec == "Proposed tasks" && np > 0 && insteps && /^[ \t]+[-*][ \t]/ { nsub[np]++; next }
+  sec == "Proposed tasks" && np > 0 && insteps && /^[ \t]+[-*][ \t]/ {
+    nsub[np]++
+    sub_line = trim($0); sub(/^[-*][ \t]+/, "", sub_line)
+    if (sub_line ~ /^test[ \t]/) ptest[np] = 1
+    if (sub_line ~ /e2e/) pe2e[np] = 1
+    next
+  }
   # see: decompose.sh, which carries an indented line only under these four keys and a sub-bullet only under
   # see: steps:, so any other indented line would vanish from the block
   sec == "Proposed tasks" && np > 0 && /^[ \t]+[^ \t]/ {
@@ -167,6 +184,10 @@ out=$(awk '
         bad("proposal " p " has a `steps:` that is neither sub-bullets nor `none`")
       if (ptier[p] == "red" && qsline < 2)
         bad("proposal " p " is red and the plan has no `## Quality scenarios` row")
+      if (auto && parch[p] != "research") {
+        if (!ptest[p]) bad("proposal " p " names no test under `steps:` (`test <path>: <what it proves>`), which the auto grill requires")
+        if (!pe2e[p]) bad("proposal " p " says nothing of e2e under `steps:` (the e2e test it needs, or `no e2e`), which the auto grill requires")
+      }
     }
     for (m = 1; m <= nm; m++) {
       owners = 0

@@ -4,7 +4,7 @@
 # worktree; without herdr the same lines are printed for the human to run.
 #
 #   session-monitor.sh [--task <T-id> [--wave N] [--step <triage|solution-open|solution-min|grill|plan-check|decompose>]]
-#                      [--all] [--auto] [--max N] [--workspace <id>] [--spawn herdr|manual] [--state <dir>] [--dry-run]
+#                      [--all] [--auto|--autonom] [--max N] [--workspace <id>] [--spawn herdr|manual] [--state <dir>] [--dry-run]
 #
 # Modes:
 #   --task T-id      one named task as a unit, and nothing else: the current wave of its blocks when it has any
@@ -22,8 +22,10 @@
 #                    of `factory auto` (skills/factory/references/auto.md): solution-open runs the solution
 #                    skill on claude-opus-5-5 with no point of view imposed, solution-min runs it on
 #                    claude-fable-5-1 for the fewest changes, both at effort medium.
-#   --auto           the grill and decompose steps go out with `--auto`, so the session takes every
+#   --auto           the grill, plan-check and decompose steps go out with `--auto`, so the session takes every
 #                    recommendation itself (skills/_shared/auto-decision.md); the other steps are unchanged
+#   --autonom        the same with `--autonom`: a question with no recommendation is analysed and decided by
+#                    the session too, nobody asked (the autonomous section of that file)
 #   --all            every task with `status: ready` and no owner, across the state repo, and one
 #                    `mr-watch.sh <T-id> --once` pass per parent with an open block MR, whose event lines are
 #                    printed through, so a merge after the monitor ended still becomes state
@@ -100,6 +102,7 @@ while [ $# -gt 0 ]; do
     --task|--parent) [ $# -ge 2 ] || die "$1 needs a value"; parent=$2; shift 2 ;;
     --all) all=1; shift ;;
     --auto) auto=1; shift ;;
+    --autonom) auto=autonom; shift ;;
     --wave) [ $# -ge 2 ] || die "--wave needs a value"; wave=$2; shift 2 ;;
     --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --max) [ $# -ge 2 ] || die "--max needs a value"; max=$2; shift 2 ;;
@@ -242,7 +245,7 @@ step_unit() { # <T-id> <step>
   su_model=opus su_effort=-
   # the auto lane's grill and decompose take every recommendation themselves (skills/_shared/auto-decision.md)
   su_auto=''
-  [ -z "$auto" ] || su_auto=' --auto'
+  case "$auto" in '') ;; autonom) su_auto=' --autonom' ;; *) su_auto=' --auto' ;; esac
   # plan-check and decompose read the plan the grill wrote, in the state clone, and run there
   case "$2" in
     plan-check|decompose)
@@ -266,7 +269,7 @@ step_unit() { # <T-id> <step>
     solution-open) su_model=claude-opus-5-5 su_effort=medium su_prompt="/claude-factory:solution $su_task --view open" ;;
     solution-min) su_model=claude-fable-5-1 su_effort=medium su_prompt="/claude-factory:solution $su_task --view min" ;;
     grill) su_prompt="/claude-factory:grill $su_task$su_auto" ;;
-    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_plan" ;;
+    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_plan$su_auto" ;;
     decompose) su_prompt="/claude-factory:decompose $su_plan$su_auto" ;;
   esac
   unit "$1-$2" "$su_cwd" "$su_model" - "$2" "$(agent_name "$2" "$1")" "$su_effort" "$su_prompt"
@@ -445,8 +448,12 @@ while IFS='	' read -r id cwd model claimid role name effort prompt; do
   if [ "$mode" = herdr ] && [ -z "$dry" ]; then
     t=${id%%-[a-z]*}
     if is_block_id "$t"; then t=${t%-*}; fi
-    closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-solution-open" "$t-solution-min" "$t-grill" \
-      "$t-plan-check" "$t-decompose" --state "$state")
+    # why: the two solution steps run side by side, so the dispatch of one must not close the other's tab
+    case "$id" in
+      *-solution-open|*-solution-min) set -- "$id" "$t-triage" "$t-grill" "$t-plan-check" "$t-decompose" ;;
+      *) set -- "$id" "$t-triage" "$t-solution-open" "$t-solution-min" "$t-grill" "$t-plan-check" "$t-decompose" ;;
+    esac
+    closed=$(sh "$bin/herdr-tabs.sh" close "$@" --state "$state")
     kept=$(printf '%s\n' "$closed" | awk -v u="$id" '$1 == u && $2 == "kept"')
     if [ -n "$kept" ]; then
       printf '%s skipped %s\n' "$id" "$cwd"

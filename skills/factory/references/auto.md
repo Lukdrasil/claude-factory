@@ -53,9 +53,13 @@ answer as `## Solution` at the end of the task file, verbatim:
 ```markdown
 ## Solution
 - view: <open|min|mixed>
-- file: repos/<key>/research/<T-id>-solution-<view>.md
+- file: repos/<key>/research/<T-id>-solution-<open|min>.md
 - the human's words: <their answer as given, or "as written">
 ```
+
+A mixed answer, or a third way, lists both files on two `file:` lines, and the human's words say what is
+taken from each; the auto grill reads both and holds those words as settled. A pick on one file names that
+file alone.
 
 then `state-report.sh --task <T-id> --no-status --message 'chore(<T-id>): solution chosen'`. That yes is the
 consent for the rest of the lane. Nothing after it asks for a confirm: not the grill, not decompose, not the
@@ -75,9 +79,15 @@ names the tests that cover its functionality, one sub-bullet per test file (`tes
 and the end-to-end test it needs, or `no e2e`; and `## Decisions` holds every decision taken, the ones the
 human answered ending with `(human)`.
 
-Step 5, plan-check, is the herd's. Step 6 dispatches `--step decompose --auto` (`skills/decompose/SKILL.md`,
-`## Auto mode`): the spec-critic's proposed edits are applied as written, a cut-check finding is taken by its
-recommendation, and the block list ends the step as a notice.
+Step 5 dispatches `--step plan-check --auto` (`skills/architect-review/SKILL.md`, `## Auto mode`): every
+finding is an edit to the plan and a rerun, no finding is accepted as a risk by anyone, and a `misaligned`
+that no edit clears stops the lane with the findings as a notice. Step 6 dispatches `--step decompose --auto`
+(`skills/decompose/SKILL.md`, `## Auto mode`): the spec-critic's proposed edits are applied as written, a
+cut-check finding is taken by its recommendation, and the block list ends the step as a notice.
+
+`factory auto <T-id>` over a task that already has a plan but no `## Solution` (a task another lane grilled)
+has no pick to call its consent: from there `solve-next.sh --auto` prints the herd's steps, the ask of step 9
+included.
 
 Step 9 is `task-approve.sh` over the parent and its blocks with no ask, the bodies printed as a notice so the
 human can read what went ready. Step 10 and step 11 are the herd's: one session per block, the red tests
@@ -110,9 +120,17 @@ and the task MR's lines are the human's review coming back:
 | line | what you do |
 |---|---|
 | `<T-id> mr <any> -> merged` | `references/done.md`, without an ask |
-| `<T-id> mr <any> -> changes-requested`, `new-comments` | the fix round of `references/solve.md` (`## After the task MR`): read the threads with `mr-watch.sh <T-id> --comments <T-id>`, one fix block per change asked, cut-check, `task-new.sh --parent`, approved without an ask, worked as a block session through step 11, then steps 12 to 14 again and `mr-open.sh --decisions` to refresh the body |
-| `<T-id> mr <any> -> ci-failed` | a fix round the same way |
+| `<T-id> mr <any> -> changes-requested`, `<T-id> comments <n> -> <m>` | the fix round below; the comments line is how a review that leaves the MR `open` reaches you, so read the threads on every such line |
+| `<T-id> mr <any> -> ci-failed` | the fix round below |
 | `<T-id> mr <any> -> approved` | say so, keep watching |
+
+The fix round is the one of `references/solve.md` (`## After the task MR`), with no ask in it: read the
+threads with `mr-watch.sh <T-id> --comments <T-id>`; one fix block per change asked, written as solve writes an
+extra block (cut-check, `task-new.sh --parent`), approved by `task-approve.sh` without an ask and worked as a
+block session through step 11; once it is merged, remove `## Evidence`, `## Duplication` and `## Review` from
+the parent's progress file and report it (`state-report.sh --task <T-id> --no-status`), so `solve-next.sh
+--auto` runs steps 12 and 13 again; then `mr-open.sh <T-id> --decisions` yourself, since the MR exists and
+step 14 does not come back: it refreshes the body with the new block and the decisions as they now stand.
 
 A thread that is a question is answered on the MR by the human, as in solve; a thread that asks for work the
 chosen solution does not cover is the second case of `_shared/auto-decision.md`: ask. Only `done` or `closed`
@@ -124,3 +142,27 @@ The pick of step 4a, the questions `_shared/auto-decision.md` sends them, the pe
 sessions, and the review and merge of the task MR. Everything else the lane decides and records: the grill's
 `## Decisions`, the answer lines of the blocks, the `## Merged` lines of the block MRs. A human who reads the
 MR body and disagrees with a decision answers on the MR, and the fix round above carries it.
+
+## autonom
+
+`factory autonom <the task in words> [--repo <key>]`, or `factory autonom <T-id>`: this lane with no pick and
+no question, `sh <plugin-root>/bin/solve-next.sh <T-id> --autonom`. Everything above holds, with the
+`## Autonomous` section of `_shared/auto-decision.md` in place of every ask:
+
+- **Step 4a** dispatches the same two solution sessions, and the pick is yours: the two solutions as the rows
+  of the analysis table, the decision for the one it favours, and `## Solution` written with
+  `- chosen by: agent` and the table as its why. The grill reads it as it reads a human's pick.
+- **The grill, plan-check and decompose** go out with `--autonom`: a question with no recommendation, the UI
+  round and its variant included, is analysed and decided in the session, the table in the grill file and
+  the decision line ending with `(analysed)`; the mockup page is still written, so the MR reviewer sees the
+  variants the choice was made against.
+- **A blocked block** with no recommendation standing is answered the same way, the table in its progress
+  file and the answer line `(analysed)`; a `failed` block at its second attempt too, with the option the
+  table picks, or `closed` with the table as the reason when every option fails.
+- **What stays the human's**: the third case of `_shared/auto-decision.md` (data deleted, a migration that
+  loses rows, a forge action beyond the task's MRs, a cost), the permission dialogs of the sessions, and the
+  review and merge of the task MR. A task whose text says in words that the third case is theirs to take
+  too is taken at its word.
+
+The MR body tells the three kinds of decision apart: a line with no mark was taken by recommendation, one
+ending `(analysed)` was decided over a table, one ending `(human)` was answered by a person.

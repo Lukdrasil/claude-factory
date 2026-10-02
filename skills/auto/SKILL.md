@@ -33,4 +33,5 @@ herdr).
    fix rounds until it is merged.
 
 The task needs a registered repo with a `crap` row in its toolset; `solve-next.sh --auto` stops at step 4a
-and says so otherwise.
+and says so otherwise. `/claude-factory:autonom` is the same lane with the pick and every question taken by
+the sessions.

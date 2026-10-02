@@ -1,9 +1,10 @@
 # Auto decisions
 
-The one rule of `factory auto` (`skills/factory/references/auto.md`) for every question a step would put to
-the human: the grill rounds, the design round, the proposals round, the spec-critic report, a cut-check
-finding, a blocked block's `## Question`, a review round on the task MR. Read it whenever a skill runs with
-`--auto`, or the monitor of an auto lane reaches one of those.
+The one rule of `factory auto` and `factory autonom` (`skills/factory/references/auto.md`) for every question
+a step would put to the human: the grill rounds, the design round, the proposals round, a plan-check or
+cut-check finding, the spec-critic report, a blocked block's `## Question`, a review round on the task MR.
+Read it whenever a skill runs with `--auto` or `--autonom`, or the monitor of such a lane reaches one of
+those.
 
 **The recommendation is the answer.** Every question is still worked out as the skill says: the options, the
 trade-off, the recommendation and why. Then the recommendation is taken, recorded as the answer, and the step
@@ -45,3 +46,23 @@ says. The human's own words, in the `## Solution` of the task or in an answer, w
 
 The task MR carries every line of `## Decisions` (`mr-open.sh --decisions`), which is where the human reads
 what was decided for them.
+
+## Autonomous
+
+Under `--autonom` (`factory autonom`, `references/auto.md`) the cases above are not asked either, bar one.
+Cases 1, 2, 4 and 5, and the pick of step 4a, are **analysed and decided by the session**:
+
+1. Write the analysis as the `explore` table of the grill: one row per option, two to four pros and cons
+   each, specific to this repository, over goal fit, size of the change, risk, the tests it needs and what it
+   leaves worse. For the pick of step 4a the rows are the two solutions; for the UI round the rows are the
+   variants, drawn as `ui-round.md` says, and the mockup page is still written so the MR reviewer sees what
+   was chosen against.
+2. Decide for the option the table favours. Equal rows go to the smaller change, then to the one that stays
+   inside the chosen solution, then to the one easier to reverse.
+3. Record it: the table into the grill file (or the block's progress file, or the task's `## Solution` as its
+   why), and the decision line ending with `(analysed)`, so the MR body tells it from a recommendation taken
+   and from a human's answer.
+
+**Case 3 is still asked**, autonomous or not: data deleted, a migration that loses rows, a forge action
+beyond the task's MRs, a cost. A permission dialog of a session is still the human's, through the monitor. A
+human who wants those gone too says so in the task text, in words, and that line is the answer.

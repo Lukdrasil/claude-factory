@@ -557,3 +557,19 @@ commitlint_cap() { # <clone dir>
 redact_urls() { # <text>
   printf '%s\n' "$1" | sed -E 's#([A-Za-z][A-Za-z0-9+.-]*://)[^/@[:space:]]*@#\1#g'
 }
+
+# the binding of one command of a toolset.md table row, `| `<name> ...` | `<binding>` |`, backticks dropped and
+# the name read up to its first space, so `test-filter <expr>` answers to `test-filter`; nothing for a row
+# that is not there or whose binding cell is empty. The one reader of the table: block-verify.sh runs what it
+# answers, solve-next.sh --auto asks it whether a row exists, so the two cannot disagree on a row's shape
+toolset_binding() { # <toolset file> <command name>
+  [ -f "$1" ] || return 0
+  awk -F '|' -v want="$2" '
+    NF >= 3 {
+      name = $2; bind = $3
+      gsub(/`/, "", name); gsub(/`/, "", bind)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", name); gsub(/^[[:space:]]+|[[:space:]]+$/, "", bind)
+      sub(/[[:space:]].*$/, "", name)
+      if (name == want && bind != "" && bind != "binding") { print bind; exit }
+    }' "$1"
+}

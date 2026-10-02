@@ -47,3 +47,13 @@ interactive: the reviewer reports, the human decides.
 **Done when** `repos/<key>/verdicts/<slug>.md` carries the current `verdict` and a `plan_hash` that matches
 plan-ready.md, every touched domain has a rubric or a specialist report behind it, and every finding in the
 report has evidence.
+
+## Auto mode
+
+`/claude-factory:architect-review plan-check <plan> --auto` or `--autonom`, the plan-check step of
+`factory auto` (`${CLAUDE_PLUGIN_ROOT}/skills/factory/references/auto.md`); decompose's `--auto` runs the
+`cut-check` the same way. Steps 1 to 7 and 9 are unchanged. Step 8 asks nobody: every finding is a proposed
+edit, so under `${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md` the edit is made in the plan (or the
+cut), the invocation runs again over the edited input and the verdict is written from that run; a finding
+that is a choice goes through that file. `overridden-by-human` is never written: a `misaligned` that no edit
+clears is a stop, reported as a notice with the findings, and the lane does not go on past it.

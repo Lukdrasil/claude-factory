@@ -54,7 +54,8 @@
 # over the threshold, so zero tests on a diff that carries code is red and so is one method over the threshold
 # (T-163). The threshold is `crap-threshold:` in the toolset
 # frontmatter, 8 when it declares none; a toolset with no `crap` binding keeps the line as a note and cannot
-# redden anything. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
+# redden anything. The binding runs as a script under `timeout 10m`, after the `coverage` binding when there is
+# one, with `<scope>` replaced by the block's changed source files; a run that prints nothing or fails is red. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
 # `#`) and whose last field is a number, so a summary line is not read as a method. Exit 0 on green, 1 on red
 # with the first failing command, at most the last 30 lines of that run's output and every over-threshold
 # method on stderr, never the whole log.
@@ -94,18 +95,9 @@ branch_of() { # <task file>
     | sed 's/^["'\'']//; s/["'\'']$//'
 }
 
-# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks
-binding_of() { # <toolset file> <command name>
-  [ -f "$1" ] || return 0
-  awk -F '|' -v want="$2" '
-    NF >= 3 {
-      name = $2; bind = $3
-      gsub(/`/, "", name); gsub(/`/, "", bind)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", name); gsub(/^[[:space:]]+|[[:space:]]+$/, "", bind)
-      sub(/[[:space:]].*$/, "", name)
-      if (name == want && bind != "" && bind != "binding") { print bind; exit }
-    }' "$1"
-}
+# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks; the reader is
+# see: toolset_binding of lib-tasks.sh, shared with solve-next.sh --auto
+binding_of() { toolset_binding "$@"; }
 
 if [ -z "$worktree" ]; then
   [ -n "${WORK_DIR:-}" ] || die "no --worktree and no \$WORK_DIR to resolve the default worktree of '$id'"
@@ -226,20 +218,44 @@ if [ -n "$crap_binding" ]; then
     /^crap-threshold:[[:space:]]*/ { sub(/^crap-threshold:[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit }' \
     "$toolset")
   case "$t" in ''|*[!0-9.]*) ;; *) threshold=$t ;; esac
+  # why: `timeout 10m DOTNET_ROLL_FORWARD=Major dotnet-crap ...` never ran: timeout takes a command, not an
+  # why: assignment, exited 127 into /dev/null and the empty run read green. The binding runs as a script of
+  # why: its own under timeout, so an assignment, a pipe or a && in the cell all run as the toolset wrote them.
+  # why: `<scope>` is the block's own changed source files (crap-loop.md: the task's diff, never the repo), and
+  # why: `coverage` runs first when the toolset binds it, since crap reads what coverage wrote
+  scope=$(grep -v '\.md$' "$tmp/changed" | while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$worktree/$f" ] || continue
+    is_test_path "$f" && continue
+    printf '%s ' "$f"
+  done)
+  scope=${scope% }
+  coverage_binding=$(binding_of "$toolset" coverage)
+  {
+    [ -z "$coverage_binding" ] || printf '%s >/dev/null 2>&1 || exit 97\n' "$coverage_binding"
+    printf '%s\n' "$(printf '%s' "$crap_binding" | sed "s|<scope>|$(printf '%s' "$scope" | sed 's/[|&\\]/\\&/g')|g")"
+  } > "$tmp/crap.sh"
   set +e
-  ( cd "$worktree" && eval "timeout 10m $crap_binding" ) >"$tmp/crap" 2>/dev/null
+  ( cd "$worktree" && timeout 10m sh "$tmp/crap.sh" ) >"$tmp/crap" 2>"$tmp/crap.err"
+  crap_status=$?
   set -e
   crap=$(head -n1 "$tmp/crap")
-  [ -n "$crap" ] || crap='(no value)'
+  # why: a run that printed nothing, or failed, proved nothing: it is red with its reason, never a green gate
+  if [ -z "$crap" ]; then
+    case "$crap_status" in
+      97) crap="coverage failed: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+      *) crap="no value (exit $crap_status): $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+    esac
+    crap_over="(the crap run) $crap"
+  fi
   # see: a method row is `<Type>.<Member> ... <value>`, pipes and all, so a summary line that happens to end
   # see: in a number ("Analyzed 123 files") is not one: the name has to carry a member separator
-  crap_over=$(awk -v t="$threshold" '
+  [ -n "$crap_over" ] || crap_over=$(awk -v t="$threshold" '
     { gsub(/\|/, " ") }
     NF < 2 { next }
     $NF !~ /^[0-9]+([.][0-9]+)?$/ { next }
     $1 !~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { next }
     $NF + 0 > t + 0 { print $1, $NF }' "$tmp/crap")
-  if [ -n "$crap_over" ]; then
+  if [ -n "$crap_over" ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
     joined='' over=0
     while IFS= read -r row; do
       [ -n "$row" ] || continue
