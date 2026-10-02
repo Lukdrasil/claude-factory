@@ -378,6 +378,17 @@ if [ -n "$globs" ]; then ok "test-globs ($globs)"; else missing "test-globs in r
 
 # --- what the dotnet coverage and crap rows need beyond the binaries ------------------------------------------------
 if [ "$stack" = dotnet ]; then
+  # a row seeded before 0.19: coverage with no Cobertura report leaves crap nothing to read, and a quoted
+  # "<scope>" makes the changed files of a block one word (block-verify.sh); both rows are in toolsets/dotnet.md
+  if binds coverage; then
+    if grep -E '^\|[[:space:]]*`?coverage' "$toolset" | grep -q 'Cobertura'; then ok "coverage writes the Cobertura report crap reads"
+    else missing "a Cobertura report in the coverage row of repos/$key/toolset.md" "add Cobertura to its -reporttypes (the plugin's toolsets/dotnet.md shows the row), or crap reads nothing"; fi
+  fi
+  if binds crap; then
+    if grep -E '^\|[[:space:]]*`?crap' "$toolset" | grep -qE '["'"'"']<scope>["'"'"']'; then
+      missing "an unquoted <scope> in the crap row of repos/$key/toolset.md" "block-verify.sh hands the changed files to <scope> one argument each; drop the quotes around it (toolsets/dotnet.md)"
+    else ok "the crap row takes <scope> unquoted"; fi
+  fi
   # 2026-09-07: `coverage` ran green and produced no cobertura file, so `crap` had nothing to score and the gate
   # could never be met, no test project referenced a collector. A test project is a *.csproj under a path one of
   # the test-globs matches (`**/` → any directories, `*` → one segment) or one that declares itself a test project.

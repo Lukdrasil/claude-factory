@@ -25,9 +25,9 @@ not listed here does not exist for this repo — note it and move on.
 | `build` | `dotnet build {{solution}} -warnaserror -v q --nologo` |
 | `test` | `timeout 15m dotnet test {{solution}}` |
 | `test-filter <expr>` | `timeout 15m dotnet test {{solution}} --filter "<expr>"` |
-| `coverage` | `timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" && reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:TextSummary` |
+| `coverage` | `rm -rf .coverage/raw && timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" --results-directory .coverage/raw && reportgenerator -reports:".coverage/raw/**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:"TextSummary;Cobertura"` |
 | `mutation <scope>` | `dotnet stryker --mutate "<scope>" --break-at <n>` |
-| `crap <scope>` | `DOTNET_ROLL_FORWARD=Major dotnet-crap analyze "<scope>" --coverage .coverage/Cobertura.xml --threshold 8` |
+| `crap <scope>` | `DOTNET_ROLL_FORWARD=Major dotnet-crap analyze <scope> --coverage .coverage/Cobertura.xml --threshold 8` |
 | `format` | `dotnet format whitespace {{solution}} --include <the changed files>` |
 | `format-verify` | `dotnet format whitespace {{solution}} --verify-no-changes --include <the changed files>` |
 | `find-refs <symbol>` | `grep -rn "<symbol>" --include=*.cs .` |
@@ -41,7 +41,12 @@ backquotes and run the rest, so a note beside the command runs as shell. The not
 `test-filter` takes VSTest's `--filter "<expr>"`. A repo on xunit.v3 under Microsoft.Testing.Platform takes
 `--filter-query "<expr>"` instead; change the binding when the repo is seeded.
 
-`coverage` writes `.coverage/`, which `crap` reads, so run `coverage` first. `crap` runs on the newest
+`coverage` writes `.coverage/`, its `Cobertura` report the `.coverage/Cobertura.xml` that `crap` reads, so run
+`coverage` first; `block-verify.sh` does, and hands the block's changed `.cs` files to `crap` in place of
+`<scope>`, one argument each. The raw results go to `.coverage/raw`, emptied before every run, so a report
+never merges the coverage of an earlier version of the code; `.coverage/` belongs in the repo's
+`.gitignore`, or a worktree reads dirty after a verify. A repo seeded before 0.19 keeps the old row, which
+wrote no Cobertura report and quoted `<scope>`: `factory doctor` names both, and the fix is this row. `crap` runs on the newest
 runtime; the tool's default threshold is 30, changed code is held to the `crap-threshold:` above, which
 `block-verify.sh` reddens a block over.
 
@@ -51,6 +56,10 @@ runtime; the tool's default threshold is 30, changed code is held to the `crap-t
 over the solution (Roslyn `FindReferencesAsync`) is more precise; read the grep hits either way.
 
 `hotspots` writes the Risk Hotspots page, the CRAP ranking for the whole repo.
+
+`e2e` is not bound here: a repo with an end-to-end suite adds the row, `| \`e2e\` | <the command that runs it> |`,
+and the auto lane (`skills/factory/references/auto.md`) runs it in step 12; without the row the lane records
+that there is none.
 
 `arch-build` exists once the repo has a model. `--no-use-dot` uses likec4's bundled WASM Graphviz, so no
 native `dot` is needed on PATH.

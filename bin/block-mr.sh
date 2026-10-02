@@ -124,7 +124,9 @@ oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
 [ -n "$changed" ] || die "$progress has no '## Done' bullets for the What changed section"
-verify=$(bullets '## Evidence' | oneline)
+# see: bin/mr-open.sh, the same cut: the first five runs and a count of the rest, since a crap-loop round and a
+# fix round each add a line, and How to verify stands outside the 120 words
+verify=$(bullets '## Evidence' | awk 'NR <= 5 { print; next } { more++ } END { if (more) printf "and %d more run%s\n", more, (more > 1 ? "s" : "") }' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 
 # see: bin/mr-open.sh, the same Why. why: the title said it already, so a Why that repeated the goal told the
@@ -153,10 +155,9 @@ if [ -z "$why" ] && [ -n "$ptask" ]; then why=$(first_sentence '## Context' "$pt
 if [ -z "$why" ] && [ -n "$ptask" ]; then why=$(plan_why "$ptask"); fi
 [ -n "$why" ] || why=$goal
 
-words=$(printf '**What changed** - %s\n**Why** - %s\n**How to verify** - %s\n' "$changed" "$why" "$verify" \
-  | wc -w | tr -d '[:space:]')
+words=$(printf '**What changed** - %s\n**Why** - %s\n' "$changed" "$why" | wc -w | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
+  || die "What changed and Why are $words words and the contract caps it at 120; shorten the ## Done bullets of $progress or the sentence Why takes from the task's ## Context"
 
 if [ -z "$worktree" ]; then
   [ -n "${WORK_DIR:-}" ] || die "WORK_DIR is not set, so the block worktree is unknown; pass --worktree <dir>"
@@ -192,12 +193,29 @@ else
   reasons=''
 fi
 
+# why: a block MR without a verification, or with one of an older commit, carried the crap promise on paper
+# why: only; the report has to be there, green, and of the worktree's HEAD
 verified=''
-if [ -f "$desc_dir/verify.txt" ]; then
-  [ "$(sed -n 's/^verdict:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)" != red ] \
-    || die "block-verify.sh reported red for $id in $desc_dir/verify.txt; make it green and run block-verify.sh again"
-  verified=$(awk 'NR > 1 && NF { gsub(/[[:space:]]+/, " "); s = s ? s "; " $0 : $0 } END { print s }' "$desc_dir/verify.txt")
-fi
+[ -f "$desc_dir/verify.txt" ] \
+  || die "no verification of block $id at $desc_dir/verify.txt: run block-verify.sh $id first"
+v_verdict=$(sed -n 's/^verdict:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)
+[ "$v_verdict" = green ] \
+  || die "block-verify.sh reported ${v_verdict:-no verdict} for $id in $desc_dir/verify.txt; make it green and run block-verify.sh again"
+# the trees are compared, not the commits: the [skip ci] commit this script adds below changes no file, and a
+# rerun over it is still verified. A report with no head line is of an older block-verify.sh, or cut short,
+# and names no files it proved; a dirty line, or a worktree with changes not committed, is a run over files
+# the push would not carry
+v_head=$(sed -n 's/^head:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)
+[ -n "$v_head" ] || die "the verification at $desc_dir/verify.txt names no head it is of: run block-verify.sh $id again"
+v_tree=$(git -C "$worktree" rev-parse "$v_head^{tree}" 2>/dev/null || :)
+w_tree=$(git -C "$worktree" rev-parse 'HEAD^{tree}' 2>/dev/null || :)
+[ -n "$v_tree" ] && [ "$v_tree" = "$w_tree" ] \
+  || die "the verification at $desc_dir/verify.txt is of $v_head and the block worktree's files are not those: run block-verify.sh $id again"
+! grep -q '^dirty:' "$desc_dir/verify.txt" \
+  || die "the verification at $desc_dir/verify.txt ran over changes not committed: commit them and run block-verify.sh $id again"
+[ -z "$(git -C "$worktree" status --porcelain --untracked-files=no 2>/dev/null)" ] \
+  || die "the block worktree $worktree holds changes not committed, which the push would leave behind: commit them and run block-verify.sh $id again"
+verified=$(awk 'NR > 1 && NF && !/^head:/ { gsub(/[[:space:]]+/, " "); s = s ? s "; " $0 : $0 } END { print s }' "$desc_dir/verify.txt")
 
 {
   printf '**What changed** - %s\n' "$changed"

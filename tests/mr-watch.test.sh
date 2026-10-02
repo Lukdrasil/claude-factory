@@ -45,6 +45,52 @@ check 'the parent is not set done by the watcher' 0 '^status: review$' "$(cat "$
 out=$(watch)
 check 'the merge is reported once'                1 'T-501 merged' "$out"
 
+# GitHub: a review with inline threads leaves the PR open; the reviews and the inline comments are counted
+mkdir -p "$state/repos/gh/tasks"
+printf 'gh: {url: "https://github.com/o/gh.git", default_branch: main, path: "%s"}\n' "$tmp/clone" >> "$state/repos.yml"
+printf -- '---\nid: T-592\nrepo: gh\nstatus: review\nbranch: feat/T-592-x\nmr_url: https://github.com/o/gh/pull/7\n---\n\n# Goal\nfeat(gh): x\n' \
+  > "$state/repos/gh/tasks/T-592.md"
+cat > "$tmp/bin/gh" <<STUB
+#!/bin/sh
+printf '%s\n' "\$*" >> "$tmp/gh.log"
+case "\$1 \$2" in
+  "pr view") cat "$tmp/mrs/pr7.json" ;;
+  api*) cat "$tmp/mrs/inline7.txt" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$tmp/bin/gh"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
+: > "$tmp/mrs/inline7.txt"
+watch2() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-592 --once --state "$state" 2>&1; }
+out=$(watch2)
+check 'a GitHub PR with no review prints nothing'   1 'T-592 ' "$out"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"looks off, see threads","state":"COMMENTED"},{"body":"","state":"APPROVED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
+printf '101\n102\n' > "$tmp/mrs/inline7.txt"
+: > "$tmp/gh.log"
+out=$(watch2)
+check 'a review as Comment with inline threads is counted, an empty approving body not' 0 '^T-592 new-comments 3$' "$out"
+check 'the inline count comes from the paginated pulls comments endpoint of that PR' 0 '^api --paginate repos/o/gh/pulls/7/comments --jq ' "$(cat "$tmp/gh.log")"
+# a gh api call that fails keeps the count last recorded, so no lower total reads as new comments next pass
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr7.json" > "$tmp/bin/gh"
+out=$(watch2)
+check 'a failed inline call prints no new comments' 1 'T-592 new-comments' "$out"
+check 'and keeps the recorded count'              0 '^T-592 open 3$' "$(cat "$tmp/factory/gh/.harness/T-592/mr-watch.state")"
+# a failed inline call on the first pass records no count, and the first count read is the baseline, not news
+printf -- '---\nid: T-593\nrepo: gh\nstatus: review\nbranch: feat/T-593-x\nmr_url: https://github.com/o/gh/pull/8\n---\n\n# Goal\nfeat(gh): y\n' \
+  > "$state/repos/gh/tasks/T-593.md"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"see threads","state":"COMMENTED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr8.json"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" > "$tmp/bin/gh"
+watch3() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-593 --once --state "$state" 2>&1; }
+out=$(watch3)
+check 'a failed inline call on the first pass prints no new comments' 1 'T-593 new-comments' "$out"
+check 'and records no count'                      0 '^T-593 open *$' "$(cat "$tmp/factory/gh/.harness/T-593/mr-watch.state")"
+printf '201\n202\n' > "$tmp/mrs/inline8.txt"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) cat "%s" ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" "$tmp/mrs/inline8.txt" > "$tmp/bin/gh"
+out=$(watch3)
+check 'the first count read after that is news to mr-watch (herd-watch takes it as the baseline)' 0 '^T-593 new-comments 3$' "$out"
+check 'and is recorded'                           0 '^T-593 open 3$' "$(cat "$tmp/factory/gh/.harness/T-593/mr-watch.state")"
+
 # --- --finish: the merge ends the task ---------------------------------------------------------
 git init -q "$state"
 git -C "$state" config user.email harness@localhost

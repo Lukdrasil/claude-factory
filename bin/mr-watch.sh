@@ -116,7 +116,7 @@ bounded() { if command -v timeout >/dev/null 2>&1; then timeout "${MR_WATCH_TIME
 
 view() { # <mr url>: the MR as the forge prints it, empty when the call fails
   case "$(forge_of "$1")" in
-    gh) bounded gh pr view "$1" --json state,reviewDecision,comments,statusCheckRollup 2>/dev/null || : ;;
+    gh) bounded gh pr view "$1" --json state,reviewDecision,comments,reviews,statusCheckRollup 2>/dev/null || : ;;
     *) bounded glab mr view "$1" -F json 2>/dev/null || : ;;
   esac
 }
@@ -151,11 +151,36 @@ state_word() { # <the forge's json>
   fi
 }
 
-# GitLab counts the notes itself; GitHub hands over the array, so its elements are counted here
-comment_count() { # <the forge's json>
+# GitLab counts the notes itself; GitHub hands over the arrays, so their elements are counted here: the
+# conversation comments and the reviews (both carry a `body`), plus the inline review threads, which no field of
+# `gh pr view` lists and which `gh api .../pulls/<n>/comments` counts. why: a review submitted as "Comment" with
+# inline threads leaves the state `open` and, before this, the count unchanged, so the human's main way of
+# reviewing on GitHub never reached the watcher
+comment_count() { # <the forge's json> [<mr url> [<the count last recorded>]]
   n=$(printf '%s' "$1" | sed -n 's/.*"user_notes_count"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
-  [ -n "$n" ] || n=$(printf '%s' "$1" | grep -o '"body"' | wc -l | tr -d '[:space:]')
-  [ -n "$n" ] || n=0
+  if [ -z "$n" ]; then
+    # a body with text: an approving review with an empty body is no comment to answer
+    n=$(printf '%s' "$1" | grep -o '"body"[[:space:]]*:[[:space:]]*"[^"]' | wc -l | tr -d '[:space:]')
+    [ -n "$n" ] || n=0
+    if [ -n "${2:-}" ] && [ "$(forge_of "$2")" = gh ]; then
+      cc_path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\([^/]*\)/\([^/]*\)/pull/\([0-9]*\).*#repos/\1/\2/pulls/\3/comments#p')
+      cc_inline=''
+      # --paginate: the endpoint pages at 30, and one id per line counts every page; a call that fails is no
+      # count at all, so the one last recorded stands, or a lower total would read as new comments next pass;
+      # with none recorded yet the count stays empty, and the first pass that reads one is the baseline, not
+      # a line of every comment on the MR as new
+      if [ -n "$cc_path" ]; then
+        if cc_ids=$(bounded gh api --paginate "$cc_path" --jq '.[].id' 2>/dev/null); then
+          cc_inline=$(printf '%s\n' "$cc_ids" | grep -c . || :)
+        else
+          printf '%s' "${3:-}"
+          return 0
+        fi
+      fi
+      case "$cc_inline" in ''|*[!0-9]*) cc_inline=0 ;; esac
+      n=$((n + cc_inline))
+    fi
+  fi
   printf '%s' "$n"
 }
 
@@ -199,9 +224,12 @@ pass() {
     json=$(view "$url")
     [ -n "$json" ] || { printf '%s %s %s\n' "$b" "$(remembered "$b" 2)" "$(remembered "$b" 3)" >> "$new"; continue; }
     w=$(state_word "$json")
-    n=$(comment_count "$json")
+    n=$(comment_count "$json" "$url" "$(remembered "$b" 3)")
     was=$(remembered "$b" 2)
     wasn=$(remembered "$b" 3)
+    # an empty count (the first pass, its inline call failed) is no count: nothing is compared, nothing recorded
+    unknown=''
+    case "$n" in ''|*[!0-9]*) unknown=1; n=0 ;; esac
     case "$wasn" in ''|*[!0-9]*) wasn=0 ;; esac
     if [ "$w" != "$was" ] && [ "$w" != open ]; then
       printf '%s %s\n' "$b" "$w"
@@ -213,6 +241,10 @@ pass() {
           || printf 'mr-watch: %s is merged but state-report.sh could not set it done (%s); do it and run this again\n' \
                "$b" "$(cat "$harness/report.err")" >&2
       fi
+    fi
+    if [ -n "$unknown" ]; then
+      printf '%s %s %s\n' "$b" "$w" "$(remembered "$b" 3)" >> "$new"
+      continue
     fi
     if [ "$n" -gt "$wasn" ]; then printf '%s new-comments %s\n' "$b" "$((n - wasn))"; fi
     printf '%s %s %s\n' "$b" "$w" "$n" >> "$new"

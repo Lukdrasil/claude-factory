@@ -120,7 +120,14 @@ block() { # <id>: the worktree cut by worktree-add.sh, one commit with a passing
   git -C "$tmp/demo/$1" commit -q -m "feat: $1"
   printf '\n## Done\n- the parser takes empty rows\n\n## Evidence\n- `sh tests/%s.test.sh` -> exit 0\n' "$1" \
     >> "$state/repos/demo/progress/$1.md"
+  verified "$1"
   publish
+}
+
+verified() { # <id>: the green report block-verify.sh leaves, of the worktree's head
+  mkdir -p "$harness/$1"
+  printf 'block: %s\ntests: 1 run, 1 passed, 0 failed\ncrap:  not bound\nverdict: green\nhead: %s\n' "$1" \
+    "$(git -C "$tmp/demo/$1" rev-parse HEAD)" > "$harness/$1/verify.txt"
 }
 
 review() { # <id> <verdict line>
@@ -305,9 +312,57 @@ check 'no arch.md in a repo with docs/architecture/ is refused' 1 "$rc"
 has 'the refusal names arch.md' 'arch.md' "$err"
 
 arch T-700-03 low
-printf 'block: T-700-03\ntests: 1 run, 0 passed, 1 failed\ncrap:  not bound\nverdict: red\n' > "$harness/T-700-03/verify.txt"
+printf 'block: T-700-03\ntests: 1 run, 0 passed, 1 failed\ncrap:  not bound\nverdict: red\nhead: %s\n' "$(git -C "$tmp/demo/T-700-03" rev-parse HEAD)" > "$harness/T-700-03/verify.txt"
 run T-700-03 --dry-run
 check 'a block block-verify.sh found red is refused' 1 "$rc"
+# the verification has to be there, and of the files the worktree holds now
+rm "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a block with no verification is refused' 1 "$rc"
+check 'and told to verify first' 1 "$(printf '%s' "$err" | grep -c 'run block-verify.sh T-700-03 first')"
+verified T-700-03
+printf 'x\n' > "$tmp/demo/T-700-03/tests/more.test.sh"
+git -C "$tmp/demo/T-700-03" add -A && git -C "$tmp/demo/T-700-03" commit -q -m 'feat: more'
+run T-700-03 --dry-run
+check 'a verification of an older tree is refused' 1 "$rc"
+check 'and told to verify again' 1 "$(printf '%s' "$err" | grep -c 'run block-verify.sh T-700-03 again')"
+verified T-700-03
+git -C "$tmp/demo/T-700-03" commit -q --allow-empty -m 'ci: skip'
+run T-700-03 --dry-run
+check 'an empty commit over a verified tree is still verified' 0 "$rc"
+# the report has to say green and name its head; a run over changes not committed, or a worktree holding
+# them, is of files the push would not carry
+sed -i '/^head:/d' "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report with no head line is refused' 1 "$rc"
+has 'and says so' 'names no head it is of' "$err"
+verified T-700-03
+sed -i '/^verdict:/d' "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report with no verdict line is refused' 1 "$rc"
+has 'and names the missing verdict' 'reported no verdict' "$err"
+verified T-700-03
+printf 'dirty: yes, the worktree holds changes not committed at abc\n' >> "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report of a run over changes not committed is refused' 1 "$rc"
+has 'and says to commit them' 'ran over changes not committed' "$err"
+verified T-700-03
+printf 'exit 0\n# edited\n' > "$tmp/demo/T-700-03/tests/more.test.sh"
+run T-700-03 --dry-run
+check 'a worktree holding changes not committed is refused' 1 "$rc"
+has 'and names the worktree' 'holds changes not committed, which the push would leave behind' "$err"
+git -C "$tmp/demo/T-700-03" checkout -q -- tests/more.test.sh
+printf 'stray\n' > "$tmp/demo/T-700-03/untracked.txt"
+run T-700-03 --dry-run
+check 'an untracked file is not dirt' 0 "$rc"
+rm "$tmp/demo/T-700-03/untracked.txt"
+# the 120 words bound What changed and Why; the evidence runs stand outside the count, five kept
+cp "$state/repos/demo/progress/T-700-03.md" "$tmp/progress-700-03.bak"
+{ printf '## Done\n- a\n\n## Evidence\n'; i=0; while [ $i -lt 8 ]; do i=$((i + 1)); printf -- '- `run %s with twenty words of output in its key line, more than any reviewer reads twice, line %s` -> exit 0\n' "$i" "$i"; done; } > "$state/repos/demo/progress/T-700-03.md"
+run T-700-03 --dry-run
+check 'a block MR with long evidence is not over the 120 words' 0 "$rc"
+has 'and keeps five runs with the rest counted' 'and 3 more runs' "$(printf '%s\n' "$out" | grep -F '**How to verify**')"
+cp "$tmp/progress-700-03.bak" "$state/repos/demo/progress/T-700-03.md"
 
 # --- Why is the reason, not the title again (F17) ----------------------------------
 section() { # <id> <heading> <text>: appends a section to the task file

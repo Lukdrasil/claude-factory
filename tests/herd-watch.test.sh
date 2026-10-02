@@ -50,7 +50,7 @@ check 'a block with no session is gone'    0 '^T-001-01 agent gone$' "$out"
 check 'a phase of null is not reported'    1 '^T-001-01 phase' "$out"
 check 'a step nobody dispatched is not news' 1 '^T-001-\(triage\|grill\|plan-check\|decompose\) ' "$out"
 seen="$tmp/factory/demo/.harness/T-001/herd-watch.state"
-check 'the state file keeps five columns per unit' 0 '^T-001-01 in_progress none gone none$' "$(cat "$seen" 2>/dev/null)"
+check 'the state file keeps six columns per unit' 0 '^T-001-01 in_progress none gone none 0$' "$(cat "$seen" 2>/dev/null)"
 
 out=$(sh "$bin/herd-watch.sh" T-001 --once --state "$state")
 if [ -z "$out" ]; then printf 'PASS an unchanged pass is silent\n'; else printf 'FAIL an unchanged pass printed: %s\n' "$out"; fail=1; fi
@@ -75,6 +75,39 @@ check 'an MR is reported when it appears'  0 '^T-001-01 mr none -> open$' "$out"
 printf 'T-001-01 merged 0\n' > "$harness/mr-watch.state"
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 check 'a merge prints the transition'      0 '^T-001-01 mr open -> merged$' "$out"
+# a comment on an MR that stays open is news through the count mr-watch.sh keeps, the task MR's review included
+printf 'T-001-01 merged 2\nT-001 open 3\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'new comments on a block MR print the count'    0 '^T-001-01 comments 0 -> 2$' "$out"
+check 'the task MR is sighted'                       0 '^T-001 mr none -> open$' "$out"
+check 'its comments are counted from zero'            0 '^T-001 comments 0 -> 3$' "$out"
+printf 'T-001-01 merged 2\nT-001 open 5\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'more comments on the task MR print the step'  0 '^T-001 comments 3 -> 5$' "$out"
+check 'an unchanged count prints nothing'            1 '^T-001-01 comments' "$out"
+# a state file from before the comments column: the first count is a baseline, not a line
+printf 'T-001 in_progress none gone open\nT-001-01 in_progress none gone merged\n' > "$seen"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'an old five-column record reports no comments line' 1 ' comments ' "$out"
+check 'but the record now carries the count'            0 '^T-001 in_progress none gone open 5$' "$(cat "$seen")"
+printf 'T-001-01 merged 2\nT-001 open 6\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'and the next count is news from that baseline' 0 '^T-001 comments 5 -> 6$' "$out"
+# an MR whose count mr-watch.sh could not read yet (its first inline call failed) is no count: the first count
+# read after it is the baseline, not every comment on the MR as new
+printf 'T-001-01 merged 2\nT-001 open \n' > "$harness/mr-watch.state"
+printf 'T-001 in_progress none gone open 6\nT-001-01 in_progress none gone merged 2\n' > "$seen"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'a count not read yet prints no comments line'    1 '^T-001 comments' "$out"
+check 'and the record says so'                          0 '^T-001 in_progress none gone open -$' "$(cat "$seen")"
+printf 'T-001-01 merged 2\nT-001 open 4\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'the first count read after it is the baseline'   1 '^T-001 comments' "$out"
+check 'and is recorded'                                  0 '^T-001 in_progress none gone open 4$' "$(cat "$seen")"
+printf 'T-001-01 merged 2\nT-001 open 5\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'and the next count is news from it'              0 '^T-001 comments 4 -> 5$' "$out"
+printf 'T-001-01 merged 2\n' > "$harness/mr-watch.state"
 
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 if [ -z "$out" ]; then printf 'PASS a pass after the merge is silent\n'; else printf 'FAIL a pass after the merge printed: %s\n' "$out"; fail=1; fi

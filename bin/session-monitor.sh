@@ -3,8 +3,8 @@
 # work, instead of a subagent in the monitor's own context. With herdr each session gets its own tab in its own
 # worktree; without herdr the same lines are printed for the human to run.
 #
-#   session-monitor.sh [--task <T-id> [--wave N] [--step <triage|grill|plan-check|decompose>]] [--all]
-#                      [--max N] [--workspace <id>] [--spawn herdr|manual] [--state <dir>] [--dry-run]
+#   session-monitor.sh [--task <T-id> [--wave N] [--step <triage|solution-open|solution-min|grill|plan-check|decompose>]]
+#                      [--all] [--auto|--autonom] [--max N] [--workspace <id>] [--spawn herdr|manual] [--state <dir>] [--dry-run]
 #
 # Modes:
 #   --task T-id      one named task as a unit, and nothing else: the current wave of its blocks when it has any
@@ -15,9 +15,17 @@
 #                    `<root>/<key>/.harness/<id>/brief.md` for it to read first.
 #                    `--parent` is the old spelling of the same flag and still works.
 #   --task T-id --step <name>
-#                    one session for a parent-level step before the approval: triage, grill, plan-check or
-#                    decompose. Triage and grill run in the task worktree, made detached at dispatch when there
-#                    is none yet (worktree-add.sh --detach); plan-check and decompose run in the state clone.
+#                    one session for a parent-level step before the approval: triage, solution-open,
+#                    solution-min, grill, plan-check or decompose. Triage, the two solution steps and grill run
+#                    in the task worktree, made detached at dispatch when there is none yet (worktree-add.sh
+#                    --detach); plan-check and decompose run in the state clone. The solution steps are step 4a
+#                    of `factory auto` (skills/factory/references/auto.md): solution-open runs the solution
+#                    skill on claude-opus-5-5 with no point of view imposed, solution-min runs it on
+#                    claude-fable-5-1 for the fewest changes, both at effort medium.
+#   --auto           the grill, plan-check and decompose steps go out with `--auto`, so the session takes every
+#                    recommendation itself (skills/_shared/auto-decision.md); the other steps are unchanged
+#   --autonom        the same with `--autonom`: a question with no recommendation is analysed and decided by
+#                    the session too, nobody asked (the autonomous section of that file)
 #   --all            every task with `status: ready` and no owner, across the state repo, and one
 #                    `mr-watch.sh <T-id> --once` pass per parent with an open block MR, whose event lines are
 #                    printed through, so a merge after the monitor ended still becomes state
@@ -87,12 +95,14 @@ die() { printf 'session-monitor: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-parent='' wave='' state='' dry='' max=5 step='' spawn='' all='' workspace=${HERDR_WORKSPACE_ID:-}
+parent='' wave='' state='' dry='' max=5 step='' spawn='' all='' auto='' workspace=${HERDR_WORKSPACE_ID:-}
 while [ $# -gt 0 ]; do
   case "$1" in
     # --parent is the old spelling of --task, kept so every recipe that names it keeps working
     --task|--parent) [ $# -ge 2 ] || die "$1 needs a value"; parent=$2; shift 2 ;;
     --all) all=1; shift ;;
+    --auto) auto=1; shift ;;
+    --autonom) auto=autonom; shift ;;
     --wave) [ $# -ge 2 ] || die "--wave needs a value"; wave=$2; shift 2 ;;
     --step) [ $# -ge 2 ] || die "--step needs a value"; step=$2; shift 2 ;;
     --max) [ $# -ge 2 ] || die "--max needs a value"; max=$2; shift 2 ;;
@@ -105,8 +115,8 @@ while [ $# -gt 0 ]; do
 done
 case "$max" in ''|*[!0-9]*) die "--max takes a number, not '$max'" ;; esac
 case "$step" in
-  ''|triage|grill|plan-check|decompose) ;;
-  *) die "--step takes triage, grill, plan-check or decompose, not '$step'" ;;
+  ''|triage|solution-open|solution-min|grill|plan-check|decompose) ;;
+  *) die "--step takes triage, solution-open, solution-min, grill, plan-check or decompose, not '$step'" ;;
 esac
 [ -z "$step" ] || [ -n "$parent" ] || die "--step needs the --task it is a step of"
 [ -z "$parent" ] || [ -z "$all" ] || die "--task names one task and --all takes every ready one; pass one of them"
@@ -187,12 +197,13 @@ dispatchable_blocks_of() { # <T-id>
   done
 }
 
-# The work list is `<id>\t<cwd>\t<model>\t<claim id>\t<role>\t<herdr name>\t<prompt>`, one unit per line; the
-# claim id is the task the dispatch claims before it starts the session, and `-` for a step, which claims
-# nothing. A literal `-`, not an empty field: `read` with IFS=tab folds two tabs into one, and the prompt would
-# land in the wrong field.
-unit() { # <id> <cwd> <model> <claim id> <role> <herdr name> <prompt>
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@"
+# The work list is `<id>\t<cwd>\t<model>\t<claim id>\t<role>\t<herdr name>\t<effort>\t<prompt>`, one unit per
+# line; the claim id is the task the dispatch claims before it starts the session, and `-` for a step, which
+# claims nothing; the effort is the `--effort` of the claude command, and `-` leaves it to the session. A
+# literal `-`, not an empty field: `read` with IFS=tab folds two tabs into one, and the prompt would land in
+# the wrong field.
+unit() { # <id> <cwd> <model> <claim id> <role> <herdr name> <effort> <prompt>
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$@"
 }
 
 # one unit of work out of one task file: the archetype skill is the prompt, with the claim command in front of
@@ -218,7 +229,7 @@ unit_line() { # <task file> <id> <repo key> [<agent> <model>]
       sh "$bin/agent-brief.sh" "$ul_agent" --key "$3" --state "$state" > "$ul_brief" </dev/null ||
       { rm -f "$ul_brief"; ul_read=''; echo "session-monitor: agent-brief.sh wrote no brief for $2" >&2; }
   fi
-  unit "$2" "$root/$3/$2" "$ul_model" "$2" "$ul_agent" "$(agent_name "$ul_agent" "$2")" \
+  unit "$2" "$root/$3/$2" "$ul_model" "$2" "$ul_agent" "$(agent_name "$ul_agent" "$2")" - \
     "$(claim_prompt "$2")$ul_read$ul_block/claude-factory:$ul_skill $1"
 }
 
@@ -231,7 +242,10 @@ step_unit() { # <T-id> <step>
   su_key=$(field "$su_task" repo)
   [ -n "$su_key" ] || die "task $1 has no 'repo:' field"
   su_cwd="$root/$su_key/$1"
-  su_model=opus
+  su_model=opus su_effort=-
+  # the auto lane's grill and decompose take every recommendation themselves (skills/_shared/auto-decision.md)
+  su_auto=''
+  case "$auto" in '') ;; autonom) su_auto=' --autonom' ;; *) su_auto=' --auto' ;; esac
   # plan-check and decompose read the plan the grill wrote, in the state clone, and run there
   case "$2" in
     plan-check|decompose)
@@ -250,11 +264,15 @@ step_unit() { # <T-id> <step>
       su_model=$(sh "$bin/model-for.sh" triage "$(field "$su_task" tier)" '' 0 \
         "$(field "$su_task" complexity)" 2>/dev/null || echo sonnet)
       su_prompt="Triage $1. Read $(dirname -- "$bin")/skills/_shared/investigate.md and $su_task, gather the recon it asks for, file the investigation report at $state/repos/$su_key/research/$1-investigation.md, in the state clone and never in this product clone, write ## Context into the task; for a feature, bugfix or refactor also write ## Related issues as its own section after ## Context (the issue-finder lines, or none), never inside ## Investigation, since solve-next.sh reads triage as done by that heading; set tier: and archetype:, and report with $bin/state-report.sh --task $1 --no-status." ;;
-    grill) su_prompt="/claude-factory:grill $su_task" ;;
-    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_plan" ;;
-    decompose) su_prompt="/claude-factory:decompose $su_plan" ;;
+    # why: step 4a of factory auto wants two solutions from two models and two points of view, so the human
+    # why: picks between real alternatives: opus with the view left open, fable held to the fewest changes
+    solution-open) su_model=claude-opus-5-5 su_effort=medium su_prompt="/claude-factory:solution $su_task --view open" ;;
+    solution-min) su_model=claude-fable-5-1 su_effort=medium su_prompt="/claude-factory:solution $su_task --view min" ;;
+    grill) su_prompt="/claude-factory:grill $su_task$su_auto" ;;
+    plan-check) su_prompt="/claude-factory:architect-review plan-check $su_plan$su_auto" ;;
+    decompose) su_prompt="/claude-factory:decompose $su_plan$su_auto" ;;
   esac
-  unit "$1-$2" "$su_cwd" "$su_model" - "$2" "$(agent_name "$2" "$1")" "$su_prompt"
+  unit "$1-$2" "$su_cwd" "$su_model" - "$2" "$(agent_name "$2" "$1")" "$su_effort" "$su_prompt"
 }
 
 # a printed line carries the prompt inside double quotes, so it keeps its quotes, dollars and backticks
@@ -419,7 +437,7 @@ prompted() { # <herdr name> <prompt>
 
 # --- dispatch ------------------------------------------------------------------------------------------------
 rc=0 n=0
-while IFS='	' read -r id cwd model claimid role name prompt; do
+while IFS='	' read -r id cwd model claimid role name effort prompt; do
   n=$((n + 1))
   if [ "$n" -gt "$max" ]; then
     printf '%s skipped %s\n' "$id" "$cwd"
@@ -430,7 +448,12 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   if [ "$mode" = herdr ] && [ -z "$dry" ]; then
     t=${id%%-[a-z]*}
     if is_block_id "$t"; then t=${t%-*}; fi
-    closed=$(sh "$bin/herdr-tabs.sh" close "$id" "$t-triage" "$t-grill" "$t-plan-check" "$t-decompose" --state "$state")
+    # why: the two solution steps run side by side, so the dispatch of one must not close the other's tab
+    case "$id" in
+      *-solution-open|*-solution-min) set -- "$id" "$t-triage" "$t-grill" "$t-plan-check" "$t-decompose" ;;
+      *) set -- "$id" "$t-triage" "$t-solution-open" "$t-solution-min" "$t-grill" "$t-plan-check" "$t-decompose" ;;
+    esac
+    closed=$(sh "$bin/herdr-tabs.sh" close "$@" --state "$state")
     kept=$(printf '%s\n' "$closed" | awk -v u="$id" '$1 == u && $2 == "kept"')
     if [ -n "$kept" ]; then
       printf '%s skipped %s\n' "$id" "$cwd"
@@ -458,11 +481,13 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   # changes nothing, so it claims nothing
   [ -n "$dry" ] || [ "$claimid" = - ] || claim "$claimid"
   label=$(sh "$bin/herdr-tabs.sh" name "$id" --role "$role" --state "$state")
+  effort_arg=''
+  [ "$effort" = - ] || effort_arg=" --effort $effort"
   if [ "$mode" = manual ] || [ -n "$dry" ]; then
     printf '%s printed %s\n' "$id" "$cwd"
     [ -z "$dry" ] || [ -z "$mkwt" ] || printf '  sh %s\n' "$mkwt"
-    printf '  cd "%s" && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s --name "%s"%s "%s"\n' \
-      "$(dq "$cwd")" "$role" "$id" "$model" "$(dq "$label")" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
+    printf '  cd "%s" && FACTORY_ROLE=%s FACTORY_UNIT=%s CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 claude --model %s%s --name "%s"%s "%s"\n' \
+      "$(dq "$cwd")" "$role" "$id" "$model" "$effort_arg" "$(dq "$label")" "${FACTORY_CLAUDE_ARGS:+ $FACTORY_CLAUDE_ARGS}" "$(dq "$prompt")"
     continue
   fi
   # the tab belongs to the monitor's own workspace, not to whatever another client has focused
@@ -479,7 +504,8 @@ while IFS='	' read -r id cwd model claimid role name prompt; do
   if [ -z "$tab" ] || ! sh "$bin/herdr-tabs.sh" record "$id" "$tab" "$pane" --name "$name" --state "$state"; then
     echo "session-monitor: no tab record for $id, so its tab is not closed by the scripts" >&2
   fi
-  if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" --name "$label" ${FACTORY_CLAUDE_ARGS:-} 2>&1 >/dev/null); then
+  # shellcheck disable=SC2086
+  if ! err=$(herdr agent start "$name" --kind claude --pane "$pane" --timeout 120000 -- --model "$model" $effort_arg --name "$label" ${FACTORY_CLAUDE_ARGS:-} 2>&1 >/dev/null); then
     case "$err" in
       *agent_not_ready*)
         # a dialog at startup (trust, login) answers agent_not_ready at once and the name is already usable, so

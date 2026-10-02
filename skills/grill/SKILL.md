@@ -81,7 +81,9 @@ row again.
 1. Run the interview loop, keeping the gap ledger of
    `references/ledger.md`, which also holds the musts the loop has to ask about, and close every row, dry run
    included. Every answered round completes with the grill file `<slug>-grill.md` written.
-2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
+2. Hold the UI round of `references/ui-round.md` when the change reaches a surface a person sees: the human
+   chooses a mockup with variants to pick from, or leaves the look to the agent. Then the design round of
+   `references/design-round.md`, and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
 4. Write the proposals and the plan (its frontmatter carries `task:`), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
@@ -90,3 +92,44 @@ row again.
 **Done when** `plan-ready.md` exists in the state repo, `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` passes over it, plan-check left a
 verdict file matching its hash, and the human has the summary and the pointer to decompose. With a gap still
 open, or a design the human has not approved as written, write no `plan-ready.md` and say so.
+
+## Auto mode
+
+`/claude-factory:grill <task file> --auto`, the grill step of `factory auto`, or `--autonom`, the grill step
+of `factory autonom` (`${CLAUDE_PLUGIN_ROOT}/skills/factory/references/auto.md`). The interview loop, the
+ledger, the grill file, the design round, the proposals round and the plan are as above, with these deltas
+and no other:
+
+- **The spec** is the task's `## Solution` and the solution file or files it names in the state clone, read
+  first; a mixed pick names both, and the human's words say what is taken from each. Their `## Open
+  questions` seed the ledger, their `## Changes` and `## Tests` the design and the proposals. The human's
+  words in `## Solution` are settled decisions, never asked again.
+- **Nobody is asked by default.** Every round is still written, numbered questions with options and the
+  recommendation, into the grill file; then the recommendation is the answer of every row, under
+  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md`. A question that file sends to the human goes
+  through `_shared/ask.md` as a round of its own, and the questions that do not hang on it go on. The design
+  round and the proposals round are approved by the same rule: the sketch and the cut as you would recommend
+  them, re-sketched when the dry run finds a gap.
+- **Tests in every proposal.** The `steps:` of every proposal that is not `research` name the tests that
+  cover its functionality, one sub-bullet per test file, `test <path>: <what it proves>`, and the end-to-end
+  test it needs, or a sub-bullet `no e2e`. A behaviour of the design with no test line is an open gap.
+  `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh <plan> --auto` checks both and is the lint of step 4 here;
+  `solve-next.sh` runs it again before plan-check and sends a plan that fails it back to this grill.
+  `## Acceptance` stays one runnable command; the crap threshold is `block-verify.sh`'s gate and needs no
+  acceptance line.
+- **Plan-check with the same flag.** The plan-check of step 4 (`references/output.md`) runs as
+  `architect-review plan-check <plan> --auto` or `--autonom`, the flag this grill got: its findings are edits
+  and reruns under its `## Auto mode`, never a question to the human, and `overridden-by-human` is never
+  written; a `misaligned` no edit clears is a stop the lane reports.
+- **Every decision is recorded.** `## Decisions` holds each one, one line, `[locked]` where it passes the
+  three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`; its first
+  line is the pick of step 4a, the solution chosen and by whom, `(human)` or `(analysed)`. The task MR carries
+  every line of the section (`mr-open.sh --decisions`, the `[locked]` tag dropped).
+- **The UI round is still asked** under `--auto`. A change that reaches a surface a person sees puts the
+  question of `references/ui-round.md` to the human, mockup or agent, and the variant pick after a mockup;
+  the fifth case of `_shared/auto-decision.md`.
+- **`--autonom` asks nothing** but the third and fourth cases of that file (a destructive or outward-facing
+  choice; a block whose every option fails): a question with no recommendation, the UI round and its variant
+  included, is analysed and decided as its `## Autonomous` section says, the table in the grill file and the
+  decision line ending with `(analysed)`.
+- **Finishing** is the summary of `references/output.md` as a notice, no question in it.

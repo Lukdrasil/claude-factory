@@ -4,19 +4,23 @@
 progress file and opens the MR, and it refuses what the contract refuses.
 
 The rules it checks: the sections **What changed**, **Why**, **Issues**, **How to verify** and
-**Follow-ups**, in that order, one with nothing to say left out, the whole thing **under 120 words**, short
-sentences, written for whoever reviews the MR and not for the factory.
+**Follow-ups**, in that order, one with nothing to say left out, everything but **How to verify** **under 120
+words**, short sentences, written for whoever reviews the MR and not for the factory. **How to verify** is
+five evidence runs and a count of the rest, the build, the test and the e2e runs in front and the others
+after them in their order, since the acceptance, the format and the arch-build runs stand first in
+`## Evidence` and every fix round adds a line of its own.
 
 **Why** is the reason for the change, never the title again: the first sentence of the task's `## Context`
 (a block's own, else its parent's; the `From the plan` line is skipped), else the `# Spec` sentence of the
 plan the task names, else the goal as the last resort. So write that first sentence as the reason, and it
 counts toward the 120 words.
 
-A block MR into the work branch (`sh <plugin-root>/bin/block-mr.sh <block-id>`) keeps **What changed**,
-**Why** and **How to verify** under the same 120 words, and adds what the solve session merges it on: **Risk** (low,
+A block MR into the work branch (`sh <plugin-root>/bin/block-mr.sh <block-id>`) keeps **What changed** and
+**Why** under the same 120 words, cuts **How to verify** the same way, and adds what the solve session merges it on: **Risk** (low,
 medium or high with the sentence and the five reasons of `.harness/<block>/arch.md`: blast radius,
 contracts, security, data, drift; `not rated` when the repo has no docs/architecture/), **Verified** (the
-report block-verify.sh left in `.harness/<block>/verify.txt`) and **Review** (the verdict line of
+report block-verify.sh left in `.harness/<block>/verify.txt`, which has to be green, of the worktree's files
+and of a committed tree, or block-mr.sh refuses the block) and **Review** (the verdict line of
 `.harness/<block>/review.md`, the code-reviewer's report the solve session saved there). The agents' own contracts
 bound those three. The task MR into the base branch gets a `## Blocks` section from mr-open.sh: one
 `- [<block goal>](<block MR>), risk <level>` line per block MR.

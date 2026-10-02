@@ -5,13 +5,15 @@
 #
 #   herd-watch.sh <T-NNN> [--once] [--interval <s>] [--no-mr] [--state <dir>]
 #
-# The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>` and
-# `<id> mr <old> -> <new>`, with a first sighting written without the arrow.
+# The lines are `<id> status <old> -> <new>`, `<id> phase <old> -> <new>`, `<id> agent <old> -> <new>`,
+# `<id> mr <old> -> <new>` and `<id> comments <old> -> <new>`, with a first sighting written without the arrow.
+# The comments line is the count mr-watch.sh keeps per MR: a review that leaves the MR `open`, a comment on a
+# task MR the human is reviewing, is news only through that count, so it is a column of its own.
 # The agent states are `working`, `blocked` and `unknown` as herdr reads them, `ready` for herdr's idle and done
 # alike (done only means the human has not looked at the tab yet), `closed` for a unit whose recorded tab
 # herdr-tabs.sh closed, and `gone` for a unit no live agent carries, which is how a session that ended on its
 # own reads. What has already been reported is kept in `<root>/<key>/.harness/<T-NNN>/herd-watch.state`, one
-# `<id> <status> <phase> <agent> <mr>` per line, so a pass with nothing new prints nothing.
+# `<id> <status> <phase> <agent> <mr> <comments>` per line, so a pass with nothing new prints nothing.
 #
 # The agent column comes from one `herdr agent list` per pass, through `herdr-tabs.sh agents`: a unit is the
 # agent that reports its recorded session id, or the one in its recorded pane, never an `agent get` per unit. A
@@ -30,7 +32,7 @@
 # of that pass is how the monitor learns of the close.
 #
 # The units are the parent, every block of it, and the parent-level step sessions
-# `<T-id>-<triage|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step
+# `<T-id>-<triage|solution-open|solution-min|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step
 # session is tracked from the first pass that sees it live; a block with no live agent is still tracked for its
 # status, because that is what the session writes through state-report.sh.
 #
@@ -105,8 +107,16 @@ mr_state() { # <unit id>
   mw=$(awk -v u="$1" '$1 == u { print $2; exit }' "$mrseen")
   printf '%s' "${mw:-none}"
 }
+mr_comments() { # <unit id>: the comment count mr-watch.sh last recorded, 0 with no MR, - with no count yet
+  [ -f "$mrseen" ] || { printf '0'; return 0; }
+  mc=$(awk -v u="$1" '$1 == u { print ($3 == "" ? "-" : $3); exit }' "$mrseen")
+  # why: a record with no count is an MR whose comments mr-watch.sh could not read yet (its inline call
+  # why: failed on the first pass): not 0, or the first count read would print every comment as new
+  case "$mc" in '') mc=0 ;; -) ;; *[!0-9]*) mc=0 ;; esac
+  printf '%s' "$mc"
+}
 
-prior() { # <unit id> <column: 2 status | 3 phase | 4 agent | 5 mr>
+prior() { # <unit id> <column: 2 status | 3 phase | 4 agent | 5 mr | 6 comments>
   [ -f "$seen" ] || return 0
   awk -v u="$1" -v c="$2" '$1 == u { print $c; exit }' "$seen"
 }
@@ -127,25 +137,29 @@ pass() {
     [ "$u" = "$id" ] || is_block_of "$id" "$u" || continue
     s=$(field "$f" status); [ -n "$s" ] || s=none
     p=$(field "$f" phase); [ -n "$p" ] && [ "$p" != null ] || p=none
-    printf '%s %s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" "$(mr_state "$u")" >> "$now"
+    printf '%s %s %s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" "$(mr_state "$u")" "$(mr_comments "$u")" >> "$now"
   done
-  for step in triage grill plan-check decompose; do
+  for step in triage solution-open solution-min grill plan-check decompose; do
     u="$id-$step"
     a=$(agent_state "$u")
     # a step session nobody dispatched is not news; one that was live and is gone is
     [ "$a" != gone ] || [ -n "$(prior "$u" 4)" ] || continue
-    printf '%s none none %s none\n' "$u" "$a" >> "$now"
+    printf '%s none none %s none 0\n' "$u" "$a" >> "$now"
   done
   sort_ids < "$now" > "$now.sorted"
   mv -f "$now.sorted" "$now"
 
-  while read -r u s p a m; do
-    for col in 2:status 3:phase 4:agent 5:mr; do
+  while read -r u s p a m c; do
+    for col in 2:status 3:phase 4:agent 5:mr 6:comments; do
       n=${col%%:*}; what=${col#*:}
-      case "$n" in 2) new=$s ;; 3) new=$p ;; 4) new=$a ;; 5) new=${m:-none} ;; esac
+      case "$n" in 2) new=$s ;; 3) new=$p ;; 4) new=$a ;; 5) new=${m:-none} ;; 6) new=${c:-0} ;; esac
       old=$(prior "$u" "$n")
       [ "$new" != "$old" ] || continue
       [ "$what" = agent ] || [ "$new" != none ] || continue
+      # a count of 0 is no comment yet, never news; a record from before the comments column (five columns)
+      # has no old count, so the first count is the baseline, set in silence rather than reported as new
+      # has no old count, and so has one whose count was not read yet (-): the first count is the baseline
+      [ "$what" != comments ] || { [ "$new" != 0 ] && [ "$new" != - ] && [ -n "$old" ] && [ "$old" != - ]; } || continue
       if [ -z "$old" ]; then
         printf '%s %s %s\n' "$u" "$what" "$new"
       else

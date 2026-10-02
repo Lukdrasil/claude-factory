@@ -46,6 +46,7 @@
 #     tests: <n> run, <n> passed, <n> failed
 #     crap:  <value> | over <threshold>: <method> <value>, ... | not bound (repos/<key>/toolset.md)
 #     verdict: green | red
+#     head: <the commit the report is of>
 #
 # The same four lines go to `<root>/<key>/.harness/<block-id>/verify.txt` when the worktree sits under
 # $WORK_DIR, which is where block-mr.sh reads the verification that ran.
@@ -54,7 +55,12 @@
 # over the threshold, so zero tests on a diff that carries code is red and so is one method over the threshold
 # (T-163). The threshold is `crap-threshold:` in the toolset
 # frontmatter, 8 when it declares none; a toolset with no `crap` binding keeps the line as a note and cannot
-# redden anything. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
+# redden anything. The `coverage` binding, when there is one, runs first as a script of its own under its own
+# timeout; then the `crap` binding runs as a script under `timeout 10m` with the block's changed source files as
+# its arguments and `<scope>` replaced by "$@" (the stack's source extensions when `stack:` names one, else
+# every changed file that is no test, document or config file). No source file changed means no crap run and
+# the line `no source file changed`, green. A run that prints nothing, or exits non-zero with no method row
+# over the threshold, is red with its exit and the last line of its stderr. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
 # `#`) and whose last field is a number, so a summary line is not read as a method. Exit 0 on green, 1 on red
 # with the first failing command, at most the last 30 lines of that run's output and every over-threshold
 # method on stderr, never the whole log.
@@ -94,18 +100,9 @@ branch_of() { # <task file>
     | sed 's/^["'\'']//; s/["'\'']$//'
 }
 
-# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks
-binding_of() { # <toolset file> <command name>
-  [ -f "$1" ] || return 0
-  awk -F '|' -v want="$2" '
-    NF >= 3 {
-      name = $2; bind = $3
-      gsub(/`/, "", name); gsub(/`/, "", bind)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", name); gsub(/^[[:space:]]+|[[:space:]]+$/, "", bind)
-      sub(/[[:space:]].*$/, "", name)
-      if (name == want && bind != "" && bind != "binding") { print bind; exit }
-    }' "$1"
-}
+# see: toolsets/dotnet.md, the command table whose binding cell is wrapped in backticks; the reader is
+# see: toolset_binding of lib-tasks.sh, shared with solve-next.sh --auto
+binding_of() { toolset_binding "$@"; }
 
 if [ -z "$worktree" ]; then
   [ -n "${WORK_DIR:-}" ] || die "no --worktree and no \$WORK_DIR to resolve the default worktree of '$id'"
@@ -153,8 +150,15 @@ is_test_path() { # <repo-relative path>
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-git -C "$worktree" diff --name-only "$base" > "$tmp/changed" 2>"$tmp/giterr" \
+# -c core.quotePath=false: a non-ASCII path is printed as it is, not as "Slu\305\276ba.cs", which no file test matches
+# -z: a path with a quote, a backslash, a tab or a non-ASCII character is printed as it is, not as "a\"b.cs",
+# which no file test matches; the NUL between paths becomes the newline the readers below take
+# --no-renames: a renamed file is its old path gone and its new path changed, which is what the scope reads;
+# and rename detection over a large diff prints a warning on stderr with exit 0, which is no failure.
+# why: git's own exit is what fails the step, read before the pipe into tr, whose exit a pipeline would report
+git -C "$worktree" diff -z --no-renames --name-only "$base" > "$tmp/changed.z" 2>"$tmp/giterr" \
   || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
+tr '\0' '\n' < "$tmp/changed.z" > "$tmp/changed"
 
 # see: the documentation-block exception of this script's header. `grep -qv` answers "some line is not a .md
 # see: path", so an empty diff leaves docs_only at 0 and stays red, and one code path in the diff clears it.
@@ -219,27 +223,102 @@ done < "$tmp/changed"
 [ "$whole_suite" -eq 0 ] || run_one "$test_binding"
 
 crap_binding=$(binding_of "$toolset" crap)
-crap_over=''
+crap_over='' crap_unparsed=''
 threshold=8
 if [ -n "$crap_binding" ]; then
   t=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && /^---$/ { exit }
     /^crap-threshold:[[:space:]]*/ { sub(/^crap-threshold:[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit }' \
     "$toolset")
   case "$t" in ''|*[!0-9.]*) ;; *) threshold=$t ;; esac
-  set +e
-  ( cd "$worktree" && eval "timeout 10m $crap_binding" ) >"$tmp/crap" 2>/dev/null
-  set -e
-  crap=$(head -n1 "$tmp/crap")
-  [ -n "$crap" ] || crap='(no value)'
+  # why: `timeout 10m DOTNET_ROLL_FORWARD=Major dotnet-crap ...` never ran: timeout takes a command, not an
+  # why: assignment, exited 127 into /dev/null and the empty run read green. The binding runs as a script of
+  # why: its own under timeout, so an assignment, a pipe or a && in the cell all run as the toolset wrote them.
+  # why: `<scope>` is the block's own changed source files (crap-loop.md: the task's diff, never the repo), and
+  # why: `coverage` runs first when the toolset binds it, since crap reads what coverage wrote
+  # the scope is the block's changed source files: the stack's own source extensions when the toolset names
+  # a stack, else every changed file that is neither a test, a document nor a build or config file. The
+  # paths are handed to the script as its arguments and `<scope>` becomes "$@", so a path with a space, a
+  # quote or a dollar is one argument and never shell
+  : > "$tmp/scope"
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$worktree/$f" ] || continue
+    is_test_path "$f" && continue
+    case "$stack" in
+      dotnet) case "$f" in *.cs) ;; *) continue ;; esac ;;
+      node) case "$f" in *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs) ;; *) continue ;; esac ;;
+      python) case "$f" in *.py) ;; *) continue ;; esac ;;
+      *) case "$f" in *.md|*.json|*.yml|*.yaml|*.toml|*.xml|*.txt|*.lock|*.csproj|*.sln|*.props|*.targets|*.config|*.editorconfig|*.gitignore|*.gitattributes) continue ;; esac ;;
+    esac
+    printf '%s\n' "$f" >> "$tmp/scope"
+  done < "$tmp/changed"
+  coverage_binding=$(binding_of "$toolset" coverage)
+  crap_status=0
+  if [ ! -s "$tmp/scope" ]; then
+    # why: a block that changed no source file has no method to score, and a tool given no path scores the
+    # why: whole repo, which is out of scope (ADR-0014) and would redden a test-only block on old code
+    crap='no source file changed'
+    : > "$tmp/crap"
+  else
+    # why: `timeout 10m DOTNET_ROLL_FORWARD=Major dotnet-crap ...` never ran: timeout takes a command, not an
+    # why: assignment, exited 127 into /dev/null and the empty run read green. The binding runs as a script of
+    # why: its own, so an assignment, a pipe or a && in the cell all run as the toolset wrote them. Coverage
+    # why: runs first, on its own and under its own timeout (the dotnet row carries 15m), since crap reads
+    # why: what coverage wrote; the 10m of the crap run is the crap run alone
+    if [ -n "$coverage_binding" ]; then
+      printf '%s\n' "$coverage_binding" > "$tmp/coverage.sh"
+      set +e
+      ( cd "$worktree" && sh "$tmp/coverage.sh" ) >"$tmp/coverage.out" 2>"$tmp/crap.err"
+      cov_status=$?
+      set -e
+      [ "$cov_status" -eq 0 ] || crap_status=97
+    fi
+    if [ "$crap_status" -eq 0 ]; then
+      # a row written as "<scope>" (the older dotnet template) sheds its quotes first, or "$@" would be one word
+      printf '%s\n' "$(printf '%s' "$crap_binding" | sed 's|"<scope>"|<scope>|g; s|'"'"'<scope>'"'"'|<scope>|g; s|<scope>|"$@"|g')" > "$tmp/crap.sh"
+      set +e
+      ( cd "$worktree" && xargs_scope=$(cat "$tmp/scope") && set -f && IFS='
+' && set -- $xargs_scope && unset IFS && timeout 10m sh "$tmp/crap.sh" "$@" ) >"$tmp/crap" 2>"$tmp/crap.err"
+      crap_status=$?
+      set -e
+    else
+      : > "$tmp/crap"
+    fi
+    crap=$(head -n1 "$tmp/crap")
+  fi
+  # why: a run that printed nothing, or that failed, proved nothing: it is red with its reason, never a green
+  # why: gate; a tool that exits non-zero on a method over its threshold is red by that exit too, with the
+  # why: rows it printed when they parse
+  if [ -s "$tmp/scope" ] && { [ -z "$crap" ] || [ "$crap_status" -ne 0 ]; }; then
+    case "$crap_status" in
+      97) crap="coverage failed: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+      0) crap="no value: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+      *) crap="exit $crap_status: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+    esac
+    crap_over="(the crap run) $crap"
+  fi
   # see: a method row is `<Type>.<Member> ... <value>`, pipes and all, so a summary line that happens to end
   # see: in a number ("Analyzed 123 files") is not one: the name has to carry a member separator
-  crap_over=$(awk -v t="$threshold" '
+  rows_over=$(awk -v t="$threshold" '
     { gsub(/\|/, " ") }
     NF < 2 { next }
     $NF !~ /^[0-9]+([.][0-9]+)?$/ { next }
     $1 !~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { next }
     $NF + 0 > t + 0 { print $1, $NF }' "$tmp/crap")
-  if [ -n "$crap_over" ]; then
+  if [ -n "$rows_over" ]; then
+    # a non-zero exit with rows over the threshold is those rows, the exit being the tool's own threshold
+    crap_over=$rows_over
+    crap_status=0
+  fi
+  # a run that printed no method row at all scored nothing the parser reads, so nothing was held to the
+  # threshold: red, with the output's first line, as a tool whose format changed would otherwise leak every
+  # method through the gate. why: a green with no row is a crap promise on paper
+  crap_unparsed=''
+  if [ -s "$tmp/scope" ] && [ "$crap_status" -eq 0 ] && [ -n "$crap" ] && [ -z "$rows_over" ] \
+    && ! awk '{ gsub(/\|/, " ") } NF >= 2 && $NF ~ /^[0-9]+([.][0-9]+)?$/ && $1 ~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { found = 1 } END { exit !found }' "$tmp/crap"; then
+    crap="no method row parsed: $crap"
+    crap_unparsed=1
+  fi
+  if [ -n "$crap_over" ] && [ "$crap_status" -eq 0 ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
     joined='' over=0
     while IFS= read -r row; do
       [ -n "$row" ] || continue
@@ -256,7 +335,7 @@ else
   crap="not bound (repos/$key/toolset.md)"
 fi
 
-if { [ "$run" -gt 0 ] || [ "$docs_only" -eq 1 ]; } && [ "$failed" -eq 0 ] && [ -z "$crap_over" ]; then
+if { [ "$run" -gt 0 ] || [ "$docs_only" -eq 1 ]; } && [ "$failed" -eq 0 ] && [ -z "$crap_over" ] && [ -z "$crap_unparsed" ]; then
   verdict=green
 else
   verdict=red
@@ -267,17 +346,29 @@ fi
 note=''
 if [ "$docs_only" -eq 1 ] && [ "$run" -eq 0 ]; then note=' (markdown-only diff)'; fi
 
+# the head the report is of: block-mr.sh refuses a report of another commit, so a block pushed after its
+# verify is verified again
+head=$(git -C "$worktree" rev-parse HEAD 2>/dev/null || :)
+# why: the diff above read the working tree, so a run over an edit not committed proved files HEAD does not
+# why: hold; the line says so and block-mr.sh refuses it, as the push would carry HEAD without the edit.
+# why: untracked files are left out: the coverage run leaves its raw files, and the diff never read them
+dirty=''
+[ -z "$(git -C "$worktree" status --porcelain --untracked-files=no 2>/dev/null)" ] || dirty=1
 {
   printf 'block: %s\n' "$id"
   printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
   printf 'crap:  %s\n' "$crap"
   printf 'verdict: %s\n' "$verdict"
+  [ -z "$head" ] || printf 'head: %s\n' "$head"
+  [ -z "$dirty" ] || printf 'dirty: yes, the worktree holds changes not committed at %s\n' "$head"
 } > "$tmp/report"
 cat "$tmp/report"
 # see: 3.4 of the agent-org plan, block-mr.sh puts the last report into the block MR as the verification that
 # see: ran, from `<root>/<key>/.harness/<block>/verify.txt` beside review.md and arch.md; a worktree outside
-# see: $WORK_DIR has no such folder and keeps the report on stdout only
-if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}"; then
+# see: $WORK_DIR has no such folder and keeps the report on stdout only. why: the layout's task has to be
+# why: this block: block-merge.sh --verify runs this script over the parent's session worktree, and its report,
+# why: of another head and a merge not committed, overwrote the block's own and block-mr.sh refused the block
+if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}" && [ "$LO_TASK" = "$id" ]; then
   mkdir -p "${LO_STAMP%/*}/$id" && cp "$tmp/report" "${LO_STAMP%/*}/$id/verify.txt" \
     || printf 'block-verify: the report could not be written to %s\n' "${LO_STAMP%/*}/$id/verify.txt" >&2
 fi

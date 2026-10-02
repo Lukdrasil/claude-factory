@@ -5,7 +5,7 @@
 # worktree with the task's `branch:` as source and its base as target: its `base_branch:`, else the repo's
 # `default_branch:`.
 #
-#   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
+#   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--decisions] [--state <dir>] [--worktree <dir>]
 #
 # The `Issues` file is what `issue-finder` answered: its `closes #12` / `refs #30` lines become the `Issues`
 # line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
@@ -30,10 +30,11 @@ set -eu
 
 die() { printf 'mr-open: %s\n' "$1" >&2; exit 1; }
 
-id='' dry='' issues='' state='' worktree=''
+id='' dry='' issues='' decisions='' state='' worktree=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry=1; shift ;;
+    --decisions) decisions=1; shift ;;
     --issues) [ $# -ge 2 ] || die "--issues needs a value"; issues=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     --worktree) [ $# -ge 2 ] || die "--worktree needs a value"; worktree=$2; shift 2 ;;
@@ -41,7 +42,7 @@ while [ $# -gt 0 ]; do
     *) [ -z "$id" ] || die "one task id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: mr-open.sh <T-NNN> [--dry-run] [--issues <file>]"
+[ -n "$id" ] || die "usage: mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--decisions]"
 
 if [ -z "$state" ]; then
   if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR/state/repos" ]; then
@@ -85,7 +86,17 @@ oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
 [ -n "$changed" ] || die "$progress has no '## Done' bullets for the What changed section"
-verify=$(bullets '## Evidence' | oneline)
+# the runs the reviewer reads first: the build, the test run and the e2e run go in front, in the order they
+# stand, then the rest in its order, the first five kept and the others counted. why: step 12 records the
+# acceptance, format and arch-build before the build and the tests, and a cut of the first five dropped the
+# runs the lane promises
+verify=$(bullets '## Evidence' | awk '
+  { l[NR] = $0; k = $0; sub(/^`/, "", k); sub(/`.*$/, "", k)
+    f[NR] = (tolower(k) ~ /(^|[^a-z-])(build|test|tests|e2e)([^a-z-]|$)/) }
+  END { n = 0
+    for (i = 1; i <= NR; i++) if (f[i]) { n++; if (n <= 5) print l[i]; else more++ }
+    for (i = 1; i <= NR; i++) if (!f[i]) { n++; if (n <= 5) print l[i]; else more++ }
+    if (more) printf "and %d more run%s\n", more, (more > 1 ? "s" : "") }' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 follow=$(bullets '## Follow-ups')
 
@@ -140,9 +151,12 @@ desc="$desc_dir/mr.md"
   fi
 } > "$desc"
 
-words=$(wc -w < "$desc" | tr -d '[:space:]')
+# why: the 120 words bound what a reviewer reads first, What changed and Why; the evidence lines grow with
+# why: every build, test and e2e run and every fix round (the auto lane), so How to verify stands outside
+# why: the count and is cut to its first five runs with the rest counted
+words=$(grep -v '^\*\*How to verify\*\*' "$desc" | wc -w | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
+  || die "the description is $words words outside How to verify and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
 
 # the block MRs of the task, each with the risk its architecture audit rated; the audits sit beside this task's
 # own stamp folder, in <root>/<key>/.harness/<block>/
@@ -162,6 +176,34 @@ for b in $blocks; do
 "
 done
 if [ -n "$listed" ]; then printf '\n## Blocks\n%s' "$listed" >> "$desc"; fi
+
+if [ -n "$decisions" ]; then
+  dplan=''
+  for f in "$state/repos/$key/plans/"*-plan-ready.md; do
+    [ -f "$f" ] && [ "$(task_fields "$f" task)" = "$id" ] || continue
+    dplan=$f; break
+  done
+  if [ -z "$dplan" ]; then
+    dslug=$(plan_slug < "$task")
+    [ -z "$dslug" ] || dplan="$state/repos/$key/plans/$dslug-plan-ready.md"
+  fi
+  [ -n "$dplan" ] && [ -f "$dplan" ] || die "--decisions: $id names no plan-ready file under $state/repos/$key/plans/"
+  # see: the bullets() reader above, the same join of an indented continuation line onto its bullet; a `*`
+  # see: bullet is one too, as decompose.sh reads it
+  decided=$(awk '
+    function flush() { if (cur != "") print "- " cur; cur = "" }
+    /^## Decisions[[:space:]]*$/ { f = 1; next }
+    f && /^#/ { flush(); exit }
+    !f { next }
+    /^[-*][[:space:]]/ { flush(); sub(/^[-*][[:space:]]*/, ""); sub(/^\[locked\][[:space:]]*/, ""); cur = $0; next }
+    (/^[ ][ ]/ || /^\t/) && cur != "" { sub(/^[[:space:]]+/, ""); cur = cur " " $0; next }
+    { flush() }
+    END { flush() }
+  ' "$dplan")
+  # a plan that decided nothing says so, so a small task can still open its MR
+  [ -n "$decided" ] || decided='- none taken'
+  printf '\n## Decisions\n%s\n' "$decided" >> "$desc"
+fi
 
 base=''
 if [ -f "$state/repos.yml" ]; then

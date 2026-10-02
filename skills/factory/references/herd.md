@@ -60,7 +60,8 @@ nothing. The agent values are
 `working`, `blocked`, `ready` (herdr's idle or done), `unknown`, `closed` for a tab the scripts closed and `gone`
 for a session no longer live.
 
-1. On any line, rerun `solve-next.sh <T-id> --herd` and do what it prints.
+1. On any line, rerun `solve-next.sh <T-id>` with the lane's flag, `--herd`, `--auto` or `--autonom`, and do
+   what it prints.
 2. `<id> agent <state> -> blocked` is a session at an approval or question dialog. A step session's question
    (a grill round, a spec-critic edit, a decompose ask) is the human's to answer in that tab: tell them which
    tab, and answer nothing yourself. A block session at a permission dialog: read it with `herdr agent read
@@ -111,6 +112,7 @@ into the `mr` lines, so you see the forge without reading an MR:
 | `<id> mr <any> -> ci-failed` | the pipeline is red | a fix round as in `references/solve.md` |
 | `<id> mr <any> -> changes-requested` | a reviewer wants work | `mr-watch.sh <T-id> --comments <id>`, then the fix round |
 | `<id> mr <any> -> approved` | it waits on a human merge | say so, and keep watching |
+| `<id> comments <n> -> <m>` | the MR has new comments, a review that left it `open` among them | `mr-watch.sh <T-id> --comments <id>`, read the threads, then the fix round for what they ask |
 
 An MR that sits at `open` after the pipeline went green is the `need_rebase` case: look with
 `glab mr view <url>` or `gh pr view <url>`, and rebase it on its branch. The watcher ends by itself after the pass
