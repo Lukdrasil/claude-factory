@@ -96,20 +96,25 @@ pane and gives it back its name.
 A herd ends at `done` or `closed`, and at nothing else. On 2026-09-22 the monitors that ran stopped when the
 blocks reached `review` and missed both the merges and a `need_rebase` on !412.
 
-`herd-watch.sh` runs `mr-watch.sh <T-id> --once` on every pass, the task MR included, and turns its state file
+`herd-watch.sh` runs `mr-watch.sh <T-id> --once --finish` on every pass, the task MR included, and turns its state file
 into the `mr` lines, so you see the forge without reading an MR:
 
 | line | what it is | what you do |
 |---|---|---|
 | `<block> mr <any> -> merged` | the block MR is in | mr-watch has set the block `done`; rerun `solve-next.sh --herd` |
-| `<T-id> mr <any> -> merged` | the human merged the task MR | `references/done.md`, without an ask |
+| `<T-id> mr <any> -> merged` | the human merged the task MR | mr-watch has run `task-done.sh`; `<T-id> done` and the `<T-id> status review -> done` line follow |
+| `<T-id> done`, `<T-id> skipped: ...` | the task is finished and cleaned up, but for what each skipped line names | report them to the user |
+| `<T-id> status <any> -> done` | the parent reads done | the watcher has ended |
+| `<T-id> push-failed` | the done commit did not reach the state root | `state-push.sh` |
+| `<T-id> finish-failed <reason>` | task-done.sh refused | show the reason; the next pass tries again |
+| `<T-id> closed-unmerged` | the human closed the task MR without a merge | the watcher has ended; ask the human what becomes of the task |
 | `<id> mr <any> -> ci-failed` | the pipeline is red | a fix round as in `references/solve.md` |
 | `<id> mr <any> -> changes-requested` | a reviewer wants work | `mr-watch.sh <T-id> --comments <id>`, then the fix round |
 | `<id> mr <any> -> approved` | it waits on a human merge | say so, and keep watching |
 
 An MR that sits at `open` after the pipeline went green is the `need_rebase` case: look with
-`glab mr view <url>` or `gh pr view <url>`, and rebase it on its branch. Only when the parent reads `done` or
-`closed` do you disarm the watcher and report to the user.
+`glab mr view <url>` or `gh pr view <url>`, and rebase it on its branch. The watcher ends by itself after the pass
+that reads the parent `done` or `closed`; then report to the user.
 
 ## Evidence stays yours
 

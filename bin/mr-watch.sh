@@ -2,12 +2,12 @@
 # The watcher of the stacked block MRs (T-164, ADR-0057): it reads every block MR of one parent through gh or
 # glab and prints one line per state change since its last run, so the coordinator learns what the developer
 # did on the forge without reading any MR itself. The parent's own task MR is watched the same way (F31), so its
-# merge by the human is a `<T-id> merged` line; the parent is set done by task-done.sh, not here.
+# merge by the human is a `<T-id> merged` line. Without `--finish` the parent is left in `review` for task-done.sh.
 #
-#   mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]
+#   mr-watch.sh <T-NNN> [--once] [--finish] [--task-mr-only] [--interval <s>] [--comments <block-id>] [--state <dir>]
 #
 # The lines are `<block> merged`, `<block> changes-requested`, `<block> new-comments <n>`, `<block> ci-failed`
-# and `<block> approved`, and what has already been reported is kept in
+# `<block> approved` and `<block> closed-unmerged`, and what has already been reported is kept in
 # `<root>/<key>/.harness/<T-NNN>/mr-watch.state`, one `<block> <state> <comment count>` per line. Without
 # `--once` the pass repeats every five minutes, `--interval <s>` sets another period, and the coordinator arms
 # the loop through the Monitor tool. `--comments <block-id>` prints that MR's review threads and exits.
@@ -16,6 +16,19 @@
 # block's branch is retargeted at the session branch (and its `base:` follows in its progress file), and the
 # merged block is set `done` through state-report.sh. The forge is chosen by the MR's own host, the routing of
 # bin/forge.sh: github.com goes to gh, every other host to glab.
+#
+# `--finish` ends the task once the human merged its task MR, since only the human merges a task MR and that is
+# the word skills/factory/references/done.md asks for: on every pass that finds the task MR merged while the
+# parent is not done or closed, task-done.sh closes it (status, owner, worktrees, local branches, archive) and
+# state-push.sh carries the commit, then `<T-id> done` is printed, or `<T-id> finish-failed <reason>` and the next
+# pass tries again; `<T-id> push-failed` says the done commit did not reach the state root. A loop with
+# `--finish` ends after the pass that finds the parent done or closed, or its task MR closed without a merge, so
+# the Monitor that runs it ends with the task. `--task-mr-only` reads the task MR alone, not the block MRs: the
+# catch-up of review-sweep.sh.
+#
+# One pass of one parent at a time: a pass and its finish run under `<harness>/mr-watch.lock`, so the Monitor,
+# herd-watch.sh and review-sweep.sh of several sessions never interleave their state files or finish a task twice.
+# A forge call that does not answer within MR_WATCH_TIMEOUT seconds (default 20) reads as no answer.
 #
 # Exit 0 after a pass (or after the loop is interrupted). Exit 1 with the reason on stderr when no parent id is
 # given, when the id is not of the shape T-NNN, when it resolves to no task file, or when --comments names a
@@ -27,10 +40,12 @@ die() { printf 'mr-watch: %s\n' "$1" >&2; exit 1; }
 
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-id='' once='' interval=300 comments='' state=''
+id='' once='' finish='' taskonly='' interval=300 comments='' state=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --once) once=1; shift ;;
+    --finish) finish=1; shift ;;
+    --task-mr-only) taskonly=1; shift ;;
     --interval) [ $# -ge 2 ] || die "--interval needs a value"; interval=$2; shift 2 ;;
     --comments) [ $# -ge 2 ] || die "--comments needs a value"; comments=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
@@ -38,7 +53,7 @@ while [ $# -gt 0 ]; do
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: mr-watch.sh <T-NNN> [--once] [--interval <s>] [--comments <block-id>] [--state <dir>]"
+[ -n "$id" ] || die "usage: mr-watch.sh <T-NNN> [--once] [--finish] [--task-mr-only] [--interval <s>] [--comments <block-id>] [--state <dir>]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: solve-next.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to
@@ -87,6 +102,7 @@ done <<EOF
 $(task_files "$key")
 EOF
 blocks=$(printf '%s' "$blocks" | sort_ids)
+[ -z "$taskonly" ] || blocks=''
 
 forge_of() { # <mr url>: the tool that speaks to that host
   case "$(printf '%s' "$1" | sed -n 's#^[a-zA-Z+]*://\([^/]*\)/.*#\1#p')" in
@@ -95,10 +111,13 @@ forge_of() { # <mr url>: the tool that speaks to that host
   esac
 }
 
+# a forge that hangs must not hold a session start or the per-parent lock
+bounded() { if command -v timeout >/dev/null 2>&1; then timeout "${MR_WATCH_TIMEOUT:-20}" "$@"; else "$@"; fi; }
+
 view() { # <mr url>: the MR as the forge prints it, empty when the call fails
   case "$(forge_of "$1")" in
-    gh) gh pr view "$1" --json state,reviewDecision,comments,statusCheckRollup 2>/dev/null || : ;;
-    *) glab mr view "$1" -F json 2>/dev/null || : ;;
+    gh) bounded gh pr view "$1" --json state,reviewDecision,comments,statusCheckRollup 2>/dev/null || : ;;
+    *) bounded glab mr view "$1" -F json 2>/dev/null || : ;;
   esac
 }
 
@@ -119,6 +138,8 @@ fi
 state_word() { # <the forge's json>
   if printf '%s' "$1" | grep -qiE '"(state|merge_status)"[[:space:]]*:[[:space:]]*"merged"'; then
     printf 'merged'
+  elif printf '%s' "$1" | grep -qiE '"state"[[:space:]]*:[[:space:]]*"closed"'; then
+    printf 'closed-unmerged'
   elif printf '%s' "$1" | grep -qiE '"(conclusion|status|detailed_merge_status)"[[:space:]]*:[[:space:]]*"(failure|failed|ci_must_pass)"'; then
     printf 'ci-failed'
   elif printf '%s' "$1" | grep -qiE '"(reviewDecision|review_decision)"[[:space:]]*:[[:space:]]*"changes_requested"|"changes_requested"[[:space:]]*:[[:space:]]*true'; then
@@ -199,8 +220,57 @@ pass() {
   mv -f "$new" "$statefile"
 }
 
+parent_status() { ps_task=$(task_of "$id" || :); [ -z "$ps_task" ] || fm "$ps_task" status; }
+
+# the task MR is merged and the parent still open: task-done.sh ends it, state-push.sh carries the commit. Read
+# from the state file, not from this pass's lines, so a finish that failed is tried again on the next pass and a
+# merge that happened while nothing watched is finished by the first pass that runs.
+finish_task() {
+  [ "$(remembered "$id" 2)" = merged ] || return 0
+  case "$(parent_status)" in done|closed) return 0 ;; esac
+  if WORK_DIR=$root sh "$bin/task-done.sh" "$id" --state "$state" >"$harness/finish.out" 2>&1 </dev/null; then
+    printf '%s done\n' "$id"
+    sed -n "s/^skipped: /$id skipped: /p" "$harness/finish.out"
+    sh "$bin/state-push.sh" --state "$state" >/dev/null 2>&1 </dev/null || printf '%s push-failed\n' "$id"
+  else
+    printf '%s finish-failed %s\n' "$id" "$(tr '\n' ' ' < "$harness/finish.out" | sed 's/[[:space:]]*$//')"
+  fi
+}
+
+# the per-parent lock around one pass and its finish: flock where there is one, else a mkdir lock taken over once
+# it is older than ten minutes (a pass that died). A pass that cannot get it in two minutes is skipped.
+lock_pass() {
+  mkdir -p "$harness"
+  if command -v flock >/dev/null 2>&1; then
+    exec 8>"$harness/mr-watch.lock" && flock -w 120 8 && return 0
+    exec 8>&- 2>/dev/null; return 1
+  fi
+  lp_n=0
+  until mkdir "$harness/mr-watch.lockdir" 2>/dev/null; do
+    lp_since=$(cat "$harness/mr-watch.lockdir/since" 2>/dev/null || :)
+    case "$lp_since" in ''|*[!0-9]*) lp_since='' ;; esac
+    if [ -n "$lp_since" ] && [ $(( $(date +%s) - lp_since )) -ge 600 ]; then rm -rf "$harness/mr-watch.lockdir"; continue; fi
+    lp_n=$((lp_n + 1)); [ "$lp_n" -lt 120 ] || return 1
+    sleep 1
+  done
+  date +%s > "$harness/mr-watch.lockdir/since"
+}
+unlock_pass() {
+  if command -v flock >/dev/null 2>&1; then exec 8>&- 2>/dev/null || :; else rm -rf "$harness/mr-watch.lockdir"; fi
+}
+
 while :; do
-  pass
+  if lock_pass; then
+    pass
+    [ -z "$finish" ] || finish_task
+    unlock_pass
+  else
+    printf 'mr-watch: another pass over %s held its lock for two minutes; this pass is skipped\n' "$id" >&2
+  fi
+  if [ -n "$finish" ]; then
+    case "$(parent_status)" in done|closed) break ;; esac
+    [ "$(remembered "$id" 2)" != closed-unmerged ] || break
+  fi
   [ -z "$once" ] || break
   sleep "$interval"
 done

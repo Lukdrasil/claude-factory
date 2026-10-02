@@ -20,7 +20,9 @@
 # After the commit the task's leftovers go (T-228 Q2, Q16): the worktree `$WORK_DIR/<key>/<id>` of the task and
 # of each block when `git status --porcelain` is empty, and the local branch (the parent's `branch:`,
 # `block/<id>` for a block) when a remote-tracking ref contains its tip, read without a fetch. Whatever stays
-# is one `skipped: <what> <reason>` line on stdout. Remote branches are never touched.
+# is one `skipped: <what> <reason>` line on stdout, the worktree the caller runs in among them. Remote branches
+# are never touched. A task another writer ended while this one waited on the state lock exits 0 with nothing
+# written.
 #
 # Last, a parent (not a block) leaves the hot globs: state-archive.sh moves it with its blocks, progress and
 # verdicts to repos/<key>/archive/<YYYY-MM>/ when every block is terminal and no open task depends on it, and
@@ -83,7 +85,15 @@ case "$lrc" in
   *) die2 "the state lock could not be taken in $state; is it a git clone?" ;;
 esac
 
+# a second finisher (mr-watch.sh --finish, review-sweep.sh, a human) that waited on the lock finds the task already
+# ended by the first: the file archived away or the status terminal. Nothing to do, and no error.
+if [ ! -f "$parent" ]; then
+  printf 'task-done: %s was finished by another writer meanwhile\n' "$id" >&2; exit 0
+fi
 from=$(sed -n 's/^status:[[:space:]]*//p' "$parent" | head -n1)
+if [ -z "$reason" ] && [ "$from" = "$terminal" ]; then
+  printf 'task-done: %s is already %s\n' "$id" "$terminal" >&2; exit 0
+fi
 
 setf "$parent" status "$terminal"
 setf "$parent" owner null
@@ -123,6 +133,15 @@ state_commit "$state" "$message" "$@" \
   || die2 "the $terminal of $id could not be committed in $state"
 state_unlock
 
+# the caller's working directory, never removed under it: a session started or resumed inside a task worktree
+# runs review-sweep.sh from its SessionStart hook, and a Monitor runs mr-watch.sh from the session's shell cwd
+here=$(pwd -P 2>/dev/null || pwd)
+in_dir() { # <dir> <tree>: 0 when dir is tree or below it
+  id_t=$(CDPATH= cd -- "$2" 2>/dev/null && pwd -P) || return 1
+  case "$1/" in "$id_t"/*) return 0 ;; esac
+  return 1
+}
+
 cleanup() { # <task file>
   cu_id=$(sed -n 's/^id:[[:space:]]*//p' "$1" | head -n1)
   if is_block_id "$cu_id"; then
@@ -132,7 +151,9 @@ cleanup() { # <task file>
   fi
   cu_wt="$WORK_DIR/$key/$cu_id"
   if [ -e "$cu_wt" ]; then
-    if [ -n "$(git -C "$cu_wt" status --porcelain 2>/dev/null)" ]; then
+    if in_dir "$here" "$cu_wt"; then
+      printf 'skipped: %s is the working directory of the caller\n' "$cu_wt"
+    elif [ -n "$(git -C "$cu_wt" status --porcelain 2>/dev/null)" ]; then
       printf 'skipped: %s has uncommitted changes\n' "$cu_wt"
     elif ! git -C "$cu_wt" symbolic-ref -q HEAD >/dev/null 2>&1 \
        && [ -z "$(git -C "$cu_wt" branch -r --contains HEAD 2>/dev/null)" ]; then

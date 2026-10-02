@@ -315,4 +315,29 @@ check '--close with a worktree exits 0' 0 "$rc"
 check '--close removes the clean worktree' no "$(dir_there "$tmp/demo/T-014")"
 check '--close deletes the pushed branch'  no "$(branch_there feat/T-014-demo)"
 
+# --- the caller's working directory is never removed under it: a session started inside the task worktree ---
+task T-015 bugfix review https://forge.test/mr/15 'factory@host:sess-1'
+with_branch T-015 feat/T-015-demo
+commit_all
+git -C "$state" push -q >/dev/null 2>&1
+wt_on T-015 feat/T-015-demo
+mkdir -p "$tmp/demo/T-015/src"
+out=$(cd "$tmp/demo/T-015/src" && sh "$bin/task-done.sh" T-015 --state "$state" 2>&1); rc=$?
+check 'done from inside its worktree exits 0'       0   "$rc"
+check 'the parent is done'                          done "$(field T-015 status)"
+check 'the worktree the caller runs in is kept'     yes "$(dir_there "$tmp/demo/T-015")"
+if printf '%s\n' "$out" | grep -qx "skipped: $tmp/demo/T-015 is the working directory of the caller"; then
+  printf 'PASS a skipped: line names the working directory\n'
+else printf 'FAIL a skipped: line names the working directory: %s\n' "$out"; fail=1; fi
+
+# --- a task another writer already ended: exit 0, nothing written ------------------------------
+task T-016 bugfix done https://forge.test/mr/16 null
+commit_all
+before=$(git -C "$state" rev-parse HEAD)
+out=$(sh "$bin/task-done.sh" T-016 --state "$state" 2>&1); rc=$?
+check 'an already done task exits 0'                0 "$rc"
+check 'and writes no commit'                        "$before" "$(git -C "$state" rev-parse HEAD)"
+if printf '%s\n' "$out" | grep -q 'already done'; then printf 'PASS it says it is already done\n'
+else printf 'FAIL it says it is already done: %s\n' "$out"; fail=1; fi
+
 exit $fail

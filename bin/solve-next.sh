@@ -488,8 +488,15 @@ if [ "$status" != review ]; then
   exit 0
 fi
 
-emit "Step 16 of 16: knowledge review for $id" "this session's lessons and decisions are judged and the proposals written."
+# why: the human's merge of the task MR ends the task through mr-watch.sh --finish, in the herd through the
+# why: herd-watch.sh pass that already runs it, so a session that is gone by then misses nothing
+if [ -n "$herd" ]; then
+  emit "Step 16 of 16: knowledge review for $id" "this session's lessons and decisions are judged and the proposals written, and herd-watch.sh stays armed on $id until it reports $id done."
+else
+  emit "Step 16 of 16: knowledge review for $id" "this session's lessons and decisions are judged and the proposals written, and mr-watch.sh --finish is armed on $id through the Monitor tool, so the human's merge of the task MR ends the task."
+fi
 cmd "cat $plugin/skills/_shared/knowledge-review.md"
 cmd "sed -n 's/^curation:[[:space:]]*//p' $state/factory.yml"
 cmd "$bin/curate-apply.sh --help"
+[ -n "$herd" ] || cmd "Monitor tool, armed once the review is in: $bin/mr-watch.sh $id --finish --interval 300 --state $state"
 cmd "$bin/state-push.sh --state $state"

@@ -5,6 +5,8 @@
 # archived; exit 2 with one `<T-id> <repo> <status>` line per herd that no unfinished entry of
 # `background_tasks`, of any type, names with herd-watch.sh and its id; never with stop_hook_active; at most twice
 # per session through `.harness-rearm-<sid>` in the state clone's git dir; nothing written in the state clone.
+# The solo lane, inside herdr or not: a parent this session owns in review with an mr_url and no unfinished entry
+# naming mr-watch.sh or herd-watch.sh with its id is one `<T-id> <repo> review` line and the mr-watch --finish hint.
 set -u
 unset WORK_DIR HERDR_ENV HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_PANE_ID FACTORY_ROLE FACTORY_UNIT
 bin=$(CDPATH= cd -- "$(dirname -- "$0")/../bin" && pwd)
@@ -166,6 +168,64 @@ is 'a watched Stop spends none of the budget' '' "$(cat "$state/.git/.harness-re
 is 'and nothing lands in the factory root' '' "$(ls -A "$work" | grep 'harness-rearm')"
 is 'nor beside the herd-monitor' '' "$(find "$work/cf/.harness" -name '.harness-rearm-*')"
 is 'the state clone stays clean' '' "$(git -C "$state" status --porcelain)"
+
+# --- the solo lane: a task MR of this session waits on the human's merge --------------------
+solo() { # <key> <id> <status> <owner sid> <mr_url>
+  printf -- '---\nid: %s\nrepo: %s\nstatus: %s\nowner: factory@h:%s\nmr_url: %s\n---\n\n# Goal\nfeat(%s): %s\n' \
+    "$2" "$1" "$3" "$4" "$5" "$1" "$2" > "$state/repos/$1/tasks/$2-x.md"
+}
+solo demo T-301 review solo1 https://forge.test/mr/31
+solo demo T-302 review solo1 null
+solo demo T-303 in_progress solo1 https://forge.test/mr/33
+solo demo T-304 review other https://forge.test/mr/34
+solo demo T-301-01 review solo1 https://forge.test/mr/35
+mw() { # <T-id>: a Monitor task running mr-watch.sh on that task
+  printf '{"id":"m%s","type":"local_bash","status":"running","description":"mr-watch.sh %s","command":"sh /p/bin/mr-watch.sh %s --finish --interval 300"}' "$1" "$1" "$1"
+}
+nostop() { # <session id> <background_tasks JSON array>: the Stop outside herdr, with a fresh budget
+  rm -f "$state/.git/.harness-rearm-$1"
+  out=$( (cd "$tmp/elsewhere" && printf '{"session_id":"%s","hook_event_name":"Stop","stop_hook_active":false,"background_tasks":%s}' \
+    "$1" "$2" | WORK_DIR="$work" sh "$bin/rearm-check.sh" 2>&1 >/dev/null); printf '\n%s' $?)
+  printf '%s\n' "${out##*
+}"
+  printf '%s' "${out%
+*}"
+}
+r=$(nostop solo1 '[]')
+e=$(err "$r")
+is 'an unwatched task MR of this session blocks the Stop outside herdr' 2 "$(rc "$r")"
+has 'it is listed as <T-id> <repo> review' 'T-301 demo review' "$e"
+lacks 'a parent with no mr_url is not listed' 'T-302 ' "$e"
+lacks 'a parent not in review is not listed' 'T-303 ' "$e"
+lacks 'a task of another session is not listed' 'T-304 ' "$e"
+lacks 'a block is never listed' 'T-301-01' "$e"
+has 'the message names mr-watch.sh --finish and the Monitor tool' yes \
+  "$(printf '%s' "$e" | grep -q 'mr-watch.sh <T-id> --finish --interval 300' && printf '%s' "$e" | grep -q 'Monitor' && echo yes)"
+lacks 'and no herd text outside herdr' 'herd-watch' "$e"
+r=$(nostop solo1 "[$(mw T-301)]")
+is 'a running mr-watch.sh on it lets the Stop through' 0 "$(rc "$r")"
+r=$(nostop solo1 '[{"id":"h","type":"monitor","status":"running","command":"sh herd-watch.sh T-301 --interval 60"}]')
+is 'a running herd-watch.sh on it counts too' 0 "$(rc "$r")"
+r=$(nostop solo1 "[$(mw T-3010)]")
+is 'a watcher of T-3010 does not watch T-301' 2 "$(rc "$r")"
+r=$(nostop solo1 '[{"id":"m","type":"local_bash","status":"completed","command":"sh mr-watch.sh T-301 --finish"}]')
+is 'a finished mr-watch.sh watches nothing' 2 "$(rc "$r")"
+r=$(nostop solo1 '[{"id":"m","type":"local_bash","status":"running","command":"sh mr-watch.sh T-301 --interval 300"}]')
+is 'an mr-watch.sh without --finish does not count' 2 "$(rc "$r")"
+mkdir -p "$work/demo/.harness/T-301"
+printf 'T-301 closed-unmerged 0\n' > "$work/demo/.harness/T-301/mr-watch.state"
+r=$(nostop solo1 '[]')
+is 'a task MR closed without a merge is no reminder' 0 "$(rc "$r")"
+rm -rf "$work/demo/.harness/T-301"
+rm -f "$state/.git/.harness-rearm-solo1"
+r=$( (cd "$tmp/elsewhere" && printf '{"session_id":"solo1","stop_hook_active":false,"background_tasks":[]}' \
+  | HERDR_TAB_ID=tab-mon WORK_DIR="$work" sh "$bin/rearm-check.sh" 2>&1 >/dev/null) )
+has 'inside herdr the solo task is listed beside the herds' 'T-301 demo review' "$r"
+has 'and the herds still are' 'T-CF-3 cf in_progress' "$r"
+r=$(nostop other '[]')
+has 'the owner of the other task is asked for it alone' 'T-304 demo review' "$(err "$r")"
+lacks 'and not for the tasks of solo1' 'T-301 ' "$(err "$r")"
+rm -f "$state/repos/demo/tasks/T-30"*-x.md "$state/.git/.harness-rearm-solo1" "$state/.git/.harness-rearm-other"
 
 # --- the role is no scope any more --------------------------------------------------------
 is 'a session with a FACTORY_ROLE is asked the same' 2 "$(rc "$(FACTORY_ROLE=pass; export FACTORY_ROLE; stop r1 '[]')")"
