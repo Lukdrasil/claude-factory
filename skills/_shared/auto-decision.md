@@ -49,8 +49,8 @@ what was decided for them.
 
 ## Autonomous
 
-Under `--autonom` (`factory autonom`, `references/auto.md`) the cases above are not asked either, bar one.
-Cases 1, 2, 4 and 5, and the pick of step 4a, are **analysed and decided by the session**:
+Under `--autonom` (`factory autonom`, `references/auto.md`) the cases above are not asked either, bar two.
+Cases 1, 2 and 5, and the pick of step 4a, are **analysed and decided by the session**:
 
 1. Write the analysis as the `explore` table of the grill: one row per option, two to four pros and cons
    each, specific to this repository, over goal fit, size of the change, risk, the tests it needs and what it
@@ -63,6 +63,9 @@ Cases 1, 2, 4 and 5, and the pick of step 4a, are **analysed and decided by the 
    why), and the decision line ending with `(analysed)`, so the MR body tells it from a recommendation taken
    and from a human's answer.
 
-**Case 3 is still asked**, autonomous or not: data deleted, a migration that loses rows, a forge action
-beyond the task's MRs, a cost. A permission dialog of a session is still the human's, through the monitor. A
-human who wants those gone too says so in the task text, in words, and that line is the answer.
+**Cases 3 and 4 are still asked**, autonomous or not: data deleted, a migration that loses rows, a forge
+action beyond the task's MRs, a cost; and a block whose every option breaks the acceptance, since no table
+can pick an option that fails and a block is never closed by a session (`state-report.sh` refuses it). A
+permission dialog of a session is still the human's, through the monitor. A human who wants case 3 gone too
+says so in the task text, in words, and that line is the answer. The pick of step 4a is the first line of
+the plan's `## Decisions`, `(analysed)` or `(human)`, so the MR body carries it.

@@ -95,6 +95,9 @@ check 'auto: step 4a opens with state-push.sh' "^  .*state-push\.sh --state $sta
 printf '\n## Solution\nthe issue author wrote this heading\n' >> "$state/repos/demo/tasks/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a ## Solution heading without a view line is no pick' '^## Step 4a of 16: two solutions for T-020$' "$out"
+printf '\n## Solution\n- view: open\n- file: repos/demo/research/T-020-solution-open.md\n' >> "$state/repos/demo/tasks/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: the lane'"'"'s pick below the issue heading is still the pick' '^## Step 4 of 16: grill T-020$' "$out"
 sed -i '/^## Solution$/,$d' "$state/repos/demo/tasks/T-020.md"
 # the state clone is a git repo from here: a solution file counts once it is committed
 git -C "$state" init -q 2>/dev/null; git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false add -A >/dev/null 2>&1
@@ -193,13 +196,19 @@ mkdir -p "$tmp/product/docs/architecture"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: plan-check goes out with --auto' "session-monitor\.sh --task T-020 --step plan-check --auto --state $state\$" "$out"
 mkdir -p "$state/repos/demo/verdicts"
-printf -- '---\nverdict: misaligned\nplan: repos/demo/plans/export-plan-ready.md\nplan_hash: x\n---\n\n## plan-check\nthe finding\n' > "$state/repos/demo/verdicts/export.md"
+printf -- '---\nverdict: misaligned\nplan: repos/demo/plans/export-plan-ready.md\nplan_hash: %s\n---\n' "$(sha256sum "$state/repos/demo/plans/export-plan-ready.md" | cut -d' ' -f1)" > "$state/repos/demo/verdicts/export.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-check 'auto: a misaligned verdict stops the lane' '^## Step 5 of 16: plan-check found export misaligned$' "$out"
+check 'auto: a misaligned verdict with the current hash stops the lane' '^## Step 5 of 16: plan-check found export misaligned$' "$out"
 check 'auto: with the findings shown' "^  cat $state/repos/demo/verdicts/export\.md\$" "$out"
 no 'auto: and nothing dispatched' 'session-monitor\.sh' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 check 'herd: a misaligned verdict is decompose, where a human may override it' '^## Step 6 of 16: decompose T-020' "$out"
+printf '\n' >> "$state/repos/demo/plans/export-plan-ready.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a verdict over an edited plan is stale, and plan-check runs again' '^## Step 5 of 16: architect plan-check of export$' "$out"
+check 'auto: which says it is stale' 'Completion:.*stale' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+check 'herd: a stale verdict is plan-check again too' '^## Step 5 of 16: architect plan-check of export$' "$out"
 rm "$state/repos/demo/verdicts/export.md"
 rm -r "$tmp/product/docs"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
@@ -244,12 +253,10 @@ check 'auto: with the decision rule read' 'skills/_shared/auto-decision\.md' "$o
 check 'auto: and the human asked only where it says so' 'Completion:.*asked the human only where' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
 check 'autonom: a blocked block with no recommendation is analysed' 'Completion:.*your analysis picked' "$out"
-no 'autonom: a blocked block is not closed' 'set-status closed' "$out"
 block T-020-01 failed
 out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
-check 'autonom: a failed block carries the close for the case every option fails' 'state-report\.sh --task T-020-01 --set-status closed' "$out"
-out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-no 'auto: a failed block is the human'"'"'s, no close printed' 'set-status closed' "$out"
+check 'autonom: a failed block whose every option fails is the human'"'"'s' 'Completion:.*every option fails is the human' "$out"
+no 'autonom: no session closes a block' 'set-status closed' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 no 'herd: a blocked block stays the human'"'"'s' 'auto-decision\.md' "$out"
 block T-020-01 draft
@@ -300,9 +307,18 @@ check 'auto: step 13 lists both done blocks' 'Completion:.*blocks: T-020-01 T-02
 check 'auto: and refreshes the MR body with the decisions' "mr-open\.sh T-020 --decisions --state $state\$" "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 check 'herd: the fix round refreshes the body without the decisions' "mr-open\.sh T-020 --state $state\$" "$out"
-printf '## Review\nblocks: T-020-01 T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
+printf '## Review\nblocks: T-020-01, T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-check 'auto: once reviewed, step 16 again' '^## Step 16 of 16' "$out"
+check 'auto: once reviewed, a comma-separated blocks line too, step 16 again' '^## Step 16 of 16' "$out"
+# a closed last block (a research block, or a block the human closed) does not end the step under set -e
+block T-020-03 closed
+sed -i '/^## Review/,$d' "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1); rc=$?
+check 'herd: step 13 with a closed last block still prints' '^## Step 13 of 16: integrated review of T-020$' "$out"
+check 'and lists only the done blocks' 'Completion:.*blocks: T-020-01 T-020-02 (' "$out"
+[ "$rc" = 0 ]; r=$?; check 'with exit 0' '^0$' "$r"
+rm "$state/repos/demo/tasks/T-020-03.md"
+printf '## Review\nblocks: T-020-01 T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
 sed -i 's/^status: review$/status: in_progress/; /^mr_url:/d' "$state/repos/demo/tasks/T-020.md"
 rm "$state/repos/demo/tasks/T-020-02.md"
 
@@ -461,9 +477,17 @@ git -C "$wt" checkout -q -b block/T-030-01
 printf 'x\n' > "$wt/src.cs"; printf 'exit 0\n' > "$wt/b.test.sh"
 git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m change
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
-check 'block-verify runs a crap binding that opens with an assignment' '^crap:  src\.cs\.Run 2$' "$out"
-check 'and the scope is the changed .cs file, not the tests nor the script' '^crap:  src\.cs\.Run 2$' "$out"
+check 'block-verify runs a crap binding that opens with an assignment, over the changed .cs file alone' '^crap:  src\.cs\.Run 2$' "$out"
 check 'coverage ran first' '^verdict: green$' "$out"
+sed -i 's/^| `crap <scope>` .*$/| `crap <scope>` | `CRAP_ENV=1 sh crap.sh "<scope>"` |/' "$bv/state/repos/demo/toolset.md"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a row that quotes <scope> (the older template) still hands the files one by one' '^crap:  src\.cs\.Run 2$' "$out"
+sed -i 's/^| `crap <scope>` .*$/| `crap <scope>` | `CRAP_ENV=1 sh crap.sh <scope>` |/' "$bv/state/repos/demo/toolset.md"
+sed -i 's/^| `coverage` .*$/| `coverage` | `echo no collector >\&2; exit 5` |/' "$bv/state/repos/demo/toolset.md"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a coverage run that fails is red with its last stderr line' '^crap:  coverage failed: no collector$' "$out"
+check 'and no crap ran' '^verdict: red$' "$out"
+sed -i 's/^| `coverage` .*$/| `coverage` | `echo covered > .coverage` |/' "$bv/state/repos/demo/toolset.md"
 out=$(CRAP_VALUE=11 WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'a method over the threshold is red' '^crap:  over 8: src\.cs\.Run 11$' "$out"
 [ "$rc" = 1 ]; r=$?; check 'with exit 1' '^0$' "$r"
@@ -543,7 +567,7 @@ check 'auto.md tells the fix round to drop the sections so 12 and 13 run again' 
 check 'auto.md reads the comments line of the task MR' '<T-id> comments <n> -> <m>' "$(cat "$auto")"
 check 'auto.md lists both files for a mixed pick' 'lists both files' "$(cat "$auto")"
 check 'the decision rule has the autonomous section' '^## Autonomous$' "$(cat "$root/skills/_shared/auto-decision.md")"
-check 'the autonomous section keeps the destructive case' 'Case 3 is still asked' "$(cat "$root/skills/_shared/auto-decision.md")"
+check 'the autonomous section keeps the destructive case and the one where every option fails' 'Cases 3 and 4 are still asked' "$(cat "$root/skills/_shared/auto-decision.md")"
 check 'the autonomous section marks its decisions' '(analysed)' "$(cat "$root/skills/_shared/auto-decision.md")"
 check 'architect-review has an auto mode' '^## Auto mode$' "$(cat "$root/skills/architect-review/SKILL.md")"
 check 'the auto plan-check never writes overridden-by-human' 'overridden-by-human` is never written' "$(cat "$root/skills/architect-review/SKILL.md")"

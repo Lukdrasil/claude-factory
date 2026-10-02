@@ -149,7 +149,8 @@ is_test_path() { # <repo-relative path>
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-git -C "$worktree" diff --name-only "$base" > "$tmp/changed" 2>"$tmp/giterr" \
+# -c core.quotePath=false: a non-ASCII path is printed as it is, not as "Slu\305\276ba.cs", which no file test matches
+git -C "$worktree" -c core.quotePath=false diff --name-only "$base" > "$tmp/changed" 2>"$tmp/giterr" \
   || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
 
 # see: the documentation-block exception of this script's header. `grep -qv` answers "some line is not a .md
@@ -265,7 +266,8 @@ if [ -n "$crap_binding" ]; then
       [ "$cov_status" -eq 0 ] || crap_status=97
     fi
     if [ "$crap_status" -eq 0 ]; then
-      printf '%s\n' "$(printf '%s' "$crap_binding" | sed 's|<scope>|"$@"|g')" > "$tmp/crap.sh"
+      # a row written as "<scope>" (the older dotnet template) sheds its quotes first, or "$@" would be one word
+      printf '%s\n' "$(printf '%s' "$crap_binding" | sed 's|"<scope>"|<scope>|g; s|'"'"'<scope>'"'"'|<scope>|g; s|<scope>|"$@"|g')" > "$tmp/crap.sh"
       set +e
       ( cd "$worktree" && xargs_scope=$(cat "$tmp/scope") && set -f && IFS='
 ' && set -- $xargs_scope && unset IFS && timeout 10m sh "$tmp/crap.sh" "$@" ) >"$tmp/crap" 2>"$tmp/crap.err"

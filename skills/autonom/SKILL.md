@@ -29,8 +29,9 @@ Outside a herdr pane the sessions cannot be opened: say so, and run the lane wit
    Monitor tool after the first dispatch and say that this session is the monitor of `<T-id>`.
 3. **No ask**: the two solutions are compared and one chosen by you, the grill, plan-check and decompose
    decide every question themselves, a blocked block is answered by its recommendation or by an analysis.
-4. **What reaches the human**: a destructive or outward-facing choice (the third case of the decision rule),
-   a session's permission dialog, and the task MR, whose body lists every decision marked by who took it.
+4. **What reaches the human**: a destructive or outward-facing choice and a block whose every option fails
+   (the third and fourth cases of the decision rule), a session's permission dialog, and the task MR, whose
+   body lists every decision marked by who took it.
 
 The task needs a registered repo with a `crap` row in its toolset; `solve-next.sh --autonom` stops at step
 4a and says so otherwise.

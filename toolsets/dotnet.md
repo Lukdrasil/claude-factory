@@ -25,7 +25,7 @@ not listed here does not exist for this repo — note it and move on.
 | `build` | `dotnet build {{solution}} -warnaserror -v q --nologo` |
 | `test` | `timeout 15m dotnet test {{solution}}` |
 | `test-filter <expr>` | `timeout 15m dotnet test {{solution}} --filter "<expr>"` |
-| `coverage` | `timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" && reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:"TextSummary;Cobertura"` |
+| `coverage` | `rm -rf .coverage/raw && timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" --results-directory .coverage/raw && reportgenerator -reports:".coverage/raw/**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:"TextSummary;Cobertura"` |
 | `mutation <scope>` | `dotnet stryker --mutate "<scope>" --break-at <n>` |
 | `crap <scope>` | `DOTNET_ROLL_FORWARD=Major dotnet-crap analyze <scope> --coverage .coverage/Cobertura.xml --threshold 8` |
 | `format` | `dotnet format whitespace {{solution}} --include <the changed files>` |
@@ -43,7 +43,10 @@ backquotes and run the rest, so a note beside the command runs as shell. The not
 
 `coverage` writes `.coverage/`, its `Cobertura` report the `.coverage/Cobertura.xml` that `crap` reads, so run
 `coverage` first; `block-verify.sh` does, and hands the block's changed `.cs` files to `crap` in place of
-`<scope>`, one argument each. `crap` runs on the newest
+`<scope>`, one argument each. The raw results go to `.coverage/raw`, emptied before every run, so a report
+never merges the coverage of an earlier version of the code; `.coverage/` belongs in the repo's
+`.gitignore`, or a worktree reads dirty after a verify. A repo seeded before 0.19 keeps the old row, which
+wrote no Cobertura report and quoted `<scope>`: `factory doctor` names both, and the fix is this row. `crap` runs on the newest
 runtime; the tool's default threshold is 30, changed code is held to the `crap-threshold:` above, which
 `block-verify.sh` reddens a block over.
 

@@ -122,8 +122,9 @@ and no other:
   and reruns under its `## Auto mode`, never a question to the human, and `overridden-by-human` is never
   written; a `misaligned` no edit clears is a stop the lane reports.
 - **Every decision is recorded.** `## Decisions` holds each one, one line, `[locked]` where it passes the
-  three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`: the task MR
-  carries the section verbatim (`mr-open.sh --decisions`).
+  three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`; its first
+  line is the pick of step 4a, the solution chosen and by whom, `(human)` or `(analysed)`. The task MR carries
+  every line of the section (`mr-open.sh --decisions`, the `[locked]` tag dropped).
 - **The UI round is still asked** under `--auto`. A change that reaches a surface a person sees puts the
   question of `references/ui-round.md` to the human, mockup or agent, and the variant pick after a mockup;
   the fifth case of `_shared/auto-decision.md`.

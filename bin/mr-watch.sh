@@ -138,12 +138,14 @@ state_word() { # <the forge's json>
 comment_count() { # <the forge's json> [<mr url>]
   n=$(printf '%s' "$1" | sed -n 's/.*"user_notes_count"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
   if [ -z "$n" ]; then
-    n=$(printf '%s' "$1" | grep -o '"body"' | wc -l | tr -d '[:space:]')
+    # a body with text: an approving review with an empty body is no comment to answer
+    n=$(printf '%s' "$1" | grep -o '"body"[[:space:]]*:[[:space:]]*"[^"]' | wc -l | tr -d '[:space:]')
     [ -n "$n" ] || n=0
     if [ -n "${2:-}" ] && [ "$(forge_of "$2")" = gh ]; then
       cc_path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\([^/]*\)/\([^/]*\)/pull/\([0-9]*\).*#repos/\1/\2/pulls/\3/comments#p')
       cc_inline=''
-      [ -z "$cc_path" ] || cc_inline=$(gh api "$cc_path" --jq length 2>/dev/null || :)
+      # --paginate: the endpoint pages at 30, and one id per line counts every page
+      [ -z "$cc_path" ] || cc_inline=$(gh api --paginate "$cc_path" --jq '.[].id' 2>/dev/null | grep -c . || :)
       case "$cc_inline" in ''|*[!0-9]*) cc_inline=0 ;; esac
       n=$((n + cc_inline))
     fi

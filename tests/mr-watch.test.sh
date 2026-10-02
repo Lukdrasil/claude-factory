@@ -50,6 +50,7 @@ printf -- '---\nid: T-502\nrepo: gh\nstatus: review\nbranch: feat/T-502-x\nmr_ur
   > "$state/repos/gh/tasks/T-502.md"
 cat > "$tmp/bin/gh" <<STUB
 #!/bin/sh
+printf '%s\n' "\$*" >> "$tmp/gh.log"
 case "\$1 \$2" in
   "pr view") cat "$tmp/mrs/pr7.json" ;;
   api*) cat "$tmp/mrs/inline7.txt" ;;
@@ -58,15 +59,15 @@ esac
 STUB
 chmod +x "$tmp/bin/gh"
 printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
-printf '0\n' > "$tmp/mrs/inline7.txt"
+: > "$tmp/mrs/inline7.txt"
 watch2() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --once --state "$state" 2>&1; }
 out=$(watch2)
 check 'a GitHub PR with no review prints nothing'   1 'T-502 ' "$out"
-printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"looks off, see threads","state":"COMMENTED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
-printf '2\n' > "$tmp/mrs/inline7.txt"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"looks off, see threads","state":"COMMENTED"},{"body":"","state":"APPROVED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
+printf '101\n102\n' > "$tmp/mrs/inline7.txt"
+: > "$tmp/gh.log"
 out=$(watch2)
-check 'a review as Comment with inline threads is counted' 0 '^T-502 new-comments 3$' "$out"
-log=$(PATH="$tmp/bin:$PATH" sh -c 'gh api repos/o/gh/pulls/7/comments --jq length')
-check 'the inline count comes from the pulls comments endpoint' 0 '^2$' "$log"
+check 'a review as Comment with inline threads is counted, an empty approving body not' 0 '^T-502 new-comments 3$' "$out"
+check 'the inline count comes from the paginated pulls comments endpoint of that PR' 0 '^api --paginate repos/o/gh/pulls/7/comments --jq ' "$(cat "$tmp/gh.log")"
 
 exit $fail

@@ -211,7 +211,8 @@ sol_open="$state/repos/$key/research/$id-solution-open.md"
 sol_min="$state/repos/$key/research/$id-solution-min.md"
 # the pick the lane wrote: a `## Solution` heading with the `- view:` line under it, so a heading an issue body
 # carried into the task is not read as a human's consent
-picked() { awk '/^## Solution[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && /^- view:/ { ok = 1 } END { exit !ok }' "$task"; }
+# why: an issue body may carry its own `## Solution` heading above the lane's, so every such section is read
+picked() { awk '/^## Solution[[:space:]]*$/ { f = 1; next } f && /^#/ { f = 0 } f && /^- view:/ { ok = 1 } END { exit !ok }' "$task"; }
 auto_solutions_step() {
   ! picked || return 0
   # why: the lane promises every changed method at or under the crap threshold, and block-verify.sh can only
@@ -223,7 +224,11 @@ auto_solutions_step() {
     exit 0
   fi
   if ! written "$sol_open" || ! written "$sol_min"; then
-    emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file is _shared/blocked-question.md to the human."
+    if [ -n "$autonom" ]; then
+      emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file leaves the pick to the one solution that exists: write ## Solution over it yourself, with chosen by: agent and the reason, and the lane goes on."
+    else
+      emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file is _shared/blocked-question.md to the human."
+    fi
     written "$sol_open" || dispatch_step solution-open
     written "$sol_min" || dispatch_step solution-min
     watch_line
@@ -282,9 +287,21 @@ if [ -n "$auto" ] && [ -z "$blocks" ] && ! lint_out=$(sh "$bin/plan-lint.sh" "$p
   exit 0
 fi
 
+# a verdict whose plan_hash is the plan's current hash; one written before an edit of the plan is none, as
+# task-new.sh reads it (lib-tasks.sh architect_verdict), so step 5 runs again rather than a decompose it refuses
+verdict_current() {
+  [ -f "$verdict" ] || return 1
+  vc_want=$(sed -n 's/^plan_hash:[[:space:]]*//p' "$verdict" | head -n1)
+  if command -v sha256sum >/dev/null 2>&1; then vc_have=$(sha256sum "$plan" | cut -d' ' -f1)
+  elif command -v shasum >/dev/null 2>&1; then vc_have=$(shasum -a 256 "$plan" | cut -d' ' -f1)
+  else return 0; fi
+  [ "$vc_want" = "$vc_have" ]
+}
+
 # why: the auto lane never writes overridden-by-human, so a misaligned verdict is a stop with the findings,
-# why: not a decompose that task-new.sh refuses and the loop dispatches again
-if [ -n "$auto" ] && [ -z "$blocks" ] && [ -f "$verdict" ] \
+# why: not a decompose that task-new.sh refuses and the loop dispatches again; one over an edited plan is
+# why: stale and plan-check runs again instead
+if [ -n "$auto" ] && [ -z "$blocks" ] && verdict_current \
   && [ "$(sed -n 's/^verdict:[[:space:]]*//p' "$verdict" | head -n1)" = misaligned ]; then
   emit "Step 5 of 16: plan-check found $slug misaligned" "the lane stops here, nothing dispatched: the findings of $verdict are in front of the human as a notice, and the plan is edited (then plan-check runs again, with the lane's flag) or the task goes on under factory herd, where a human may override the verdict."
   cmd "cat $verdict"
@@ -294,8 +311,8 @@ fi
 # why: task-new.sh refuses the block writes of step 8 without a verdict whose plan_hash still matches, so
 # why: the curation is the next step and not a note beside a later one; decompose deletes the verdict once it
 # why: writes the blocks, so a parent with blocks is past this step
-if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
-  emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan."
+if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && { [ ! -f "$verdict" ] || ! verdict_current; }; then
+  emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan$( [ ! -f "$verdict" ] || printf ' (the one there is stale: the plan was edited after it)')."
   if [ -n "$herd" ]; then dispatch_step plan-check; watch_line; exit 0; fi
   cmd "cat $plugin/skills/architect-review/SKILL.md"
   cmd "sha256sum $plan"
@@ -438,7 +455,7 @@ if [ -n "$pending" ]; then
     if [ -n "$herd" ]; then bretry="the next dispatch of its wave, a fresh session"; else bretry="a fresh implement subagent"; fi
     if [ -n "$auto" ]; then
       if [ -n "$autonom" ]; then
-        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md; a block whose every option fails is the human's, through _shared/blocked-question.md, in this lane too), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       else
         emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or asked the human only where _shared/auto-decision.md says so, applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       fi
@@ -448,9 +465,6 @@ if [ -n "$pending" ]; then
     cmd "cat $bprogress"
     cmd "cat $plugin/skills/_shared/blocked-question.md"
     [ -z "$auto" ] || cmd "cat $plugin/skills/_shared/auto-decision.md"
-    # the autonomous lane closes a block whose every option fails, the analysis table as the reason, instead
-    # of approving it into a third attempt
-    [ -z "$autonom" ] || [ "$bs" != failed ] || cmd "$bin/state-report.sh --task $pending --set-status closed --attempts '$((bn + 1)), closed: every option fails, see ## Question' --message 'chore($pending): closed, every option fails'"
     cmd "$bin/task-approve.sh $pending --state $state"
     [ -n "$herd" ] || cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
@@ -581,7 +595,7 @@ base=$(base_branch)
 # why: ## Review names the blocks it covered on a `blocks:` line (step 13 writes it); a done block missing from
 # why: it is a fix block the quality steps have not seen, and the step is the reset that brings them back
 if [ -n "$mr_url" ] && grep -q '^## Review' "$progress" 2>/dev/null; then
-  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { sub(/^blocks:[[:space:]]*/, ""); print; exit }' "$progress")
+  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { sub(/^blocks:[[:space:]]*/, ""); print; exit }' "$progress" | tr ',' ' ')
   if [ -n "$reviewed" ]; then
     unreviewed=''
     for b in $blocks; do
@@ -622,10 +636,11 @@ if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Review' "$progress" 2>/dev/null; then
-  done_blocks=$(for b in $blocks; do bf=$(task_of "$b" || :); [ -n "$bf" ] && [ "$(fm "$bf" status)" = done ] && printf '%s ' "$b"; done)
+  # see: set -e, so the loop ends on a true status whatever the last block's status is
+  done_blocks=$(for b in $blocks; do bf=$(task_of "$b" || :); if [ -n "$bf" ] && [ "$(fm "$bf" status)" = done ]; then printf '%s ' "$b"; fi; done; :)
   refresh=''
   [ -z "$mr_url" ] || refresh=", and since the task MR is open, mr-open.sh${auto:+ --decisions} has refreshed its body with the new block"
-  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, opening with the line blocks: ${done_blocks:-<every done block>}(the blocks this review covers, which is how a later fix block is told apart), its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow$refresh."
+  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, opening with the line blocks: ${done_blocks:-<every done block>}(the blocks this review covers, which is how a later fix block is told apart), its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded, its blocks: line rewritten with the fix block in it, and does not stop the flow$refresh."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"
