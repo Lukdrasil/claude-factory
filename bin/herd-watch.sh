@@ -148,8 +148,9 @@ pass() {
       old=$(prior "$u" "$n")
       [ "$new" != "$old" ] || continue
       [ "$what" = agent ] || [ "$new" != none ] || continue
-      # a count of 0 is no comment yet, never news
-      [ "$what" != comments ] || [ "$new" != 0 ] || continue
+      # a count of 0 is no comment yet, never news; a record from before the comments column (five columns)
+      # has no old count, so the first count is the baseline, set in silence rather than reported as new
+      [ "$what" != comments ] || { [ "$new" != 0 ] && [ -n "$old" ]; } || continue
       if [ -z "$old" ]; then
         printf '%s %s %s\n' "$u" "$what" "$new"
       else

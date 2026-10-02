@@ -85,9 +85,11 @@ that no edit clears stops the lane with the findings as a notice. Step 6 dispatc
 (`skills/decompose/SKILL.md`, `## Auto mode`): the spec-critic's proposed edits are applied as written, a
 cut-check finding is taken by its recommendation, and the block list ends the step as a notice.
 
-`factory auto <T-id>` over a task that already has a plan but no `## Solution` (a task another lane grilled)
-has no pick to call its consent: from there `solve-next.sh --auto` prints the herd's steps, the ask of step 9
-included.
+`factory auto <T-id>` over a task that already has a plan but no `## Solution` with its `- view:` line (a task
+another lane grilled, or an issue body that carried such a heading) has no pick to call its consent: from
+there `solve-next.sh --auto` prints the herd's steps, the ask of step 9 included. Before plan-check,
+`solve-next.sh` runs `plan-lint.sh <plan> --auto`; a plan that misses a test line or an e2e line under a
+proposal's steps goes back to the grill session with the lint lines, and plan-check and decompose wait.
 
 Step 9 is `task-approve.sh` over the parent and its blocks with no ask, the bodies printed as a notice so the
 human can read what went ready. Step 10 and step 11 are the herd's: one session per block, the red tests
@@ -127,10 +129,13 @@ and the task MR's lines are the human's review coming back:
 The fix round is the one of `references/solve.md` (`## After the task MR`), with no ask in it: read the
 threads with `mr-watch.sh <T-id> --comments <T-id>`; one fix block per change asked, written as solve writes an
 extra block (cut-check, `task-new.sh --parent`), approved by `task-approve.sh` without an ask and worked as a
-block session through step 11; once it is merged, remove `## Evidence`, `## Duplication` and `## Review` from
-the parent's progress file and report it (`state-report.sh --task <T-id> --no-status`), so `solve-next.sh
---auto` runs steps 12 and 13 again; then `mr-open.sh <T-id> --decisions` yourself, since the MR exists and
-step 14 does not come back: it refreshes the body with the new block and the decisions as they now stand.
+block session through step 11. Once it is merged, `solve-next.sh` sees a done block missing from the
+`blocks:` line of `## Review` and prints the reset, `Step 12 of 16: fix round over <T-id>`: the three sections
+`## Evidence`, `## Duplication` and `## Review` go, the file is reported, and steps 12 and 13 run again over
+the work branch, the build, the tests and the e2e included; step 13 then writes the new `blocks:` line and
+runs `mr-open.sh <T-id> --decisions`, which refreshes the body with the new block and the decisions as they
+now stand. The first count of comments on an MR after an upgrade of the watcher is a baseline, not a line:
+only a change from a count it has seen is printed.
 
 A thread that is a question is answered on the MR by the human, as in solve; a thread that asks for work the
 chosen solution does not cover is the second case of `_shared/auto-decision.md`: ask. Only `done` or `closed`
@@ -158,7 +163,8 @@ no question, `sh <plugin-root>/bin/solve-next.sh <T-id> --autonom`. Everything a
   variants the choice was made against.
 - **A blocked block** with no recommendation standing is answered the same way, the table in its progress
   file and the answer line `(analysed)`; a `failed` block at its second attempt too, with the option the
-  table picks, or `closed` with the table as the reason when every option fails.
+  table picks, or `closed` with the table as the reason when every option fails, the `state-report.sh
+  --set-status closed` line `solve-next.sh --autonom` prints beside the approve.
 - **What stays the human's**: the third case of `_shared/auto-decision.md` (data deleted, a migration that
   loses rows, a forge action beyond the task's MRs, a cost), the permission dialogs of the sessions, and the
   review and merge of the task MR. A task whose text says in words that the third case is theirs to take

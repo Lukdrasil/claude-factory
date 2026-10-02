@@ -209,8 +209,11 @@ written() { # <file under the state clone>
 }
 sol_open="$state/repos/$key/research/$id-solution-open.md"
 sol_min="$state/repos/$key/research/$id-solution-min.md"
+# the pick the lane wrote: a `## Solution` heading with the `- view:` line under it, so a heading an issue body
+# carried into the task is not read as a human's consent
+picked() { awk '/^## Solution[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && /^- view:/ { ok = 1 } END { exit !ok }' "$task"; }
 auto_solutions_step() {
-  ! grep -q '^## Solution[[:space:]]*$' "$task" || return 0
+  ! picked || return 0
   # why: the lane promises every changed method at or under the crap threshold, and block-verify.sh can only
   # why: hold that with a crap row; without one the gate reads `not bound` and the promise is empty
   if ! binds crap; then
@@ -242,8 +245,7 @@ auto_solutions_step() {
 # why: `factory auto <T-id>` over a task another lane already grilled has no pick to call its consent, so
 # why: without `## Solution` the auto lane keeps the herd's gates from here on: the ask of step 9, the human
 # why: at a blocked block. The autonomous lane needs no consent and keeps its flag
-if [ -n "$auto" ] && [ -z "$autonom" ] && [ -n "$slug" ] && [ -f "$plan" ] \
-  && ! grep -q '^## Solution[[:space:]]*$' "$task"; then
+if [ -n "$auto" ] && [ -z "$autonom" ] && [ -n "$slug" ] && [ -f "$plan" ] && ! picked; then
   auto='' auto_arg=''
 fi
 
@@ -268,6 +270,26 @@ done | sort_ids)
 
 product=$(clone_path "$key")
 verdict="$state/repos/$key/verdicts/$slug.md"
+
+# why: the auto grill's musts (a test line and an e2e line under every proposal's steps) are checked by
+# why: plan-lint.sh --auto, and nothing after the grill would run it otherwise: a plan that fails it goes back
+# why: to the grill before plan-check or decompose read it
+if [ -n "$auto" ] && [ -z "$blocks" ] && ! lint_out=$(sh "$bin/plan-lint.sh" "$plan" --auto 2>&1); then
+  emit "Step 4 of 16: the plan of $id misses the auto musts" "plan-lint.sh $plan --auto passes: every proposal names its tests and says e2e or no e2e under steps:, the grill session having fixed the plan (prompt it with the lines below, or start it again)."
+  printf '%s\n' "$lint_out" | sed 's/^/  # /'
+  cmd "$bin/plan-lint.sh $plan --auto"
+  dispatch_step grill; watch_line
+  exit 0
+fi
+
+# why: the auto lane never writes overridden-by-human, so a misaligned verdict is a stop with the findings,
+# why: not a decompose that task-new.sh refuses and the loop dispatches again
+if [ -n "$auto" ] && [ -z "$blocks" ] && [ -f "$verdict" ] \
+  && [ "$(sed -n 's/^verdict:[[:space:]]*//p' "$verdict" | head -n1)" = misaligned ]; then
+  emit "Step 5 of 16: plan-check found $slug misaligned" "the lane stops here, nothing dispatched: the findings of $verdict are in front of the human as a notice, and the plan is edited (then plan-check runs again, with the lane's flag) or the task goes on under factory herd, where a human may override the verdict."
+  cmd "cat $verdict"
+  exit 0
+fi
 
 # why: task-new.sh refuses the block writes of step 8 without a verdict whose plan_hash still matches, so
 # why: the curation is the next step and not a note beside a later one; decompose deletes the verdict once it
@@ -426,6 +448,9 @@ if [ -n "$pending" ]; then
     cmd "cat $bprogress"
     cmd "cat $plugin/skills/_shared/blocked-question.md"
     [ -z "$auto" ] || cmd "cat $plugin/skills/_shared/auto-decision.md"
+    # the autonomous lane closes a block whose every option fails, the analysis table as the reason, instead
+    # of approving it into a third attempt
+    [ -z "$autonom" ] || [ "$bs" != failed ] || cmd "$bin/state-report.sh --task $pending --set-status closed --attempts '$((bn + 1)), closed: every option fails, see ## Question' --message 'chore($pending): closed, every option fails'"
     cmd "$bin/task-approve.sh $pending --state $state"
     [ -n "$herd" ] || cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
@@ -551,6 +576,28 @@ fi
 
 base=$(base_branch)
 
+# why: a fix block merged after the review (a review round on the task MR) left ## Evidence, ## Duplication
+# why: and ## Review standing, so the loop went to step 16 and the fix was never built, tested or reviewed.
+# why: ## Review names the blocks it covered on a `blocks:` line (step 13 writes it); a done block missing from
+# why: it is a fix block the quality steps have not seen, and the step is the reset that brings them back
+if [ -n "$mr_url" ] && grep -q '^## Review' "$progress" 2>/dev/null; then
+  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { sub(/^blocks:[[:space:]]*/, ""); print; exit }' "$progress")
+  if [ -n "$reviewed" ]; then
+    unreviewed=''
+    for b in $blocks; do
+      bf=$(task_of "$b" || :)
+      [ -n "$bf" ] && [ "$(fm "$bf" status)" = done ] || continue
+      case " $reviewed " in *" $b "*) ;; *) unreviewed="$unreviewed $b" ;; esac
+    done
+    if [ -n "$unreviewed" ]; then
+      emit "Step 12 of 16: fix round over $id, after the task MR" "## Evidence, ## Duplication and ## Review are gone from $progress and the file is reported, so steps 12 and 13 run again over the work branch with${unreviewed} merged; step 13 then lists every done block on the blocks: line of ## Review and refreshes the MR body."
+      cmd "sed -i '/^## Evidence/,/^## /{/^## Evidence/d;/^## /!d}; /^## Duplication/,/^## /{/^## Duplication/d;/^## /!d}; /^## Review/,/^## /{/^## Review/d;/^## /!d}' $progress"
+      cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): fix round, quality steps again'"
+      exit 0
+    fi
+  fi
+fi
+
 if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
   e2e=''
   # why: the auto lane ends in a build and the whole test run, the end-to-end suite included where the repo
@@ -575,11 +622,15 @@ if ! grep -q '^## Duplication' "$progress" 2>/dev/null; then
 fi
 
 if ! grep -q '^## Review' "$progress" 2>/dev/null; then
-  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow."
+  done_blocks=$(for b in $blocks; do bf=$(task_of "$b" || :); [ -n "$bf" ] && [ "$(fm "$bf" status)" = done ] && printf '%s ' "$b"; done)
+  refresh=''
+  [ -z "$mr_url" ] || refresh=", and since the task MR is open, mr-open.sh${auto:+ --decisions} has refreshed its body with the new block"
+  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, opening with the line blocks: ${done_blocks:-<every done block>}(the blocks this review covers, which is how a later fix block is told apart), its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded but does not stop the flow$refresh."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"
   cmd "cat $plugin/skills/_shared/delegation.md"
+  [ -z "$mr_url" ] || cmd "$bin/mr-open.sh $id${auto:+ --decisions} --state $state"
   exit 0
 fi
 

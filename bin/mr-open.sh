@@ -187,7 +187,8 @@ if [ -n "$decisions" ]; then
     { flush() }
     END { flush() }
   ' "$dplan")
-  [ -n "$decided" ] || die "--decisions: $dplan has no bullet under ## Decisions to put into the MR"
+  # a plan that decided nothing says so, so a small task can still open its MR
+  [ -n "$decided" ] || decided='- none taken'
   printf '\n## Decisions\n%s\n' "$decided" >> "$desc"
 fi
 

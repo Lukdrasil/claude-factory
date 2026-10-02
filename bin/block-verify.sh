@@ -54,8 +54,12 @@
 # over the threshold, so zero tests on a diff that carries code is red and so is one method over the threshold
 # (T-163). The threshold is `crap-threshold:` in the toolset
 # frontmatter, 8 when it declares none; a toolset with no `crap` binding keeps the line as a note and cannot
-# redden anything. The binding runs as a script under `timeout 10m`, after the `coverage` binding when there is
-# one, with `<scope>` replaced by the block's changed source files; a run that prints nothing or fails is red. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
+# redden anything. The `coverage` binding, when there is one, runs first as a script of its own under its own
+# timeout; then the `crap` binding runs as a script under `timeout 10m` with the block's changed source files as
+# its arguments and `<scope>` replaced by "$@" (the stack's source extensions when `stack:` names one, else
+# every changed file that is no test, document or config file). No source file changed means no crap run and
+# the line `no source file changed`, green. A run that prints nothing, or exits non-zero with no method row
+# over the threshold, is red with its exit and the last line of its stderr. A method row of the run is a line whose first field carries a member separator (`.`, `:` or
 # `#`) and whose last field is a number, so a summary line is not read as a method. Exit 0 on green, 1 on red
 # with the first failing command, at most the last 30 lines of that run's output and every over-threshold
 # method on stderr, never the whole log.
@@ -223,39 +227,80 @@ if [ -n "$crap_binding" ]; then
   # why: its own under timeout, so an assignment, a pipe or a && in the cell all run as the toolset wrote them.
   # why: `<scope>` is the block's own changed source files (crap-loop.md: the task's diff, never the repo), and
   # why: `coverage` runs first when the toolset binds it, since crap reads what coverage wrote
-  scope=$(grep -v '\.md$' "$tmp/changed" | while IFS= read -r f; do
+  # the scope is the block's changed source files: the stack's own source extensions when the toolset names
+  # a stack, else every changed file that is neither a test, a document nor a build or config file. The
+  # paths are handed to the script as its arguments and `<scope>` becomes "$@", so a path with a space, a
+  # quote or a dollar is one argument and never shell
+  : > "$tmp/scope"
+  while IFS= read -r f; do
     [ -n "$f" ] && [ -f "$worktree/$f" ] || continue
     is_test_path "$f" && continue
-    printf '%s ' "$f"
-  done)
-  scope=${scope% }
+    case "$stack" in
+      dotnet) case "$f" in *.cs) ;; *) continue ;; esac ;;
+      node) case "$f" in *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs) ;; *) continue ;; esac ;;
+      python) case "$f" in *.py) ;; *) continue ;; esac ;;
+      *) case "$f" in *.md|*.json|*.yml|*.yaml|*.toml|*.xml|*.txt|*.lock|*.csproj|*.sln|*.props|*.targets|*.config|*.editorconfig|*.gitignore|*.gitattributes) continue ;; esac ;;
+    esac
+    printf '%s\n' "$f" >> "$tmp/scope"
+  done < "$tmp/changed"
   coverage_binding=$(binding_of "$toolset" coverage)
-  {
-    [ -z "$coverage_binding" ] || printf '%s >/dev/null 2>&1 || exit 97\n' "$coverage_binding"
-    printf '%s\n' "$(printf '%s' "$crap_binding" | sed "s|<scope>|$(printf '%s' "$scope" | sed 's/[|&\\]/\\&/g')|g")"
-  } > "$tmp/crap.sh"
-  set +e
-  ( cd "$worktree" && timeout 10m sh "$tmp/crap.sh" ) >"$tmp/crap" 2>"$tmp/crap.err"
-  crap_status=$?
-  set -e
-  crap=$(head -n1 "$tmp/crap")
-  # why: a run that printed nothing, or failed, proved nothing: it is red with its reason, never a green gate
-  if [ -z "$crap" ]; then
+  crap_status=0
+  if [ ! -s "$tmp/scope" ]; then
+    # why: a block that changed no source file has no method to score, and a tool given no path scores the
+    # why: whole repo, which is out of scope (ADR-0014) and would redden a test-only block on old code
+    crap='no source file changed'
+    : > "$tmp/crap"
+  else
+    # why: `timeout 10m DOTNET_ROLL_FORWARD=Major dotnet-crap ...` never ran: timeout takes a command, not an
+    # why: assignment, exited 127 into /dev/null and the empty run read green. The binding runs as a script of
+    # why: its own, so an assignment, a pipe or a && in the cell all run as the toolset wrote them. Coverage
+    # why: runs first, on its own and under its own timeout (the dotnet row carries 15m), since crap reads
+    # why: what coverage wrote; the 10m of the crap run is the crap run alone
+    if [ -n "$coverage_binding" ]; then
+      printf '%s\n' "$coverage_binding" > "$tmp/coverage.sh"
+      set +e
+      ( cd "$worktree" && sh "$tmp/coverage.sh" ) >"$tmp/coverage.out" 2>"$tmp/crap.err"
+      cov_status=$?
+      set -e
+      [ "$cov_status" -eq 0 ] || crap_status=97
+    fi
+    if [ "$crap_status" -eq 0 ]; then
+      printf '%s\n' "$(printf '%s' "$crap_binding" | sed 's|<scope>|"$@"|g')" > "$tmp/crap.sh"
+      set +e
+      ( cd "$worktree" && xargs_scope=$(cat "$tmp/scope") && set -f && IFS='
+' && set -- $xargs_scope && unset IFS && timeout 10m sh "$tmp/crap.sh" "$@" ) >"$tmp/crap" 2>"$tmp/crap.err"
+      crap_status=$?
+      set -e
+    else
+      : > "$tmp/crap"
+    fi
+    crap=$(head -n1 "$tmp/crap")
+  fi
+  # why: a run that printed nothing, or that failed, proved nothing: it is red with its reason, never a green
+  # why: gate; a tool that exits non-zero on a method over its threshold is red by that exit too, with the
+  # why: rows it printed when they parse
+  if [ -s "$tmp/scope" ] && { [ -z "$crap" ] || [ "$crap_status" -ne 0 ]; }; then
     case "$crap_status" in
       97) crap="coverage failed: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
-      *) crap="no value (exit $crap_status): $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+      0) crap="no value: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
+      *) crap="exit $crap_status: $(tail -n1 "$tmp/crap.err" 2>/dev/null)" ;;
     esac
     crap_over="(the crap run) $crap"
   fi
   # see: a method row is `<Type>.<Member> ... <value>`, pipes and all, so a summary line that happens to end
   # see: in a number ("Analyzed 123 files") is not one: the name has to carry a member separator
-  [ -n "$crap_over" ] || crap_over=$(awk -v t="$threshold" '
+  rows_over=$(awk -v t="$threshold" '
     { gsub(/\|/, " ") }
     NF < 2 { next }
     $NF !~ /^[0-9]+([.][0-9]+)?$/ { next }
     $1 !~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { next }
     $NF + 0 > t + 0 { print $1, $NF }' "$tmp/crap")
-  if [ -n "$crap_over" ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
+  if [ -n "$rows_over" ]; then
+    # a non-zero exit with rows over the threshold is those rows, the exit being the tool's own threshold
+    crap_over=$rows_over
+    crap_status=0
+  fi
+  if [ -n "$crap_over" ] && [ "$crap_status" -eq 0 ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
     joined='' over=0
     while IFS= read -r row; do
       [ -n "$row" ] || continue

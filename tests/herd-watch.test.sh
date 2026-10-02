@@ -85,6 +85,14 @@ printf 'T-001-01 merged 2\nT-001 open 5\n' > "$harness/mr-watch.state"
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
 check 'more comments on the task MR print the step'  0 '^T-001 comments 3 -> 5$' "$out"
 check 'an unchanged count prints nothing'            1 '^T-001-01 comments' "$out"
+# a state file from before the comments column: the first count is a baseline, not a line
+printf 'T-001 in_progress none gone open\nT-001-01 in_progress none gone merged\n' > "$seen"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'an old five-column record reports no comments line' 1 ' comments ' "$out"
+check 'but the record now carries the count'            0 '^T-001 in_progress none gone open 5$' "$(cat "$seen")"
+printf 'T-001-01 merged 2\nT-001 open 6\n' > "$harness/mr-watch.state"
+out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")
+check 'and the next count is news from that baseline' 0 '^T-001 comments 5 -> 6$' "$out"
 printf 'T-001-01 merged 2\n' > "$harness/mr-watch.state"
 
 out=$(sh "$bin/herd-watch.sh" T-001 --once --no-mr --state "$state")

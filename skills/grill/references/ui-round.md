@@ -3,7 +3,10 @@
 Held once per grill, as soon as a `research` row settles that the change touches a surface a person sees:
 a web page or component, a form, a dialog, an email, a CLI or TUI output, a report layout. A change with no
 such surface skips this file. Held in `--auto` too: it is the fifth case of `_shared/auto-decision.md`, and
-the recommendation is never taken for the human here.
+the recommendation is never taken for the human there. Under `--autonom` the `## Autonomous` section of that
+file applies instead: both questions below are decided by the session over the analysis table, the mockup
+page is still written with its variants so the MR reviewer sees what the choice was made against, and the
+decision line ends with `(analysed)`.
 
 ## Skipped when the task settles it
 

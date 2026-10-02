@@ -120,6 +120,11 @@ check 'mr-open.sh lists every block MR with its link and risk under ## Blocks' "
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --decisions --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
 check 'mr-open.sh --decisions without a plan exits 1' 1 "$rc"
 mkdir -p "$state/repos/demo/plans"
+printf -- '---\nrepo: demo\ntask: T-700\n---\n\n# Spec\nx.\n\n## Decisions\n\n## Program design\n' > "$state/repos/demo/plans/export-plan-ready.md"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --decisions --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+check 'mr-open.sh --decisions over a plan that decided nothing exits 0' 0 "$rc"
+check 'and says so' '- none taken' "$(printf '%s\n' "$out" | sed -n '/^## Decisions$/{n;p;}')"
+mkdir -p "$state/repos/demo/plans"
 printf -- '---\nrepo: demo\ntask: T-700\n---\n\n# Spec\nx.\n\n## Decisions\n- [locked] one exporter per format: the API resolves it by content type;\n  rejected: a switch, it grows per format\n* the stream is not buffered: large exports (human)\n\n## Program design\n' \
   > "$state/repos/demo/plans/export-plan-ready.md"
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --decisions --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?

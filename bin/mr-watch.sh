@@ -97,7 +97,7 @@ forge_of() { # <mr url>: the tool that speaks to that host
 
 view() { # <mr url>: the MR as the forge prints it, empty when the call fails
   case "$(forge_of "$1")" in
-    gh) gh pr view "$1" --json state,reviewDecision,comments,statusCheckRollup 2>/dev/null || : ;;
+    gh) gh pr view "$1" --json state,reviewDecision,comments,reviews,statusCheckRollup 2>/dev/null || : ;;
     *) glab mr view "$1" -F json 2>/dev/null || : ;;
   esac
 }
@@ -130,11 +130,24 @@ state_word() { # <the forge's json>
   fi
 }
 
-# GitLab counts the notes itself; GitHub hands over the array, so its elements are counted here
-comment_count() { # <the forge's json>
+# GitLab counts the notes itself; GitHub hands over the arrays, so their elements are counted here: the
+# conversation comments and the reviews (both carry a `body`), plus the inline review threads, which no field of
+# `gh pr view` lists and which `gh api .../pulls/<n>/comments` counts. why: a review submitted as "Comment" with
+# inline threads leaves the state `open` and, before this, the count unchanged, so the human's main way of
+# reviewing on GitHub never reached the watcher
+comment_count() { # <the forge's json> [<mr url>]
   n=$(printf '%s' "$1" | sed -n 's/.*"user_notes_count"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
-  [ -n "$n" ] || n=$(printf '%s' "$1" | grep -o '"body"' | wc -l | tr -d '[:space:]')
-  [ -n "$n" ] || n=0
+  if [ -z "$n" ]; then
+    n=$(printf '%s' "$1" | grep -o '"body"' | wc -l | tr -d '[:space:]')
+    [ -n "$n" ] || n=0
+    if [ -n "${2:-}" ] && [ "$(forge_of "$2")" = gh ]; then
+      cc_path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\([^/]*\)/\([^/]*\)/pull/\([0-9]*\).*#repos/\1/\2/pulls/\3/comments#p')
+      cc_inline=''
+      [ -z "$cc_path" ] || cc_inline=$(gh api "$cc_path" --jq length 2>/dev/null || :)
+      case "$cc_inline" in ''|*[!0-9]*) cc_inline=0 ;; esac
+      n=$((n + cc_inline))
+    fi
+  fi
   printf '%s' "$n"
 }
 
@@ -178,7 +191,7 @@ pass() {
     json=$(view "$url")
     [ -n "$json" ] || { printf '%s %s %s\n' "$b" "$(remembered "$b" 2)" "$(remembered "$b" 3)" >> "$new"; continue; }
     w=$(state_word "$json")
-    n=$(comment_count "$json")
+    n=$(comment_count "$json" "$url")
     was=$(remembered "$b" 2)
     wasn=$(remembered "$b" 3)
     case "$wasn" in ''|*[!0-9]*) wasn=0 ;; esac

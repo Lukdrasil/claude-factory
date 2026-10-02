@@ -92,12 +92,23 @@ check 'auto: the watcher follows them, once' 'herd-watch\.sh T-020 --interval 60
 check 'auto: one watch line for two dispatches' '^0$' "$r"
 check 'auto: step 4a opens with state-push.sh' "^  .*state-push\.sh --state $state\$" "$(printf '%s\n' "$out" | sed -n '/^Commands:$/{n;p;}')"
 
+printf '\n## Solution\nthe issue author wrote this heading\n' >> "$state/repos/demo/tasks/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a ## Solution heading without a view line is no pick' '^## Step 4a of 16: two solutions for T-020$' "$out"
+sed -i '/^## Solution$/,$d' "$state/repos/demo/tasks/T-020.md"
+# the state clone is a git repo from here: a solution file counts once it is committed
+git -C "$state" init -q 2>/dev/null; git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false add -A >/dev/null 2>&1
+git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m fixture >/dev/null 2>&1
 printf '# Solution (open) for T-020\n' > "$state/repos/demo/research/T-020-solution-open.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-no 'auto: a solution already written is not dispatched again' '\-\-step solution-open' "$out"
+check 'auto: a solution file not yet committed is dispatched again' '\-\-step solution-open' "$out"
+git -C "$state" add -A >/dev/null 2>&1 && git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'research: open' >/dev/null 2>&1
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+no 'auto: a committed solution is not dispatched again' '\-\-step solution-open' "$out"
 check 'auto: the missing one still goes out' '\-\-step solution-min' "$out"
 
 printf '# Solution (min) for T-020\n' > "$state/repos/demo/research/T-020-solution-min.md"
+git -C "$state" add -A >/dev/null 2>&1 && git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'research: min' >/dev/null 2>&1
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: both files present is the pick' '^## Step 4a of 16: the human picks the solution for T-020$' "$out"
 check 'auto: the pick goes through the ask rule' 'Completion:.*_shared/ask\.md' "$out"
@@ -130,17 +141,75 @@ no 'solve: step 4a is not a step of solve' 'Step 4a' "$out"
 # --- step 6: decompose with --auto; step 9 without the ask; step 11 blocked by recommendation ---------------
 mkdir -p "$tmp/product"
 printf 'demo: {url: https://github.com/o/demo.git, default_branch: main, path: %s}\n' "$tmp/product" > "$state/repos.yml"
-printf -- '---\nrepo: demo\ntask: T-020\n---\n' > "$state/repos/demo/plans/export-plan-ready.md"
+plan_body() { # <task> <steps sub-bullets>
+  cat <<EOF
+---
+repo: demo
+task: $1
+---
+
+# Spec
+x.
+
+## Decisions
+- one exporter per format: the API resolves it by content type
+
+## Program design
+
+## Proposed tasks
+
+### 1. the exporter
+- tier: green, small
+- archetype: feature
+- complexity: low, local
+- depends_on: []
+- goal: feat(demo): the exporter
+- context: x
+- acceptance: \`make test\`
+- docs: none
+- design: none
+- steps:
+$2
+- out of scope: y
+
+## Gap ledger
+| # | type | question | deps | state | answer |
+|---|---|---|---|---|---|
+| 1 | decision | q | - | closed | a |
+EOF
+}
+plan_body T-020 '  - wire it' > "$state/repos/demo/plans/export-plan-ready.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a plan without the test lines goes back to the grill' '^## Step 4 of 16: the plan of T-020 misses the auto musts$' "$out"
+check 'auto: with the lint lines shown' '^  # plan-lint: proposal 1 names no test' "$out"
+check 'auto: and the grill dispatched again' '\-\-step grill --auto' "$out"
+no 'auto: plan-check is not dispatched over such a plan' '\-\-step plan-check' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+no 'herd: the auto musts are not asked of a herd plan' 'misses the auto musts' "$out"
+plan_body T-020 '  - wire it
+  - test tests/exporter.test.sh: one row
+  - no e2e' > "$state/repos/demo/plans/export-plan-ready.md"
 mkdir -p "$tmp/product/docs/architecture"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: plan-check goes out with --auto' "session-monitor\.sh --task T-020 --step plan-check --auto --state $state\$" "$out"
+mkdir -p "$state/repos/demo/verdicts"
+printf -- '---\nverdict: misaligned\nplan: repos/demo/plans/export-plan-ready.md\nplan_hash: x\n---\n\n## plan-check\nthe finding\n' > "$state/repos/demo/verdicts/export.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a misaligned verdict stops the lane' '^## Step 5 of 16: plan-check found export misaligned$' "$out"
+check 'auto: with the findings shown' "^  cat $state/repos/demo/verdicts/export\.md\$" "$out"
+no 'auto: and nothing dispatched' 'session-monitor\.sh' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+check 'herd: a misaligned verdict is decompose, where a human may override it' '^## Step 6 of 16: decompose T-020' "$out"
+rm "$state/repos/demo/verdicts/export.md"
 rm -r "$tmp/product/docs"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: decompose goes out with --auto' "session-monitor\.sh --task T-020 --step decompose --auto --state $state\$" "$out"
 
 # a task with a plan but no ## Solution has no pick to call its consent: the auto lane keeps the herd's gates
 parent T-021 draft 'plans/export21-plan-ready.md'
-printf -- '---\nrepo: demo\ntask: T-021\n---\n' > "$state/repos/demo/plans/export21-plan-ready.md"
+plan_body T-021 '  - wire it
+  - test tests/e.test.sh: x
+  - no e2e' > "$state/repos/demo/plans/export21-plan-ready.md"
 block T-021-01 draft
 printf 'wave 1: T-021-01\n' > "$state/repos/demo/progress/T-021.md"
 out=$(sh "$bin/solve-next.sh" T-021 --auto --state "$state" 2>&1)
@@ -175,6 +244,12 @@ check 'auto: with the decision rule read' 'skills/_shared/auto-decision\.md' "$o
 check 'auto: and the human asked only where it says so' 'Completion:.*asked the human only where' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
 check 'autonom: a blocked block with no recommendation is analysed' 'Completion:.*your analysis picked' "$out"
+no 'autonom: a blocked block is not closed' 'set-status closed' "$out"
+block T-020-01 failed
+out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
+check 'autonom: a failed block carries the close for the case every option fails' 'state-report\.sh --task T-020-01 --set-status closed' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+no 'auto: a failed block is the human'"'"'s, no close printed' 'set-status closed' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 no 'herd: a blocked block stays the human'"'"'s' 'auto-decision\.md' "$out"
 block T-020-01 draft
@@ -191,13 +266,45 @@ out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: step 12 with an e2e row runs it' 'Completion:.*e2e binding ran green' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 no 'herd: step 12 says nothing of e2e' 'e2e' "$out"
-printf 'wave 1: T-020-01\n## Evidence\nok\n## Duplication\nnone\n## Review\nok\n' > "$state/repos/demo/progress/T-020.md"
+printf 'wave 1: T-020-01\n## Evidence\nok\n## Duplication\nnone\n' > "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 13 asks for the blocks line under ## Review' 'Completion:.*blocks: T-020-01 ' "$out"
+no 'auto: step 13 refreshes no MR before there is one' 'mr-open\.sh' "$out"
+printf 'wave 1: T-020-01\n## Evidence\nok\n## Duplication\nnone\n## Review\nblocks: T-020-01\nok\n' > "$state/repos/demo/progress/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: step 14 opens the MR with the decisions' "mr-open\.sh T-020 --decisions --state $state\$" "$out"
 check 'auto: the completion names the ## Decisions section' 'Completion:.*## Decisions' "$out"
 check 'auto: a review round is the fix round without an ask' 'Completion:.*without an ask' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 check 'herd: step 14 opens the MR without the decisions' "mr-open\.sh T-020 --state $state\$" "$out"
+
+# the fix round after the MR: a block done after the review brings steps 12 and 13 back, and 13 refreshes the MR
+sed -i 's/^status: in_progress$/status: review/; s/^complexity: medium$/complexity: medium\nmr_url: https:\/\/forge.test\/mr\/20/' "$state/repos/demo/tasks/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: with the MR open and every done block reviewed, step 16' '^## Step 16 of 16' "$out"
+block T-020-02 done
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a fix block done after the review is the fix round' '^## Step 12 of 16: fix round over T-020, after the task MR$' "$out"
+check 'auto: which names the block' 'Completion:.* T-020-02 merged' "$out"
+check 'auto: and resets the three sections' "^  sed -i .*## Evidence.*## Duplication.*## Review.* $state/repos/demo/progress/T-020\.md\$" "$out"
+eval "$(printf '%s\n' "$out" | sed -n 's/^  \(sed -i .*\)$/\1/p')"
+out=$(cat "$state/repos/demo/progress/T-020.md")
+check 'the reset keeps the wave plan' '^wave 1: T-020-01$' "$out"
+no 'the reset drops ## Review' '^## Review' "$out"
+no 'the reset drops ## Evidence' '^## Evidence' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 12 runs again after the reset' '^## Step 12 of 16: acceptance and quality over T-020$' "$out"
+printf '## Evidence\nok\n## Duplication\nnone\n' >> "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 13 lists both done blocks' 'Completion:.*blocks: T-020-01 T-020-02 ' "$out"
+check 'auto: and refreshes the MR body with the decisions' "mr-open\.sh T-020 --decisions --state $state\$" "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+check 'herd: the fix round refreshes the body without the decisions' "mr-open\.sh T-020 --state $state\$" "$out"
+printf '## Review\nblocks: T-020-01 T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: once reviewed, step 16 again' '^## Step 16 of 16' "$out"
+sed -i 's/^status: review$/status: in_progress/; /^mr_url:/d' "$state/repos/demo/tasks/T-020.md"
+rm "$state/repos/demo/tasks/T-020-02.md"
 
 # --- session-monitor.sh: the solution steps, their models and effort, --auto on grill and decompose ----------
 gitclone "$tmp/product" main
@@ -333,6 +440,7 @@ mkdir -p "$bv/state/repos/demo/tasks" "$bv/state/repos/demo/progress" "$bv/demo"
 printf 'demo: {url: https://github.com/o/demo.git, default_branch: main}\n' > "$bv/state/repos.yml"
 cat > "$bv/state/repos/demo/toolset.md" <<'EOF'
 ---
+stack: dotnet
 crap-threshold: 8
 test-globs:
   - "**/*.test.sh"
@@ -354,15 +462,36 @@ printf 'x\n' > "$wt/src.cs"; printf 'exit 0\n' > "$wt/b.test.sh"
 git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m change
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'block-verify runs a crap binding that opens with an assignment' '^crap:  src\.cs\.Run 2$' "$out"
-check 'and the scope is the changed source file, not the tests' '^crap:  src\.cs\.Run' "$out"
+check 'and the scope is the changed .cs file, not the tests nor the script' '^crap:  src\.cs\.Run 2$' "$out"
 check 'coverage ran first' '^verdict: green$' "$out"
 out=$(CRAP_VALUE=11 WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'a method over the threshold is red' '^crap:  over 8: src\.cs\.Run 11$' "$out"
 [ "$rc" = 1 ]; r=$?; check 'with exit 1' '^0$' "$r"
 sed -i 's/^| `crap <scope>` .*$/| `crap <scope>` | `sh crap.sh <scope>` |/' "$bv/state/repos/demo/toolset.md"
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
-check 'a crap run that prints nothing is red, with its exit code' '^crap:  no value (exit 3)' "$out"
+check 'a crap run that prints nothing is red, with its exit code' '^crap:  exit 3' "$out"
 check 'and the verdict says so' '^verdict: red$' "$out"
+# a run that fails but prints something is red too: the output is not a method row and the exit is not 0
+printf '#!/bin/sh\necho "Error: coverage file not found"\nexit 1\n' > "$wt/crap.sh"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a crap run that fails with output on stdout is red' '^crap:  exit 1' "$out"
+check 'with the verdict red' '^verdict: red$' "$out"
+# a tool that exits non-zero because a method is over its threshold reports the rows, not the exit
+printf '#!/bin/sh\nfor f; do printf "%%s.Run 12\\n" "$f"; done\nexit 2\n' > "$wt/crap.sh"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a non-zero exit with rows over the threshold reports the rows' '^crap:  over 8: src\.cs\.Run 12$' "$out"
+# a path with a space and a dollar is one argument, and no shell
+printf '#!/bin/sh\nprintf "%%s\\n" "$#"\nfor f; do printf "arg.%%s 1\\n" "$(printf %%s "$f" | tr -c "a-zA-Z0-9.\\n" _)"; done\n' > "$wt/crap.sh"
+mkdir -p "$wt/my dir" && printf 'y\n' > "$wt/my dir/\$(touch PWNED).cs"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m space
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'two changed source files are two arguments' '^crap:  2$' "$out"
+[ ! -e "$wt/PWNED" ]; r=$?; check 'and a path that looks like a command substitution runs nothing' '^0$' "$r"
+# no source file changed: no crap run, green
+git -C "$wt" rm -q 'src.cs' 'my dir/$(touch PWNED).cs' && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'tests only'
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a block with no source file changed runs no crap' '^crap:  no source file changed$' "$out"
+check 'and is green on its tests' '^verdict: green$' "$out"
 
 # --- the skills: the auto sections and the solution skill ------------------------------------------------------
 grill="$root/skills/grill/SKILL.md"
@@ -381,6 +510,9 @@ check 'the UI round asks for the variant' 'The variant' "$(cat "$ui")"
 check 'the grill steps hold the UI round before the design round' 'references/ui-round\.md' "$(awk '/^## / { on = ($0 == "## Steps"); next } on { print }' "$grill")"
 check 'the decision rule never takes the UI round for the human' 'surface a person sees' "$(cat "$root/skills/_shared/auto-decision.md")"
 check 'the UI round is skipped when the task settles the look' '^## Skipped when the task settles it$' "$(cat "$ui")"
+check 'the UI round has the autonom exception' 'Under `--autonom` the `## Autonomous` section' "$(cat "$ui")"
+check 'the auto grill runs plan-check with its flag' 'architect-review plan-check <plan> --auto` or `--autonom`' "$section_grill"
+check 'auto.md describes the fix round reset solve-next prints' 'Step 12 of 16: fix round over <T-id>' "$(cat "$root/skills/factory/references/auto.md")"
 check 'a design link in the task is the variant' 'design or mockup link' "$(cat "$ui")"
 check 'the look left to the agent in the task closes the row' 'no mockup' "$(cat "$ui")"
 dec="$root/skills/decompose/SKILL.md"
@@ -407,7 +539,7 @@ check 'auto.md turns the MR review into fix rounds' 'changes-requested' "$(cat "
 check 'the factory skill routes auto' '^| `auto` |' "$(cat "$root/skills/factory/SKILL.md")"
 check 'the factory skill routes autonom' '^| `autonom` |' "$(cat "$root/skills/factory/SKILL.md")"
 check 'auto.md has the autonom section' '^## autonom$' "$(cat "$auto")"
-check 'auto.md tells the fix round to drop the sections so 12 and 13 run again' 'remove `## Evidence`, `## Duplication` and `## Review`' "$(cat "$auto")"
+check 'auto.md tells the fix round to drop the sections so 12 and 13 run again' 'the three sections' "$(cat "$auto")"
 check 'auto.md reads the comments line of the task MR' '<T-id> comments <n> -> <m>' "$(cat "$auto")"
 check 'auto.md lists both files for a mixed pick' 'lists both files' "$(cat "$auto")"
 check 'the decision rule has the autonomous section' '^## Autonomous$' "$(cat "$root/skills/_shared/auto-decision.md")"

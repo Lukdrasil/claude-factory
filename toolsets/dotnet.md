@@ -25,7 +25,7 @@ not listed here does not exist for this repo — note it and move on.
 | `build` | `dotnet build {{solution}} -warnaserror -v q --nologo` |
 | `test` | `timeout 15m dotnet test {{solution}}` |
 | `test-filter <expr>` | `timeout 15m dotnet test {{solution}} --filter "<expr>"` |
-| `coverage` | `timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" && reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:TextSummary` |
+| `coverage` | `timeout 15m dotnet test {{solution}} --collect:"XPlat Code Coverage" && reportgenerator -reports:"**/coverage.cobertura.xml" -targetdir:.coverage -reporttypes:"TextSummary;Cobertura"` |
 | `mutation <scope>` | `dotnet stryker --mutate "<scope>" --break-at <n>` |
 | `crap <scope>` | `DOTNET_ROLL_FORWARD=Major dotnet-crap analyze <scope> --coverage .coverage/Cobertura.xml --threshold 8` |
 | `format` | `dotnet format whitespace {{solution}} --include <the changed files>` |
@@ -41,8 +41,9 @@ backquotes and run the rest, so a note beside the command runs as shell. The not
 `test-filter` takes VSTest's `--filter "<expr>"`. A repo on xunit.v3 under Microsoft.Testing.Platform takes
 `--filter-query "<expr>"` instead; change the binding when the repo is seeded.
 
-`coverage` writes `.coverage/`, which `crap` reads, so run `coverage` first; `block-verify.sh` does, and puts
-the block's changed source files, space-separated, in place of `<scope>`. `crap` runs on the newest
+`coverage` writes `.coverage/`, its `Cobertura` report the `.coverage/Cobertura.xml` that `crap` reads, so run
+`coverage` first; `block-verify.sh` does, and hands the block's changed `.cs` files to `crap` in place of
+`<scope>`, one argument each. `crap` runs on the newest
 runtime; the tool's default threshold is 30, changed code is held to the `crap-threshold:` above, which
 `block-verify.sh` reddens a block over.
 

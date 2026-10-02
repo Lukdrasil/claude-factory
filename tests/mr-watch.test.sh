@@ -43,4 +43,30 @@ check 'the parent is not set done by the watcher' 0 '^status: review$' "$(cat "$
 out=$(watch)
 check 'the merge is reported once'                1 'T-501 merged' "$out"
 
+# GitHub: a review with inline threads leaves the PR open; the reviews and the inline comments are counted
+mkdir -p "$state/repos/gh/tasks"
+printf 'gh: {url: "https://github.com/o/gh.git", default_branch: main, path: "%s"}\n' "$tmp/clone" >> "$state/repos.yml"
+printf -- '---\nid: T-502\nrepo: gh\nstatus: review\nbranch: feat/T-502-x\nmr_url: https://github.com/o/gh/pull/7\n---\n\n# Goal\nfeat(gh): x\n' \
+  > "$state/repos/gh/tasks/T-502.md"
+cat > "$tmp/bin/gh" <<STUB
+#!/bin/sh
+case "\$1 \$2" in
+  "pr view") cat "$tmp/mrs/pr7.json" ;;
+  api*) cat "$tmp/mrs/inline7.txt" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$tmp/bin/gh"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
+printf '0\n' > "$tmp/mrs/inline7.txt"
+watch2() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --once --state "$state" 2>&1; }
+out=$(watch2)
+check 'a GitHub PR with no review prints nothing'   1 'T-502 ' "$out"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"looks off, see threads","state":"COMMENTED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
+printf '2\n' > "$tmp/mrs/inline7.txt"
+out=$(watch2)
+check 'a review as Comment with inline threads is counted' 0 '^T-502 new-comments 3$' "$out"
+log=$(PATH="$tmp/bin:$PATH" sh -c 'gh api repos/o/gh/pulls/7/comments --jq length')
+check 'the inline count comes from the pulls comments endpoint' 0 '^2$' "$log"
+
 exit $fail

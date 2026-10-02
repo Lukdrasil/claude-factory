@@ -113,9 +113,14 @@ and no other:
 - **Tests in every proposal.** The `steps:` of every proposal that is not `research` name the tests that
   cover its functionality, one sub-bullet per test file, `test <path>: <what it proves>`, and the end-to-end
   test it needs, or a sub-bullet `no e2e`. A behaviour of the design with no test line is an open gap.
-  `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh <plan> --auto` checks both and is the lint of step 4 here.
+  `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh <plan> --auto` checks both and is the lint of step 4 here;
+  `solve-next.sh` runs it again before plan-check and sends a plan that fails it back to this grill.
   `## Acceptance` stays one runnable command; the crap threshold is `block-verify.sh`'s gate and needs no
   acceptance line.
+- **Plan-check with the same flag.** The plan-check of step 4 (`references/output.md`) runs as
+  `architect-review plan-check <plan> --auto` or `--autonom`, the flag this grill got: its findings are edits
+  and reruns under its `## Auto mode`, never a question to the human, and `overridden-by-human` is never
+  written; a `misaligned` no edit clears is a stop the lane reports.
 - **Every decision is recorded.** `## Decisions` holds each one, one line, `[locked]` where it passes the
   three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`: the task MR
   carries the section verbatim (`mr-open.sh --decisions`).
