@@ -68,7 +68,9 @@ Step 4 dispatches `session-monitor.sh --task <T-id> --step grill --auto`, the gr
 every round is written out with its options and recommendation and the recommendation is taken, the design
 round and the proposals round the same, and only a question `_shared/auto-decision.md` names reaches the
 human, in the grill's tab. The watcher's `<T-id>-grill agent ... -> blocked` is that question: tell the human
-which tab. Two musts the auto grill adds, checked by you on the plan before step 5: every proposal's `steps:`
+which tab. One such question is always asked when the change reaches a surface a person sees: the UI round
+of `skills/grill/references/ui-round.md`, a mockup page with variants to pick from or the look left to the
+agent, and after a mockup the variant. Two musts the auto grill adds, checked by you on the plan before step 5: every proposal's `steps:`
 names the tests that cover its functionality, one sub-bullet per test file (`test <path>: <what it proves>`),
 and the end-to-end test it needs, or `no e2e`; and `## Decisions` holds every decision taken, the ones the
 human answered ending with `(human)`.

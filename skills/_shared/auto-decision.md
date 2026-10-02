@@ -23,6 +23,10 @@ every question that does not hang on it goes on. Ask only when one of these hold
    task's own MRs, anything that costs money or reaches outside the repository.
 4. **Every option fails.** A blocked block whose options all break `## Acceptance` or the behaviour the task
    promises, or a `failed` block at its second attempt.
+5. **The change reaches a surface a person sees.** The grill's UI round
+   (`skills/grill/references/ui-round.md`): whether to mock the result up with variants to pick from, or to
+   leave the look to the agent, and the pick of a variant after a mockup. How a thing looks is the human's
+   call, so no recommendation is taken for them here.
 
 A permission dialog of a session is none of these: the monitor reads it and asks, as `references/herd.md`
 says. The human's own words, in the `## Solution` of the task or in an answer, win over any recommendation.

@@ -81,7 +81,9 @@ row again.
 1. Run the interview loop, keeping the gap ledger of
    `references/ledger.md`, which also holds the musts the loop has to ask about, and close every row, dry run
    included. Every answered round completes with the grill file `<slug>-grill.md` written.
-2. Hold the design round of `references/design-round.md` and get the sketch approved as written.
+2. Hold the UI round of `references/ui-round.md` when the change reaches a surface a person sees: the human
+   chooses a mockup with variants to pick from, or leaves the look to the agent. Then the design round of
+   `references/design-round.md`, and get the sketch approved as written.
 3. Hold the proposals round of `references/output.md`: the cut with every proposal's steps, approved as
    written.
 4. Write the proposals and the plan (its frontmatter carries `task:`), lint it with `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` and run plan-check, per
@@ -114,4 +116,7 @@ the design round, the proposals round and the plan are as above, with these delt
 - **Every decision is recorded.** `## Decisions` holds each one, one line, `[locked]` where it passes the
   three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`: the task MR
   carries the section verbatim (`mr-open.sh --decisions`).
+- **The UI round is still asked.** A change that reaches a surface a person sees puts the question of
+  `references/ui-round.md` to the human, mockup or agent, and the variant pick after a mockup; the fifth
+  case of `_shared/auto-decision.md`.
 - **Finishing** is the summary of `references/output.md` as a notice, no question in it.

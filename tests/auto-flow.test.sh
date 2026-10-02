@@ -237,6 +237,13 @@ check 'the auto grill takes the recommendation under the decision rule' '_shared
 check 'the auto grill reads the chosen solution' '## Solution' "$section"
 check 'the auto grill puts tests into every proposal' 'test <path>: <what it proves>' "$section"
 check 'the auto grill marks the human'"'"'s decisions' '(human)' "$section"
+check 'the auto grill still asks the UI round' 'references/ui-round\.md' "$section"
+ui="$root/skills/grill/references/ui-round.md"
+check 'the UI round offers a mockup or the agent' 'agent decides' "$(cat "$ui")"
+check 'the UI round writes the mockup under research' 'research/<id>-ui-mockup\.html' "$(cat "$ui")"
+check 'the UI round asks for the variant' 'The variant' "$(cat "$ui")"
+check 'the grill steps hold the UI round before the design round' 'references/ui-round\.md' "$(awk '/^## / { on = ($0 == "## Steps"); next } on { print }' "$grill")"
+check 'the decision rule never takes the UI round for the human' 'surface a person sees' "$(cat "$rule")"
 dec="$root/skills/decompose/SKILL.md"
 section=$(awk '/^## / { on = ($0 == "## Auto mode"); next } on { print }' "$dec")
 check 'decompose has an auto mode' '.' "$section"
