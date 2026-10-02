@@ -18,7 +18,8 @@
 # name `<emoji> <key> <unit>`, the tab label and the `claude --name` of the unit: the emoji is the repo's `emoji:`
 # in repos.yml, and without one a fixed pick out of sixteen by the `cksum` of the key, so a repo keeps its emoji
 # from run to run. `--role` puts the role's own emoji in front, `<role emoji> <emoji> <key> <unit>`: 📡 monitor,
-# 🔎 triage, 🎤 grill, 📐 plan-check, 🧩 decompose, 🧪 test-designer, 🔨 implementer, 🧠 implementer-senior; a
+# 🔎 triage, 💡 solution-open, 🪛 solution-min, 🎤 grill, 📐 plan-check, 🧩 decompose, 🧪 test-designer,
+# 🔨 implementer, 🧠 implementer-senior; a
 # role not in that list adds nothing.
 #
 # `session` appends the unit's open record line again with the session id, once the session is known. `state`
@@ -177,7 +178,8 @@ case "$verb" in
       emoji=$(printf '%s\n' 🦊 🐙 🦉 🐝 🐢 🦀 🐳 🦋 🌵 🍄 🌻 🍋 🔥 🌊 🪐 🎲 | sed -n "$((sum % 16 + 1))p")
     fi
     case "$role" in
-      monitor) re=📡 ;; triage) re=🔎 ;; grill) re=🎤 ;; plan-check) re=📐 ;; decompose) re=🧩 ;;
+      monitor) re=📡 ;; triage) re=🔎 ;; solution-open) re=💡 ;; solution-min) re=🪛 ;; grill) re=🎤 ;;
+      plan-check) re=📐 ;; decompose) re=🧩 ;;
       test-designer) re=🧪 ;; implementer) re=🔨 ;; implementer-senior) re=🧠 ;; *) re='' ;;
     esac
     printf '%s%s %s %s\n' "${re:+$re }" "$emoji" "$key" "$1" ;;

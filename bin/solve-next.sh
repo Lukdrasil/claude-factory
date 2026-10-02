@@ -3,12 +3,20 @@
 # coordinator's context: the parent task file, its T-NNN-NN blocks and their statuses, the worktrees under
 # <root>/<key>/, the architect verdict file and the progress file.
 #
-#   solve-next.sh <T-NNN> [--state <dir>] [--herd]
+#   solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto]
 #                            the state clone; default $WORK_DIR/state, else resolved from the cwd
 #                            --herd prints the steps of `factory herd` (skills/factory/references/herd.md): a
 #                            step that writes goes out as an interactive session through session-monitor.sh,
 #                            one per parent-level step (3 to 6) and one per block of a wave (11), and a block
 #                            whose session still works is a wait on herd-watch.sh; every gate stays yours
+#                            --auto prints the steps of `factory auto` (skills/factory/references/auto.md): the
+#                            herd, with step 4a in front of the grill, two solution sessions and the human's
+#                            pick, the one gate the human answers; from there the grill and decompose go out
+#                            with --auto, the approval, a blocked block and a review round take the
+#                            recommendation (skills/_shared/auto-decision.md), step 12 runs the toolset's e2e
+#                            when it binds one, and the task MR carries the plan's decisions (mr-open.sh
+#                            --decisions). It needs a `crap` row in the toolset: the auto lane holds every
+#                            changed method to the crap threshold through block-verify.sh
 #
 # T-164: a block ends in its own MR into the branch of the block it was cut from, so step 11 runs until every
 # block is `done`, which is what mr-watch.sh writes when the developer merges that MR on the forge. A block in
@@ -48,16 +56,18 @@ die() { printf 'solve-next: %s\n' "$1" >&2; exit 1; }
 bin=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 plugin=$(dirname -- "$bin")
 
-id='' state='' herd=''
+id='' state='' herd='' auto=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     --herd) herd=1; shift ;;
+    # the auto lane is the herd with its own step 4a and its decisions taken by recommendation
+    --auto) herd=1; auto=1; shift ;;
     -*) die "unknown argument '$1'" ;;
     *) [ -z "$id" ] || die "one parent id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--herd]"
+[ -n "$id" ] || die "usage: solve-next.sh <T-NNN> [--state <dir>] [--herd|--auto]"
 is_parent_id "$id" || die "'$id' is not a parent task id of the shape T-NNN"
 
 # see: block-brief.sh, the same resolution: $WORK_DIR/state when it is a clone, else what the cwd resolves to,
@@ -122,20 +132,25 @@ cmd() { printf '  %s\n' "$1"; }
 # the watcher is armed once per herd through the Monitor tool, never run as a command of its own: it never ends
 watch_line() { cmd "Monitor tool, armed once per herd: $bin/herd-watch.sh $id --interval 60 --state $state"; }
 # a parent-level step of the herd, one session of session-monitor.sh; a step whose session still runs in its tab
-# is a wait, since a second dispatch would close that tab and lose the conversation a grill holds with the human
+# is a wait, since a second dispatch would close that tab and lose the conversation a grill holds with the human.
+# The auto lane passes --auto on to the grill and decompose dispatch, and the watch line follows the caller's
+# last dispatch, since step 4a dispatches two sessions under one watcher
+auto_arg=''
+[ -z "$auto" ] || auto_arg=' --auto'
 dispatch_step() { # <step>
   ds_agent=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null | awk -v u="$id-$1" '$1 == u { print $2; exit }')
+  ds_auto=''
+  case "$1" in grill|decompose) ds_auto=$auto_arg ;; esac
   case "$ds_agent" in
-    ''|gone|closed) cmd "$bin/session-monitor.sh --task $id --step $1 --state $state" ;;
+    ''|gone|closed) cmd "$bin/session-monitor.sh --task $id --step $1$ds_auto --state $state" ;;
     idle|done)
       # why: an idle step may be a round waiting on its human, or a turn that ended short of the step; only the
       # why: second is started again, after one prompt, and session-monitor.sh keeps a focused or busy tab
       cmd "# $id-$1 is idle in its tab: its human may be answering it there. Once its turn ended short of the Completion above, prompt it once (herdr agent prompt $1_<tail> ...), and if that ends short too, start it again:"
-      cmd "$bin/session-monitor.sh --task $id --step $1 --state $state" ;;
+      cmd "$bin/session-monitor.sh --task $id --step $1$ds_auto --state $state" ;;
     unknown) cmd "# herdr does not answer, so $id-$1 cannot be read: run factory doctor for the herdr server, then this step again" ;;
     *) cmd "# $id-$1 runs in its tab (agent $ds_agent); wait on the watcher, and its human answers it there" ;;
   esac
-  watch_line
 }
 
 tier=$(fm "$task" tier)
@@ -148,7 +163,7 @@ mr_url=$(fm "$task" mr_url)
 
 triage_step() {
   emit "Step 3 of 16: triage $id" "tier and archetype are set on $id and ## Related issues is written for a feature, bugfix or refactor."
-  if [ -n "$herd" ]; then dispatch_step triage; exit 0; fi
+  if [ -n "$herd" ]; then dispatch_step triage; watch_line; exit 0; fi
   cmd "cat $task"
   cmd "cat $plugin/skills/_shared/investigate.md"
   cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): triaged'"
@@ -171,10 +186,46 @@ triaged() {
   case "$archetype" in feature|bugfix|refactor) grep -q '^## Related issues[[:space:]]*$' "$task" ;; esac
 }
 
+# step 4a of the auto lane (skills/factory/references/auto.md): two solution sessions, then the human's pick,
+# written as `## Solution` into the task; the one gate the human answers in that lane
+toolset="$state/repos/$key/toolset.md"
+binds() { grep -qE "^\|[[:space:]]*\`$1( |\`)" "$toolset" 2>/dev/null; }
+auto_solutions_step() {
+  ! grep -q '^## Solution[[:space:]]*$' "$task" || return 0
+  sol_open="$state/repos/$key/research/$id-solution-open.md"
+  sol_min="$state/repos/$key/research/$id-solution-min.md"
+  # why: the lane promises every changed method at or under the crap threshold, and block-verify.sh can only
+  # why: hold that with a crap row; without one the gate reads `not bound` and the promise is empty
+  if ! binds crap; then
+    emit "Step 4a of 16: the toolset of $key binds no crap" "$toolset has a \`crap <scope>\` row (and a \`coverage\` row it reads), so block-verify.sh holds every changed method to the crap threshold; factory doctor names the tools it needs. Add an \`e2e\` row too when the repo has an end-to-end suite, so step 12 runs it."
+    cmd "cat $toolset"
+    cmd "$bin/factory-doctor.sh --root $root"
+    exit 0
+  fi
+  if [ ! -f "$sol_open" ] || [ ! -f "$sol_min" ]; then
+    emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone."
+    [ -f "$sol_open" ] || dispatch_step solution-open
+    [ -f "$sol_min" ] || dispatch_step solution-min
+    watch_line
+    exit 0
+  fi
+  emit "Step 4a of 16: the human picks the solution for $id" "the human chose through _shared/ask.md between the two solutions below (A the open one, B the minimal one, or their own words over either), and ## Solution is written at the end of $task, naming the view, the file and the human's words, reported with state-report.sh --no-status. That yes is the consent for the rest of the lane: the grill, decompose, the approval, the blocks and the task MR run without another ask (references/auto.md)."
+  cmd "cat $sol_open"
+  cmd "cat $sol_min"
+  cmd "cat $plugin/skills/factory/references/auto.md"
+  cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): solution chosen'"
+  exit 0
+}
+
 if [ -z "$slug" ] || [ ! -f "$plan" ]; then
   triaged || triage_step
+  [ -z "$auto" ] || auto_solutions_step
+  if [ -n "$auto" ]; then
+    emit "Step 4 of 16: grill $id" "no open gaps, the program design and the proposals are taken by their recommendations under _shared/auto-decision.md (the human asked only where that file says so), every proposal's steps name the tests that cover it, and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
+    dispatch_step grill; watch_line; exit 0
+  fi
   emit "Step 4 of 16: grill $id" "no open gaps, the program design is approved and $state/repos/$key/plans/<slug>-plan-ready.md exists with task: $id in its frontmatter."
-  if [ -n "$herd" ]; then dispatch_step grill; exit 0; fi
+  if [ -n "$herd" ]; then dispatch_step grill; watch_line; exit 0; fi
   cmd "cat $plugin/skills/grill/SKILL.md"
   cmd "cat $task"
   exit 0
@@ -193,7 +244,7 @@ verdict="$state/repos/$key/verdicts/$slug.md"
 # why: writes the blocks, so a parent with blocks is past this step
 if [ -z "$blocks" ] && [ -n "$product" ] && [ -d "$product/docs/architecture" ] && [ ! -f "$verdict" ]; then
   emit "Step 5 of 16: architect plan-check of $slug" "$verdict records a verdict whose plan_hash is the current hash of $plan."
-  if [ -n "$herd" ]; then dispatch_step plan-check; exit 0; fi
+  if [ -n "$herd" ]; then dispatch_step plan-check; watch_line; exit 0; fi
   cmd "cat $plugin/skills/architect-review/SKILL.md"
   cmd "sha256sum $plan"
   exit 0
@@ -201,7 +252,7 @@ fi
 
 if [ -z "$blocks" ]; then
   emit "Step 6 of 16: decompose $id into blocks" "every block of the cut is a draft T-NNN-NN file, at most 12 of them, each with its depends_on."
-  if [ -n "$herd" ]; then dispatch_step decompose; exit 0; fi
+  if [ -n "$herd" ]; then dispatch_step decompose; watch_line; exit 0; fi
   cmd "cat $plugin/skills/decompose/SKILL.md"
   cmd "cat $plan"
   exit 0
@@ -230,9 +281,15 @@ case "$status" in
       case "$(fm "$bf" status)" in draft|triaged) approve="$approve $b" ;; esac
     done
     approve=${approve# }
-    emit "Step 9 of 16: approve and claim $id" "the human said yes in the approval ask of references/approve.md, and $id is in_progress with plan_hash set and owner: the owner string of your Session identity line."
+    if [ -n "$auto" ]; then
+      # why: the human's pick of step 4a is the consent of the auto lane, so the approval is the script run
+      # why: and no ask; the bodies are still printed, as a notice, so the human can read what went ready
+      emit "Step 9 of 16: approve and claim $id" "task-approve.sh has set $id and its blocks ready without an ask, the human's pick of step 4a being the consent (references/auto.md), the bodies shown as a notice, and $id is in_progress with plan_hash set and owner: the owner string of your Session identity line."
+    else
+      emit "Step 9 of 16: approve and claim $id" "the human said yes in the approval ask of references/approve.md, and $id is in_progress with plan_hash set and owner: the owner string of your Session identity line."
+    fi
     if [ -n "$approve" ]; then
-      cmd "cat $plugin/skills/factory/references/approve.md"
+      [ -n "$auto" ] || cmd "cat $plugin/skills/factory/references/approve.md"
       cmd "$bin/task-approve.sh $approve --state $state"
     fi
     cmd "$bin/state-report.sh --task $id --set-status in_progress --owner <owner> --message 'chore($id): claimed'"
@@ -323,9 +380,14 @@ if [ -n "$pending" ]; then
 
   if [ "$bs" = blocked ] || [ "$bs" = failed ]; then
     if [ -n "$herd" ]; then bretry="the next dispatch of its wave, a fresh session"; else bretry="a fresh implement subagent"; fi
-    emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+    if [ -n "$auto" ]; then
+      emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or asked the human only where _shared/auto-decision.md says so, applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+    else
+      emit "Step 11 of 16: $pending is $bs" "the human has answered the question in $bprogress, what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+    fi
     cmd "cat $bprogress"
     cmd "cat $plugin/skills/_shared/blocked-question.md"
+    [ -z "$auto" ] || cmd "cat $plugin/skills/_shared/auto-decision.md"
     cmd "$bin/task-approve.sh $pending --state $state"
     [ -n "$herd" ] || cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
@@ -337,8 +399,12 @@ if [ -n "$pending" ]; then
   elif [ "$bs" = draft ] || [ "$bs" = triaged ]; then
     # why: a block written after the approval (a thread outside a block's acceptance, a fix round) is a draft,
     # why: and draft -> in_progress is no agent transition
-    emit "Step 11 of 16: approve $pending" "the human said yes in the approval ask of references/approve.md and $pending is ready."
-    cmd "cat $plugin/skills/factory/references/approve.md"
+    if [ -n "$auto" ]; then
+      emit "Step 11 of 16: approve $pending" "task-approve.sh has set $pending ready without an ask, as references/auto.md says of a block written after the pick."
+    else
+      emit "Step 11 of 16: approve $pending" "the human said yes in the approval ask of references/approve.md and $pending is ready."
+      cmd "cat $plugin/skills/factory/references/approve.md"
+    fi
     cmd "$bin/task-approve.sh $pending --state $state"
   elif [ -n "$herd" ] && { [ "$bs" = ready ] || [ "$bs" = tests_ready ] ||
       { [ ! -e "$bwt/.git" ] && { [ "$bs" = in_progress ] || [ "$bs" = claimed ]; }; }; }; then
@@ -448,7 +514,14 @@ fi
 base=$(base_branch)
 
 if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
-  emit "Step 12 of 16: acceptance and quality over $id" "the parent's ## Acceptance is green verbatim, format and arch-build are recorded under ## Evidence in $progress, and crap is a gate, not a recording: no changed method is over the toolset's crap-threshold, every method skipped or exempt under _shared/test-exemptions.md is listed by name in ## Quality, and a method still over it carries its reason in the note."
+  e2e=''
+  # why: the auto lane ends in a build and the whole test run, the end-to-end suite included where the repo
+  # why: binds one; a toolset without the row has none to run, and the line says so
+  if [ -n "$auto" ]; then
+    if binds e2e; then e2e=", the build and the test bindings are green over the work branch and the toolset's e2e binding ran green and is recorded under ## Evidence too"
+    else e2e=", the build and the test bindings are green over the work branch and ## Evidence notes that the toolset binds no e2e"; fi
+  fi
+  emit "Step 12 of 16: acceptance and quality over $id" "the parent's ## Acceptance is green verbatim, format and arch-build are recorded under ## Evidence in $progress$e2e, and crap is a gate, not a recording: no changed method is over the toolset's crap-threshold, every method skipped or exempt under _shared/test-exemptions.md is listed by name in ## Quality, and a method still over it carries its reason in the note."
   cmd "sed -n '/^## Acceptance/,/^## /p' $task"
   cmd "sed -n '/^|/p' $state/repos/$key/toolset.md"
   cmd "cat $plugin/skills/_shared/crap-loop.md"
@@ -473,12 +546,16 @@ if ! grep -q '^## Review' "$progress" 2>/dev/null; then
 fi
 
 if [ -z "$mr_url" ]; then
-  emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, mr-open.sh has written its URL into the mr_url of $id, and the human has been asked to review and merge it; done follows the merge."
+  if [ -n "$auto" ]; then
+    emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts, lists every block MR under ## Blocks and every decision of the grill under ## Decisions (mr-open.sh --decisions), mr-open.sh has written its URL into the mr_url of $id, and the human has been told it is theirs to review: a review round on it is the fix round of references/auto.md, taken without an ask, and done follows the merge."
+  else
+    emit "Step 14 of 16: the task MR of $id for the human's review" "the MR of $id into $base exists with no conflicts and lists every block MR under ## Blocks, mr-open.sh has written its URL into the mr_url of $id, and the human has been asked to review and merge it; done follows the merge."
+  fi
   cmd "git -C $worktree fetch origin"
   cmd "git -C $worktree rebase origin/$base"
   cmd "git -C $worktree push --force-with-lease origin ${branch:-HEAD}"
   cmd "cat $plugin/skills/_shared/mr-description.md"
-  cmd "$bin/mr-open.sh $id --state $state"
+  cmd "$bin/mr-open.sh $id${auto:+ --decisions} --state $state"
   exit 0
 fi
 

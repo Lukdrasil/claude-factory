@@ -115,6 +115,26 @@ check 'mr-open.sh lists every block MR with its link and risk under ## Blocks' "
   '- [feat(demo): ship T-700-03](https://github.com/o/demo/pull/13), risk not rated')" \
   "$(printf '%s\n' "$out" | sed -n '/^## Blocks$/,/^$/p' | sed '/^$/d')"
 
+# --decisions: the task MR of factory auto carries every bullet of the plan's ## Decisions, the [locked] tag
+# dropped, after ## Blocks and outside the 120 words; a task with no plan, or a plan with no bullet, is exit 1
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --decisions --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+check 'mr-open.sh --decisions without a plan exits 1' 1 "$rc"
+mkdir -p "$state/repos/demo/plans"
+printf -- '---\nrepo: demo\ntask: T-700\n---\n\n# Spec\nx.\n\n## Decisions\n- [locked] one exporter per format: the API resolves it by content type; rejected: a switch, it grows per format\n- the stream is not buffered: large exports (human)\n\n## Program design\n' \
+  > "$state/repos/demo/plans/export-plan-ready.md"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --decisions --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+check 'mr-open.sh --decisions exits 0 with a plan' 0 "$rc"
+[ "$rc" = 0 ] || printf '  output: %s\n' "$out"
+check 'mr-open.sh --decisions lists the plan decisions without the locked tag' "$(printf '%s\n' \
+  '## Decisions' \
+  '- one exporter per format: the API resolves it by content type; rejected: a switch, it grows per format' \
+  '- the stream is not buffered: large exports (human)')" \
+  "$(printf '%s\n' "$out" | sed -n '/^## Decisions$/,/^$/p' | sed '/^$/d')"
+check 'mr-open.sh --decisions keeps ## Blocks in front of it' '## Blocks' \
+  "$(printf '%s\n' "$out" | grep -E '^## (Blocks|Decisions)$' | head -n1)"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1)
+check 'mr-open.sh without --decisions lists none' '' "$(printf '%s\n' "$out" | grep -c '^## Decisions$' | sed 's/^0$//')"
+
 out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp/demo/T-700-01" 2>&1); rc=$?
 check 'block-mr.sh --dry-run exits 0' 0 "$rc"
 [ "$rc" = 0 ] || printf '  output: %s\n' "$out"

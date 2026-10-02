@@ -5,7 +5,7 @@
 # worktree with the task's `branch:` as source and its base as target: its `base_branch:`, else the repo's
 # `default_branch:`.
 #
-#   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--state <dir>] [--worktree <dir>]
+#   mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--decisions] [--state <dir>] [--worktree <dir>]
 #
 # The `Issues` file is what `issue-finder` answered: its `closes #12` / `refs #30` lines become the `Issues`
 # line, everything else in it is ignored. --dry-run prints the commands and the description and exits 0.
@@ -30,10 +30,11 @@ set -eu
 
 die() { printf 'mr-open: %s\n' "$1" >&2; exit 1; }
 
-id='' dry='' issues='' state='' worktree=''
+id='' dry='' issues='' decisions='' state='' worktree=''
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) dry=1; shift ;;
+    --decisions) decisions=1; shift ;;
     --issues) [ $# -ge 2 ] || die "--issues needs a value"; issues=$2; shift 2 ;;
     --state) [ $# -ge 2 ] || die "--state needs a value"; state=$2; shift 2 ;;
     --worktree) [ $# -ge 2 ] || die "--worktree needs a value"; worktree=$2; shift 2 ;;
@@ -41,7 +42,7 @@ while [ $# -gt 0 ]; do
     *) [ -z "$id" ] || die "one task id at a time"; id=$1; shift ;;
   esac
 done
-[ -n "$id" ] || die "usage: mr-open.sh <T-NNN> [--dry-run] [--issues <file>]"
+[ -n "$id" ] || die "usage: mr-open.sh <T-NNN> [--dry-run] [--issues <file>] [--decisions]"
 
 if [ -z "$state" ]; then
   if [ -n "${WORK_DIR:-}" ] && [ -d "$WORK_DIR/state/repos" ]; then
@@ -162,6 +163,26 @@ for b in $blocks; do
 "
 done
 if [ -n "$listed" ]; then printf '\n## Blocks\n%s' "$listed" >> "$desc"; fi
+
+if [ -n "$decisions" ]; then
+  dplan=''
+  for f in "$state/repos/$key/plans/"*-plan-ready.md; do
+    [ -f "$f" ] && [ "$(task_fields "$f" task)" = "$id" ] || continue
+    dplan=$f; break
+  done
+  if [ -z "$dplan" ]; then
+    dslug=$(plan_slug < "$task")
+    [ -z "$dslug" ] || dplan="$state/repos/$key/plans/$dslug-plan-ready.md"
+  fi
+  [ -n "$dplan" ] && [ -f "$dplan" ] || die "--decisions: $id names no plan-ready file under $state/repos/$key/plans/"
+  decided=$(awk '
+    /^## Decisions[[:space:]]*$/ { f = 1; next }
+    f && /^#/ { exit }
+    f && /^-[[:space:]]/ { sub(/^-[[:space:]]*/, ""); sub(/^\[locked\][[:space:]]*/, ""); if ($0 != "") print "- " $0 }
+  ' "$dplan")
+  [ -n "$decided" ] || die "--decisions: $dplan has no bullet under ## Decisions to put into the MR"
+  printf '\n## Decisions\n%s\n' "$decided" >> "$desc"
+fi
 
 base=''
 if [ -f "$state/repos.yml" ]; then

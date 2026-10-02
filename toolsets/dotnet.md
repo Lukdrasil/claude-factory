@@ -52,6 +52,10 @@ over the solution (Roslyn `FindReferencesAsync`) is more precise; read the grep 
 
 `hotspots` writes the Risk Hotspots page, the CRAP ranking for the whole repo.
 
+`e2e` is not bound here: a repo with an end-to-end suite adds the row, `| \`e2e\` | <the command that runs it> |`,
+and the auto lane (`skills/factory/references/auto.md`) runs it in step 12; without the row the lane records
+that there is none.
+
 `arch-build` exists once the repo has a model. `--no-use-dot` uses likec4's bundled WASM Graphviz, so no
 native `dot` is needed on PATH.
 

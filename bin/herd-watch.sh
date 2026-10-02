@@ -28,7 +28,7 @@
 # of that pass is how the monitor learns of the close.
 #
 # The units are the parent, every block of it, and the parent-level step sessions
-# `<T-id>-<triage|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step
+# `<T-id>-<triage|solution-open|solution-min|grill|plan-check|decompose>` that session-monitor.sh --step dispatches. A step
 # session is tracked from the first pass that sees it live; a block with no live agent is still tracked for its
 # status, because that is what the session writes through state-report.sh.
 #
@@ -123,7 +123,7 @@ pass() {
     p=$(field "$f" phase); [ -n "$p" ] && [ "$p" != null ] || p=none
     printf '%s %s %s %s %s\n' "$u" "$s" "$p" "$(agent_state "$u")" "$(mr_state "$u")" >> "$now"
   done
-  for step in triage grill plan-check decompose; do
+  for step in triage solution-open solution-min grill plan-check decompose; do
     u="$id-$step"
     a=$(agent_state "$u")
     # a step session nobody dispatched is not news; one that was live and is gone is

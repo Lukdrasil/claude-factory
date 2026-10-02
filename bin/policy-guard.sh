@@ -458,7 +458,7 @@ pre_approval_write() { # <absolute path>
   case "$status" in draft|triaged)
     deny "task $task is '$status', not approved yet, so its worktree is read-only until task-approve.sh approves it (ADR-0004): $1" ;;
   esac
-  case "${FACTORY_ROLE:-}" in triage|grill|plan-check|decompose)
+  case "${FACTORY_ROLE:-}" in triage|solution-open|solution-min|grill|plan-check|decompose)
     deny "a $FACTORY_ROLE session reads the product repo and writes only into the state clone: $1" ;;
   esac
 }

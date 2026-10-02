@@ -80,6 +80,29 @@ whose watcher expired, `herdr-tabs.sh reattach <T-id>` finds the sessions again 
 doctor checks herdr 0.8.2 or later, its server and its Claude integration (`skills/factory/references/herd.md`,
 `skills/herdr/SKILL.md`). Without herdr the same commands are printed for the human to start by hand.
 
+## The auto lane
+
+The herd with one interactive step:
+
+```
+/claude-factory:factory auto <T-id>        # or: auto <the task in words>
+```
+
+After triage, `solve-next.sh <T-id> --auto` dispatches two solution sessions in the task worktree:
+`solution-open` on `claude-opus-5-5` with no point of view imposed, and `solution-min` on `claude-fable-5-1`
+held to the fewest changes, both at effort medium, each writing `research/<T-id>-solution-<view>.md` through
+`skills/solution/SKILL.md`. The monitor shows both and the human picks, in one ask; the pick lands as
+`## Solution` in the task and is the consent for the rest. The grill and decompose then run with `--auto`:
+every round is written with its options and recommendation and the recommendation is taken, the human asked
+only where `skills/_shared/auto-decision.md` says so (no recommendation stands, the choice leaves the chosen
+solution, something destructive, every option fails). Every proposal names the tests that cover it, the
+approval is the script run, a blocked block is answered by its recommendation, step 12 runs `build`, `test`
+and the toolset's `e2e` when it binds one, and `block-verify.sh` holds every changed method to the crap
+threshold, which is why the lane refuses a toolset without a `crap` row. The task MR is opened with
+`mr-open.sh --decisions`, so its body lists every decision of the grill beside what changed and why, and the
+watcher turns the human's review of that MR into fix rounds, approved without an ask, until it is merged
+(`skills/factory/references/auto.md`).
+
 ## Layout
 
 | path | what |

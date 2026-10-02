@@ -90,3 +90,28 @@ row again.
 **Done when** `plan-ready.md` exists in the state repo, `${CLAUDE_PLUGIN_ROOT}/bin/plan-lint.sh` passes over it, plan-check left a
 verdict file matching its hash, and the human has the summary and the pointer to decompose. With a gap still
 open, or a design the human has not approved as written, write no `plan-ready.md` and say so.
+
+## Auto mode
+
+`/claude-factory:grill <task file> --auto`, the grill step of `factory auto`
+(`${CLAUDE_PLUGIN_ROOT}/skills/factory/references/auto.md`). The interview loop, the ledger, the grill file,
+the design round, the proposals round and the plan are as above, with these deltas and no other:
+
+- **The spec** is the task's `## Solution` and the solution file it names in the state clone, read first; its
+  `## Open questions` seed the ledger, its `## Changes` and `## Tests` the design and the proposals. The
+  human's words in `## Solution` are settled decisions, never asked again.
+- **Nobody is asked by default.** Every round is still written, numbered questions with options and the
+  recommendation, into the grill file; then the recommendation is the answer of every row, under
+  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md`. A question that file sends to the human goes
+  through `_shared/ask.md` as a round of its own, and the questions that do not hang on it go on. The design
+  round and the proposals round are approved by the same rule: the sketch and the cut as you would recommend
+  them, re-sketched when the dry run finds a gap.
+- **Tests in every proposal.** The `steps:` of every proposal that is not `research` name the tests that
+  cover its functionality, one sub-bullet per test file, `test <path>: <what it proves>`, and the end-to-end
+  test it needs, or a sub-bullet `no e2e`. A behaviour of the design with no test line is an open gap.
+  `## Acceptance` stays one runnable command; the crap threshold is `block-verify.sh`'s gate and needs no
+  acceptance line.
+- **Every decision is recorded.** `## Decisions` holds each one, one line, `[locked]` where it passes the
+  three gates of `references/ledger.md`, and a decision the human answered ends with `(human)`: the task MR
+  carries the section verbatim (`mr-open.sh --decisions`).
+- **Finishing** is the summary of `references/output.md` as a notice, no question in it.

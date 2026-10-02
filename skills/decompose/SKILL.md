@@ -64,3 +64,17 @@ human's job. Every question to the human, a refusal to resolve included, goes th
 Never write `status: ready`, never fill `plan_hash`, `owner` or `mr_url`, never edit another task, never
 commit by hand, never change a proposal's tier, archetype, complexity, acceptance, docs or steps: the grill decided
 those and `cut-check` blocks a drift.
+
+## Auto mode
+
+`/claude-factory:decompose <plan> --auto`, the decompose step of `factory auto`
+(`${CLAUDE_PLUGIN_ROOT}/skills/factory/references/auto.md`). The steps above hold, with these deltas:
+
+- A cut-check finding, and a shared-fixture gap of step 2, is taken by its recommendation under
+  `${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md`: the plan edit and the rerun happen, nobody is
+  asked unless that file says so.
+- Step 5: the spec-critic's proposed edits are the agreed edits, applied as written, the verdict line written
+  after them from a second run; a finding that is a question goes through `_shared/auto-decision.md`.
+- The block list of step 5 and the recommendation of step 6 are a notice (`_shared/ask.md`), with no question
+  in them; the approval is the monitor's `task-approve.sh`, without an ask.
+- The nevers above stand unchanged: `--auto` approves nothing and changes no proposal.
