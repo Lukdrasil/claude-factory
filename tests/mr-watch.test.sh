@@ -23,6 +23,7 @@ printf -- '---\nid: T-501-01\nrepo: demo\nstatus: done\nbranch: block/T-501-01\n
 cat > "$tmp/bin/glab" <<STUB
 #!/bin/sh
 [ "\$1 \$2" = "mr view" ] || exit 1
+printf '%s\\n' "\${3##*/}" >> "$tmp/calls"
 cat "$tmp/mrs/\${3##*/}.json"
 STUB
 chmod +x "$tmp/bin/glab"
@@ -66,10 +67,10 @@ out=$( (PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --finish --interv
 check 'a --finish loop keeps watching an open task MR' 0 '^running$' "$out"
 
 mr 12 merged
-# another writer holds the state lock, so task-done.sh exits 2 and nothing is written
+# another writer holds the state lock until it is killed, so task-done.sh exits 2 and nothing is written
 if command -v flock >/dev/null 2>&1; then
-  flock "$state/.git/factory-state.lock" sleep 4 & holder=$!
-  sleep 1
+  ( exec 9>"$state/.git/factory-state.lock"; flock 9; : > "$tmp/held"; exec sleep 600 ) & holder=$!
+  until [ -f "$tmp/held" ]; do sleep 1; done
 else
   mkdir "$state/.git/factory-state.lockdir" && date +%s > "$state/.git/factory-state.lockdir/since"; holder=''
 fi
@@ -87,7 +88,60 @@ check 'the done is committed in the state clone'       0 'chore\(T-502\): review
 
 out=$(fin --once)
 check 'a finished task is not finished again'          1 'T-502 (done|finish-failed)' "$out"
-out=$( (fin --interval 60 & p=$!; sleep 3; if kill -0 $p 2>/dev/null; then kill $p; echo running; else echo ended; fi) )
+ended() { # <pid of a job of the calling shell>: ended within a minute, or killed and running
+  e_n=0
+  while kill -0 "$1" 2>/dev/null; do
+    e_n=$((e_n + 1)); [ "$e_n" -lt 60 ] || { kill "$1"; echo running; return; }
+    sleep 1
+  done
+  echo ended
+}
+out=$(fin --interval 600 >/dev/null & ended $!)
 check 'a --finish loop over a done task ends'          0 '^ended$' "$out"
+
+# --- several finishers at once: one done, no pass that dies ---------------------------------------
+newtask() { # <id> <iid> <status>
+  printf -- '---\nid: %s\nrepo: demo\narchetype: feature\nstatus: %s\nowner: factory@h:s1\nbranch: feat/%s-x\nmr_url: https://forge.test/g/demo/-/merge_requests/%s\n---\n\n# Goal\nfeat(demo): %s\n' \
+    "$1" "${3:-review}" "$1" "$2" "$1" > "$state/repos/demo/tasks/$1.md"
+  git -C "$state" add -A && git -C "$state" commit -q -m "$1"
+}
+newtask T-503 13
+mr 13 merged
+for n in 1 2 3 4; do
+  ( PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-503 --once --finish --state "$state" > "$tmp/race.$n" 2>&1
+    echo "rc=$?" >> "$tmp/race.$n" ) &
+done
+wait
+races=$(cat "$tmp"/race.*)
+check 'four finishers print one done'                  0 '^1$' "$(printf '%s\n' "$races" | grep -c '^T-503 done$')"
+check 'none of them fails'                             1 'finish-failed|rc=[1-9]|cannot stat' "$races"
+check 'the task is done'                               0 '^status: done$' "$(cat "$state"/repos/demo/archive/*/tasks/T-503.md 2>/dev/null)"
+
+# --- a task MR closed without a merge: said once, and the --finish loop ends -----------------------
+newtask T-504 14
+mr 14 closed
+out=$(PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-504 --finish --interval 600 --state "$state" > "$tmp/t504" 2>&1 & ended $!)
+check 'a closed task MR ends the --finish loop'        0 '^ended$' "$out"
+check 'it prints <T-id> closed-unmerged'               0 '^T-504 closed-unmerged$' "$(cat "$tmp/t504")"
+check 'and the parent stays in review'                 0 '^status: review$' "$(cat "$state/repos/demo/tasks/T-504.md")"
+
+# --- --task-mr-only reads the task MR alone ------------------------------------------------------
+newtask T-505 15
+mr 15 opened
+printf -- '---\nid: T-505-01\nrepo: demo\nstatus: review\nbranch: block/T-505-01\nmr_url: https://forge.test/g/demo/-/merge_requests/16\n---\n\n# Goal\nfeat(demo): w\n' \
+  > "$state/repos/demo/tasks/T-505-01.md"
+mr 16 opened
+: > "$tmp/calls"
+PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-505 --once --finish --task-mr-only --state "$state" >/dev/null 2>&1
+check '--task-mr-only asks the forge for the task MR'  0 '^15$' "$(cat "$tmp/calls")"
+check 'and not for the block MRs'                      1 '^16$' "$(cat "$tmp/calls")"
+
+# --- a done commit that does not reach the state root is push-failed ----------------------------
+git -C "$state" remote add origin "$tmp/no-such-root"
+newtask T-506 17
+mr 17 merged
+out=$(PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-506 --once --finish --state "$state" 2>&1)
+check 'the task is still done'                         0 '^T-506 done$' "$out"
+check 'and the failed push is a stdout line'           0 '^T-506 push-failed$' "$out"
 
 exit $fail

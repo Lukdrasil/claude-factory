@@ -9,6 +9,10 @@
 # and a one-line nudge towards the factory skill's init. Exit 0 always.
 # Two lines ride along with that context: the standalone-posture line (T-187, there is no dashboard and no gate
 # that is not a command) and, when it applies, the stale-plugin warning of incident C below.
+# Both the state clone and a registered clone first run review-sweep.sh (every repo, or that clone's repo), so a
+# task MR the human merged while no session watched it ends its task now, and the session is told which. Only on a
+# startup or a resume, never on a clear or a compaction, and never in a session the herd monitor dispatched
+# (FACTORY_ROLE set): ending a task is the monitor's gate, and herd-watch.sh already finishes its herd.
 set -u
 
 . "$(dirname -- "$0")/lib-tasks.sh"
@@ -16,17 +20,22 @@ stdin=$(cat)
 cwd=$(hook_field "$stdin" cwd)
 [ -n "$cwd" ] || cwd=.
 sid=$(hook_field "$stdin" session_id)
+source=$(hook_field "$stdin" source)
 
 # ponytail: the context goes through node on stdin, so the JSON escaping of arbitrary markdown is never done by hand
 emit() { node -e '
 let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{
   process.stdout.write(JSON.stringify({hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:s}}))})'; }
 
-# the tasks whose task MR was merged while no session watched, finished by review-sweep.sh before the context
+# the tasks whose task MR was merged while no session watched, finished by review-sweep.sh before the context;
+# run from the session's cwd, so task-done.sh keeps the worktree a session starts or resumes in
 swept_line() { # [<repo key>]
-  sw_out=$(sh "$(dirname -- "$0")/review-sweep.sh" ${1:+--repo "$1"} --state "$WORK_DIR/state" 2>/dev/null) || sw_out=''
+  [ -z "${FACTORY_ROLE:-}" ] || return 0
+  case "$source" in ''|startup|resume) ;; *) return 0 ;; esac
+  sw_sh=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/review-sweep.sh
+  sw_out=$(cd "$cwd" 2>/dev/null; sh "$sw_sh" ${1:+--repo "$1"} --state "$WORK_DIR/state" 2>/dev/null) || sw_out=''
   [ -n "$sw_out" ] || return 0
-  printf 'Task MRs merged while no session watched them, finished by review-sweep.sh (task-done.sh and state-push.sh ran): report these to the user, a finish-failed line is theirs to look at:\n%s\n' "$sw_out"
+  printf 'Task MRs the human merged or closed while no session watched them, read by review-sweep.sh: a done line means task-done.sh ended that task; report every line to the user, since push-failed (run state-push.sh), finish-failed and closed-unmerged are theirs to look at:\n%s\n' "$sw_out"
 }
 
 identity_line() {

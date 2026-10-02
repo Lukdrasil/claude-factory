@@ -26,6 +26,7 @@ mr() { printf '{"iid":%s,"state":"%s","user_notes_count":0}\n' "$1" "$2" > "$tmp
 cat > "$tmp/bin/glab" <<STUB
 #!/bin/sh
 [ "\$1 \$2" = "mr view" ] || exit 1
+printf '%s\n' "\${3##*/}" >> "$tmp/calls"
 cat "$tmp/mrs/\${3##*/}.json" 2>/dev/null || exit 1
 STUB
 chmod +x "$tmp/bin/glab"
@@ -59,6 +60,32 @@ check '--repo leaves another repo alone'           0 '^review$' "$(st T-701)"
 out=$(sweep)
 check 'without --repo every repo is swept'         0 '^T-701 done$' "$out"
 check 'a finished task is not finished again'      1 'T-601' "$out"
+
+# a task MR closed without a merge is said once, and not asked again
+task demo T-605 review 9; mr 9 closed
+git -C "$state" add -A && git -C "$state" commit -q -m T-605
+out=$(sweep --repo demo)
+check 'a closed task MR is <T-id> closed-unmerged'  0 '^T-605 closed-unmerged$' "$out"
+check 'and the parent stays in review'             0 '^review$' "$(st T-605)"
+: > "$tmp/calls"
+out=$(sweep --repo demo)
+check 'the next sweep does not ask its forge again' 1 '^9$' "$(cat "$tmp/calls")"
+check 'the block MR is not asked either'           1 '^5$' "$(cat "$tmp/calls")"
+
+# session-start.sh runs the sweep on a startup or a resume, never on a compaction, never in a herd session
+git init -q "$tmp/demo"
+git -C "$tmp/demo" commit -q --allow-empty -m i
+task demo T-606 review 10; mr 10 merged
+git -C "$state" add -A && git -C "$state" commit -q -m T-606
+start() { # <source> [<FACTORY_ROLE>]
+  printf '{"session_id":"s9","cwd":"%s/demo","source":"%s"}' "$tmp" "$1" \
+    | PATH="$tmp/bin:$PATH" WORK_DIR="$tmp/factory" FACTORY_ROLE=${2:-} sh "$root/bin/session-start.sh"
+}
+check 'a compaction does not sweep'                1 'T-606 done' "$(start compact)"
+check 'a herd session does not sweep'              1 'T-606 done' "$(start startup implementer)"
+check 'and the task is still in review'            0 '^review$' "$(st T-606)"
+check 'a startup sweeps and says so'               0 'T-606 done' "$(start startup)"
+check 'the task is done'                           0 '^done$' "$(st T-606)"
 
 out=$(sweep --bogus); rc=$?
 check 'an unknown argument is refused'             0 "unknown argument" "$out"

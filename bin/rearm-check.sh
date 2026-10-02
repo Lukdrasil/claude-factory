@@ -14,7 +14,9 @@
 # The solo lane has the same gap after step 16: a parent owned by this session (owner:
 # `factory@<host>:<session_id>`) that is in `review` with an `mr_url` waits on the human's merge, and only an
 # `mr-watch.sh <T-id> --finish` Monitor ends it on that merge. Such a parent with no unfinished entry naming
-# mr-watch.sh or herd-watch.sh with its id is one more `<T-id> <repo> review` line, inside herdr or not.
+# herd-watch.sh, or mr-watch.sh with --finish, with its id is one more `<T-id> <repo> review` line, inside herdr
+# or not; an mr-watch.sh without --finish (the one of step 11) would not end it, so it does not count. A parent
+# whose task MR mr-watch.sh recorded closed-unmerged waits on the human, not on a watcher, and is left out.
 #
 # It writes no file of the state clone: its only file is its counter `.harness-rearm-<sid>` in the state clone's
 # git dir (`git rev-parse --absolute-git-dir`), where no commit and no status sees it. Never when
@@ -75,10 +77,12 @@ for id in $(owned_task_ids "$sid"); do
   case "$f" in */archive/*) continue ;; esac
   [ "$(task_fields "$f" status)" = review ] || continue
   case "$(task_fields "$f" mr_url)" in null|'~'|'') continue ;; esac
-  ! named "$id" '(herd|mr)-watch\.sh' || continue
+  ! named "$id" 'herd-watch\.sh|mr-watch\.sh.*--finish' || continue
+  key=${f#"$state"/repos/}; key=${key%%/*}
+  ! awk -v i="$id" '$1 == i && $2 == "closed-unmerged" { f = 1 } END { exit !f }' \
+    "$WORK_DIR/$key/.harness/$id/mr-watch.state" 2>/dev/null || continue
   case "$herds" in "$id "*|*"
 $id "*) continue ;; esac
-  key=${f#"$state"/repos/}; key=${key%%/*}
   solo="$solo$id $key review
 "
 done

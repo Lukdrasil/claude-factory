@@ -22,7 +22,8 @@
 # retargets the stack, sets a merged block `done` and, once the human merged the task MR, ends the task through
 # task-done.sh - and turns its state file into the `<id> mr <old> -> <new>` lines
 # above, in this watcher's own vocabulary. mr-watch's own stdout is not passed through, so a merge is one line
-# and not two. `--no-mr` leaves the forge alone, for a repo that has none.
+# and not two, except what its finish says about the parent: `<T-NNN> done`, `<T-NNN> skipped: <what> <reason>`,
+# `<T-NNN> push-failed`, `<T-NNN> finish-failed <reason>` and `<T-NNN> closed-unmerged` come through as they are. `--no-mr` leaves the forge alone, for a repo that has none.
 #
 # After mr-watch every pass runs `herdr-tabs.sh sweep <T-NNN>`, which closes the recorded tab of each unit that
 # is `done` or `closed`, a step by its parent's status. Its stdout is dropped: the `<id> agent <old> -> closed` line
@@ -35,7 +36,7 @@
 #
 # Without `--once` the pass repeats every 60 seconds, `--interval <s>` sets another period, and the monitor
 # arms the loop through the Monitor tool the way it arms mr-watch.sh. The loop ends after the pass that reports
-# the parent done or closed. The sleep stays until herdr is updated
+# the parent done or closed, or its task MR closed without a merge. The sleep stays until herdr is updated
 # past 0.8.2, whose `events.subscribe` replays history; then a subscription wakes the pass instead. Every pass
 # ends with `state-push.sh`, so the reports of the sessions reach the state root while the herd runs.
 #
@@ -113,7 +114,10 @@ prior() { # <unit id> <column: 2 status | 3 phase | 4 agent | 5 mr>
 pass() {
   # the forge first, so the mr column of this pass is the one mr-watch just wrote; a watcher that cannot reach
   # the forge is not a failed pass, the task columns are still news
-  [ -n "$nomr" ] || sh "$bin/mr-watch.sh" "$id" --once --finish --state "$state" >/dev/null || :
+  if [ -z "$nomr" ]; then
+    sh "$bin/mr-watch.sh" "$id" --once --finish --state "$state" 2>/dev/null </dev/null \
+      | grep -E "^$id (done|skipped:|push-failed|finish-failed|closed-unmerged)" || :
+  fi
   sh "$bin/herdr-tabs.sh" sweep "$id" --state "$state" >/dev/null || :
   # a record that cannot be read is no pass: every unit would read gone
   agents=$(sh "$bin/herdr-tabs.sh" agents "$id" --state "$state" 2>/dev/null) || return 0
@@ -162,5 +166,6 @@ fi
 while :; do
   pass
   case "$(field "$(task_of "$id" || :)" status 2>/dev/null)" in done|closed) break ;; esac
+  [ "$(mr_state "$id")" != closed-unmerged ] || break
   sleep "$interval"
 done

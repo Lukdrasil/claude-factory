@@ -61,9 +61,12 @@ Step 16 ends the loop with the task MR open and its URL in the parent's `mr_url`
 `mr-watch.sh <T-id>`, `timeout_ms` at its maximum, and arm it again whenever it expires (the Stop hook
 `rearm-check.sh` reminds you). `<T-id> merged` is the human's merge, and the watcher then runs
 `references/done.md` itself: `task-done.sh` and `state-push.sh`, with no ask. `<T-id> done` ends the Monitor:
-report the task done to the user with every `<T-id> skipped:` line that followed it. `<T-id> finish-failed
-<reason>` is retried on the next pass; show the reason to the user. A `changes-requested` or `new-comments` line on the
-task MR is one more round:
+report the task done to the user with every `<T-id> skipped:` line that followed it (a worktree the session
+itself runs in is one of them: it is never removed under a running session). `<T-id> push-failed` means the done
+commit is still local: run `state-push.sh`. `<T-id> finish-failed <reason>` is retried on the next pass; show the
+reason to the user. `<T-id> closed-unmerged` is a task MR the human closed without a merge: the Monitor ends, the
+task stays in `review`, and what happens to it is the human's call (`task-done.sh <T-id> --close "<reason>"` or a
+new MR). A `changes-requested` or `new-comments` line on the task MR is one more round:
 
 1. The fix as a new block, written the way Block MRs below write a block for work outside a block's acceptance
    (cut-check, `task-new.sh --parent`), approved with the human's yes (`references/approve.md`), then worked

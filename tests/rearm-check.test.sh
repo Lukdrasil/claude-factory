@@ -210,6 +210,13 @@ r=$(nostop solo1 "[$(mw T-3010)]")
 is 'a watcher of T-3010 does not watch T-301' 2 "$(rc "$r")"
 r=$(nostop solo1 '[{"id":"m","type":"local_bash","status":"completed","command":"sh mr-watch.sh T-301 --finish"}]')
 is 'a finished mr-watch.sh watches nothing' 2 "$(rc "$r")"
+r=$(nostop solo1 '[{"id":"m","type":"local_bash","status":"running","command":"sh mr-watch.sh T-301 --interval 300"}]')
+is 'an mr-watch.sh without --finish does not count' 2 "$(rc "$r")"
+mkdir -p "$work/demo/.harness/T-301"
+printf 'T-301 closed-unmerged 0\n' > "$work/demo/.harness/T-301/mr-watch.state"
+r=$(nostop solo1 '[]')
+is 'a task MR closed without a merge is no reminder' 0 "$(rc "$r")"
+rm -rf "$work/demo/.harness/T-301"
 rm -f "$state/.git/.harness-rearm-solo1"
 r=$( (cd "$tmp/elsewhere" && printf '{"session_id":"solo1","stop_hook_active":false,"background_tasks":[]}' \
   | HERDR_TAB_ID=tab-mon WORK_DIR="$work" sh "$bin/rearm-check.sh" 2>&1 >/dev/null) )
