@@ -298,13 +298,15 @@ fi
 
 # a verdict whose plan_hash is the plan's current hash; one written before an edit of the plan is none, as
 # task-new.sh reads it (lib-tasks.sh architect_verdict), so step 5 runs again rather than a decompose it refuses
+# why: with no sha256 tool at all the hash cannot be recomputed, and a verdict read as stale would print
+# why: step 5 forever; that is a stop naming the tool, before the verdict is read
 verdict_current() {
   [ -f "$verdict" ] || return 1
   vc_want=$(sed -n 's/^plan_hash:[[:space:]]*//p' "$verdict" | head -n1)
   if command -v sha256sum >/dev/null 2>&1; then vc_have=$(sha256sum "$plan" | cut -d' ' -f1)
   elif command -v shasum >/dev/null 2>&1; then vc_have=$(shasum -a 256 "$plan" | cut -d' ' -f1)
   elif command -v openssl >/dev/null 2>&1; then vc_have=$(openssl dgst -sha256 "$plan" | sed 's/^.*= //')
-  else return 1; fi
+  else die "no sha256 tool on PATH (sha256sum, shasum or openssl), so the plan hash of $verdict cannot be checked; install one and run this again"; fi
   [ "$vc_want" = "$vc_have" ]
 }
 
@@ -466,8 +468,15 @@ if [ -n "$pending" ]; then
     if [ -n "$auto" ]; then
       # why: the fourth case of auto-decision.md: a block failed at its second attempt is the human's in every
       # why: lane, so the autonomous answer covers a blocked block and a first failure only
-      if [ -n "$autonom" ] && { [ "$bs" = blocked ] || [ "$bn" -lt 1 ]; }; then
+      # why: task-approve.sh counts attempts from failed only, so a block blocked again after an answer the lane
+      # why: gave is counted here, by the answer lines its progress file holds: the second one is the human's,
+      # why: or the same analysis would set it ready forever
+      lane_answers=$(grep -cE '^\*\*Answer \([0-9-]+\): option [0-9]+\*\*.*\((auto|analysed)\)[[:space:]]*$' "$bprogress" 2>/dev/null || :)
+      case "$lane_answers" in ''|*[!0-9]*) lane_answers=0 ;; esac
+      if [ -n "$autonom" ] && { { [ "$bs" = blocked ] && [ "$lane_answers" -lt 1 ]; } || { [ "$bs" = failed ] && [ "$bn" -lt 1 ]; }; }; then
         emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md; a block whose every option fails, or failed at its second attempt, is the human's, through _shared/blocked-question.md, in this lane too), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      elif [ -n "$autonom" ] && [ "$bs" = blocked ]; then
+        emit "Step 11 of 16: $pending is blocked again, after $lane_answers answer$( [ "$lane_answers" -eq 1 ] || printf s) of the lane" "the human has answered the question in $bprogress (a block blocked again after an answer the lane gave is the fourth case of _shared/auto-decision.md: the lane's analysis did not unblock it, and a third answer over the same ground is a loop), what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       elif [ -n "$autonom" ]; then
         emit "Step 11 of 16: $pending is $bs at attempt $bn" "the human has answered the question in $bprogress (a block failed at its second attempt is the fourth case of _shared/auto-decision.md, the human's in this lane too), what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       else
@@ -482,10 +491,17 @@ if [ -n "$pending" ]; then
     cmd "$bin/task-approve.sh $pending --state $state"
     [ -n "$herd" ] || cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
   elif [ "$bs" = changes_requested ]; then
-    emit "Step 11 of 16: $pending has changes requested" "the threads of the block MR are answered on its branch by one implement subagent, every block behind $pending is rebased onto its new head, and $pending is review again."
+    # why: the fixes are new commits on the block branch, which the verification of the first MR is not of:
+    # why: block-verify.sh runs again over them (the crap gate included) and block-mr.sh, which refuses a
+    # why: report of another tree, refreshes the MR body with the new report; without it the fixed code
+    # why: merged on the first report
+    emit "Step 11 of 16: $pending has changes requested" "the threads of the block MR are answered on its branch by one implement subagent, every block behind $pending is rebased onto its new head, block-verify.sh is green again over the new head$( [ -z "$stacked" ] || printf ' and block-merge.sh --verify proves the merge again'), block-mr.sh has refreshed the MR from the new report, and $pending is review again."
     cmd "$bin/mr-watch.sh $id --comments $pending --state $state"
     cmd "$bin/model-for.sh $ba $bt implement $((bn + 1)) $bc"
     [ -z "$stacked" ] || cmd "$bin/restack.sh $id $pending --state $state"
+    cmd "$bin/block-verify.sh $pending --state $state"
+    [ -z "$stacked" ] || cmd "$bin/block-merge.sh $pending --verify"
+    cmd "$bin/block-mr.sh $pending --state $state"
     cmd "$bin/state-report.sh --task $pending --set-status review --message 'chore($pending): review fixes pushed'"
   elif [ "$bs" = draft ] || [ "$bs" = triaged ]; then
     # why: a block written after the approval (a thread outside a block's acceptance, a fix round) is a draft,
@@ -611,8 +627,15 @@ base=$(base_branch)
 # why: before the MR too: a fix block of step 13's changes-needed round has to pass the build, the tests,
 # why: the e2e and the duplication check before step 14 opens the MR over it. The ids are read by their shape,
 # why: so a blocks: line written with commas, brackets or backticks reads the same
+# why: the reset drops ## Review, so the rounds are counted under ## Fix rounds, one bullet per reset, which
+# why: the reset never touches: a changes-needed verdict before the MR gets one fix block, and the second
+# why: verdict is recorded and the flow goes on, which step 13 can only say when it knows a round happened
+fix_rounds_before=$(awk '/^## Fix rounds[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && /^- round / && /before the task MR/ { n++ } END { print n + 0 }' "$progress" 2>/dev/null || :)
+case "$fix_rounds_before" in ''|*[!0-9]*) fix_rounds_before=0 ;; esac
 if grep -q '^## Review' "$progress" 2>/dev/null; then
-  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { print; exit }' "$progress" | grep -oE "$id-[0-9]{2,}" | tr '\n' ' ')
+  # the blocks: line with its continuation lines, up to a blank line or the next key: a reviewer who wraps a
+  # dozen ids over two lines names them all
+  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { b = 1; print; next } b && (!NF || /^[A-Za-z_-]+:/) { exit } b { print }' "$progress" | grep -oE "$id-[0-9]{2,}" | tr '\n' ' ')
   if [ -n "$reviewed" ]; then
     unreviewed=''
     for b in $blocks; do
@@ -622,8 +645,11 @@ if grep -q '^## Review' "$progress" 2>/dev/null; then
     done
     if [ -n "$unreviewed" ]; then
       if [ -n "$mr_url" ]; then fr_when="after the task MR"; else fr_when="before the task MR"; fi
-      emit "Step 12 of 16: fix round over $id, $fr_when" "## Evidence, ## Quality, ## Duplication and ## Review are gone from $progress and the file is reported, so steps 12 and 13 run again over the work branch with${unreviewed} merged; step 13 then lists every done block on the blocks: line of ## Review$( [ -z "$mr_url" ] || printf ' and refreshes the MR body')."
+      fr_n=$(awk '/^## Fix rounds[[:space:]]*$/ { f = 1; next } f && /^#/ { exit } f && /^- round / { n++ } END { print n + 1 }' "$progress")
+      emit "Step 12 of 16: fix round over $id, $fr_when" "## Evidence, ## Quality, ## Duplication and ## Review are gone from $progress, ## Fix rounds holds the line 'round $fr_n ($fr_when):${unreviewed}' and the file is reported, so steps 12 and 13 run again over the work branch with${unreviewed} merged; step 13 then lists every done block on the blocks: line of ## Review$( [ -z "$mr_url" ] || printf ' and refreshes the MR body')."
       cmd "sed -i '/^## Evidence/,/^## /{/^## Evidence/d;/^## /!d}; /^## Quality/,/^## /{/^## Quality/d;/^## /!d}; /^## Duplication/,/^## /{/^## Duplication/d;/^## /!d}; /^## Review/,/^## /{/^## Review/d;/^## /!d}' $progress"
+      cmd "grep -q '^## Fix rounds' $progress || printf '\\n## Fix rounds\\n' >> $progress"
+      cmd "awk -v l='- round $fr_n ($fr_when):${unreviewed}' '/^## Fix rounds/ { f = 1; print; next } f && /^## / { print l; f = 0 } { print } END { if (f) print l }' $progress > $progress.tmp && mv $progress.tmp $progress"
       cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): fix round, quality steps again'"
       exit 0
     fi
@@ -638,7 +664,7 @@ if ! grep -q '^## Evidence' "$progress" 2>/dev/null; then
     if binds e2e; then e2e=", the build and the test bindings are green over the work branch and the toolset's e2e binding ran green and is recorded under ## Evidence too"
     else e2e=", the build and the test bindings are green over the work branch and ## Evidence notes that the toolset binds no e2e"; fi
   fi
-  emit "Step 12 of 16: acceptance and quality over $id" "the parent's ## Acceptance is green verbatim, format and arch-build are recorded under ## Evidence in $progress$e2e, and crap is a gate, not a recording: no changed method is over the toolset's crap-threshold, every method skipped or exempt under _shared/test-exemptions.md is listed by name in ## Quality, and a method still over it carries its reason in the note."
+  emit "Step 12 of 16: acceptance and quality over $id" "the parent's ## Acceptance is green verbatim, format and arch-build are recorded under ## Evidence in $progress$e2e, and crap is a gate, not a recording: with a crap row in the toolset no changed method is over its crap-threshold, block-verify.sh refused every block that had one, every method skipped or exempt under _shared/test-exemptions.md is listed by name in ## Quality, and only without a crap row does a method still over it carry its reason in the note."
   cmd "sed -n '/^## Acceptance/,/^## /p' $task"
   cmd "sed -n '/^|/p' $state/repos/$key/toolset.md"
   cmd "cat $plugin/skills/_shared/crap-loop.md"
@@ -658,7 +684,16 @@ if ! grep -q '^## Review' "$progress" 2>/dev/null; then
   done_blocks=$(for b in $blocks; do bf=$(task_of "$b" || :); if [ -n "$bf" ] && [ "$(fm "$bf" status)" = done ]; then printf '%s ' "$b"; fi; done; :)
   refresh=''
   [ -z "$mr_url" ] || refresh=", and since the task MR is open, mr-open.sh${auto:+ --decisions} has refreshed its body with the new block"
-  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, opening with the line blocks: ${done_blocks:-<every done block>}(the blocks this review covers, which is how a later fix block is told apart), its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; a changes needed verdict gets one fix block and the reviewer once more, and that second verdict is recorded, its blocks: line rewritten with the fix block in it, and does not stop the flow$refresh."
+  # why: before the MR the round is counted: the first changes-needed verdict gets one fix block, written
+  # why: after the verdict and its blocks: line are recorded (the reset of step 12 reads that line to see the
+  # why: fix block as new), and the verdict after that round is recorded and the flow goes on, whatever it
+  # why: says; a round after the MR is the human's review and each one is a round of its own
+  if [ -z "$mr_url" ] && [ "$fix_rounds_before" -ge 1 ]; then
+    second="this is the verdict after the fix round ## Fix rounds counts, so it is recorded with its blocks: line, the fix block in it, and the flow goes on to step 14 whatever it says: no further fix block is cut before the MR, and what it still asks for is a ## Follow-ups bullet of $progress"
+  else
+    second="a changes needed verdict is recorded first, with its blocks: line, and gets one fix block, cut after that line is written, so the reset of step 12 tells the fix block apart, and the reviewer once more; that second verdict is recorded, its blocks: line rewritten with the fix block in it, and does not stop the flow"
+  fi
+  emit "Step 13 of 16: integrated review of $id" "a verdict from code-reviewer is under ## Review in $progress, opening with the line blocks: ${done_blocks:-<every done block>}(the blocks this review covers, which is how a later fix block is told apart), its brief carrying the block-verify reports, the ## Quality table and the ## Duplication candidates, spawned after the last block is merged and before the MR (ADR-0053), in parallel with a docs subagent bounded to the parent's ## Docs paths, never code or tests, its commit serialised with the coordinator's, because docs landing after the MR is a follow-up commit the verdict never covered; $second$refresh."
   cmd "mkdir -p $harness"
   cmd "git -C $worktree diff origin/$base...${branch:-HEAD} > $harness/review.diff"
   cmd "$bin/model-for.sh review $tier '' 0 $complexity"

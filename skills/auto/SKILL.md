@@ -28,7 +28,8 @@ herdr).
    `Completion:` line, run it again, until step 16. Arm `herd-watch.sh <T-id> --interval 60` through the
    Monitor tool after the first dispatch and say that this session is the monitor of `<T-id>`.
 3. **The one ask**: step 4a shows the two solutions and asks which; the pick is the consent for the rest.
-4. **Everything else** runs by recommendation (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md`) up to
+4. **Everything else** runs by recommendation (`${CLAUDE_PLUGIN_ROOT}/skills/_shared/auto-decision.md`), the
+   UI round of the grill aside, which is always theirs when the change reaches a surface a person sees, up to
    the task MR, whose body lists every decision; the human reviews it and the watcher turns their review into
    fix rounds until it is merged.
 

@@ -86,7 +86,17 @@ oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
 [ -n "$changed" ] || die "$progress has no '## Done' bullets for the What changed section"
-verify=$(bullets '## Evidence' | awk 'NR <= 5 { print; next } { more++ } END { if (more) printf "and %d more run%s\n", more, (more > 1 ? "s" : "") }' | oneline)
+# the runs the reviewer reads first: the build, the test run and the e2e run go in front, in the order they
+# stand, then the rest in its order, the first five kept and the others counted. why: step 12 records the
+# acceptance, format and arch-build before the build and the tests, and a cut of the first five dropped the
+# runs the lane promises
+verify=$(bullets '## Evidence' | awk '
+  { l[NR] = $0; k = $0; sub(/^`/, "", k); sub(/`.*$/, "", k)
+    f[NR] = (tolower(k) ~ /(^|[^a-z-])(build|test|tests|e2e)([^a-z-]|$)/) }
+  END { n = 0
+    for (i = 1; i <= NR; i++) if (f[i]) { n++; if (n <= 5) print l[i]; else more++ }
+    for (i = 1; i <= NR; i++) if (!f[i]) { n++; if (n <= 5) print l[i]; else more++ }
+    if (more) printf "and %d more run%s\n", more, (more > 1 ? "s" : "") }' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 follow=$(bullets '## Follow-ups')
 

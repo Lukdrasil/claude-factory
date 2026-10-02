@@ -69,6 +69,8 @@ Cases 1, 2, 5 and 6, and the pick of step 4a, are **analysed and decided by the 
 **Cases 3 and 4 are still asked**, autonomous or not: data deleted, a migration that loses rows, a forge
 action beyond the task's MRs, a cost; and a block whose every option breaks the acceptance, since no table
 can pick an option that fails and a block is never closed by a session (`state-report.sh` refuses it). A
+block blocked again after an answer the lane gave (`(auto)` or `(analysed)` in its progress file) is the
+fourth case too: the analysis did not unblock it, and a third answer over the same ground is a loop. A
 permission dialog of a session is still the human's, through the monitor. A human who wants case 3 gone too
 says so in the task text, in words, and that line is the answer. The pick of step 4a is the first line of
 the plan's `## Decisions`, `(analysed)` or `(human)`, so the MR body carries it.

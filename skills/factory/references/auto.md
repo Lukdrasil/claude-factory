@@ -96,7 +96,9 @@ human can read what went ready. Step 10 and step 11 are the herd's: one session 
 rerun by you at `tests_ready`, `block-verify.sh`, the reviewer and the auditor as your subagents, `block-mr.sh`,
 `block-mr-merge.sh`. The crap gate inside `block-verify.sh` is the lane's promise: a block over the threshold
 is red, its fix loop `_shared/crap-loop.md`, and a block red twice is `failed`, which is a question under
-`_shared/auto-decision.md` (its fourth case) before anything is dispatched again.
+`_shared/auto-decision.md` (its fourth case) before anything is dispatched again. `block-mr.sh` holds the
+other end: no MR without a green report of the worktree's committed files, and a block MR with changes
+requested goes through `block-verify.sh` and `block-mr.sh` again over its fixes before it is `review`.
 
 A block that comes back `blocked` is yours to answer: read its `## Question`, take the recommendation, write
 the answer line with `(auto)`, apply what the option requires and `task-approve.sh` it back to `ready`. Ask
@@ -130,11 +132,15 @@ The fix round is the one of `references/solve.md` (`## After the task MR`), with
 threads with `mr-watch.sh <T-id> --comments <T-id>`; one fix block per change asked, written as solve writes an
 extra block (cut-check, `task-new.sh --parent`), approved by `task-approve.sh` without an ask and worked as a
 block session through step 11. Once it is merged, `solve-next.sh` sees a done block missing from the
-`blocks:` line of `## Review` and prints the reset, `Step 12 of 16: fix round over <T-id>`: the three sections
-`## Evidence`, `## Duplication` and `## Review` go, the file is reported, and steps 12 and 13 run again over
-the work branch, the build, the tests and the e2e included; step 13 then writes the new `blocks:` line and
-runs `mr-open.sh <T-id> --decisions`, which refreshes the body with the new block and the decisions as they
-now stand. The first count of comments on an MR after an upgrade of the watcher is a baseline, not a line:
+`blocks:` line of `## Review` and prints the reset, `Step 12 of 16: fix round over <T-id>, after the task MR`:
+the four sections `## Evidence`, `## Quality`, `## Duplication` and `## Review` go, a `- round <n> (after the
+task MR): <block>` bullet is added under `## Fix rounds`, the file is reported, and steps 12 and 13 run again
+over the work branch, the build, the tests and the e2e included; step 13 then writes the new `blocks:` line
+and runs `mr-open.sh <T-id> --decisions`, which refreshes the body with the new block and the decisions as
+they now stand. The same reset runs before the MR, when step 13's own changes-needed verdict cut a fix block:
+the verdict and its `blocks:` line are recorded first, the fix block is cut after that line is written, so
+the reset tells it apart, and the verdict after that round is recorded and the flow goes on to step 14
+whatever it says; `## Fix rounds` counts the rounds, and one before the MR is the limit. The first count of comments on an MR after an upgrade of the watcher is a baseline, not a line:
 only a change from a count it has seen is printed.
 
 A thread that is a question is answered on the MR by the human, as in solve; a thread that asks for work the
@@ -163,9 +169,10 @@ no question, `sh <plugin-root>/bin/solve-next.sh <T-id> --autonom`. Everything a
   variants the choice was made against.
 - **A blocked block** with no recommendation standing is answered the same way, the table in its progress
   file and the answer line `(analysed)`, and a block at its first failure too, with the option the table
-  picks. A block whose every option fails, or that failed at its second attempt, is the human's in this lane
-  too (the fourth case): no table picks an option that breaks the acceptance, a third attempt over the same
-  analysis is a loop, and a block is never closed by a session.
+  picks. A block whose every option fails, or that failed at its second attempt, or that comes back blocked
+  after an answer the lane gave, is the human's in this lane too (the fourth case): no table picks an option
+  that breaks the acceptance, a third attempt over the same analysis is a loop, and a block is never closed
+  by a session.
 - **A solution session gone twice** with no file leaves the pick to the one solution that exists: write
   `## Solution` over it, with `- view: <open|min>`, `- file: <that file>`, `- chosen by: agent` and the
   reason, and the lane goes on; both gone twice is the human's.

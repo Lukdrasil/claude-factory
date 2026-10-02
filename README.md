@@ -107,8 +107,8 @@ watcher turns the human's review of that MR into fix rounds, approved without an
 `/claude-factory:autonom <T-id>` is the same lane with no pick and no question: the monitor compares the two
 solutions and chooses, and a question with no recommendation is analysed over a table of its options and
 decided by the session that meets it, the line marked `(analysed)` in the MR body. A destructive or
-outward-facing choice, a block whose every option fails or that failed twice, and a session's permission
-dialog still reach the human.
+outward-facing choice, a block whose every option fails or that failed twice, both solution sessions dead
+twice with no file, and a session's permission dialog still reach the human.
 
 ## Layout
 

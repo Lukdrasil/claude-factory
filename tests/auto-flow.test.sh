@@ -109,6 +109,10 @@ git -C "$state" add -A >/dev/null 2>&1 && git -C "$state" -c user.name=t -c user
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 no 'auto: a committed solution is not dispatched again' '\-\-step solution-open' "$out"
 check 'auto: the missing one still goes out' '\-\-step solution-min' "$out"
+check 'auto: a session gone twice with no file is the human'"'"'s' 'Completion:.*gone twice with no file is _shared/blocked-question\.md to the human' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
+check 'autonom: a session gone twice leaves the pick to the one file, with its view and file lines' 'Completion:.*its lines - view: <open|min>, - file: <that file>, - chosen by: agent' "$out"
+check 'autonom: both gone twice is the human'"'"'s' 'Completion:.*both gone twice with no file is _shared/blocked-question\.md to the human' "$out"
 
 printf '# Solution (min) for T-020\n' > "$state/repos/demo/research/T-020-solution-min.md"
 git -C "$state" add -A >/dev/null 2>&1 && git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'research: min' >/dev/null 2>&1
@@ -203,6 +207,18 @@ check 'auto: with the findings shown' "^  cat $state/repos/demo/verdicts/export\
 no 'auto: and nothing dispatched' 'session-monitor\.sh' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 check 'herd: a misaligned verdict is decompose, where a human may override it' '^## Step 6 of 16: decompose T-020' "$out"
+# no sha256 tool at all is a stop naming it, not a stale verdict forever
+mkdir -p "$tmp/nosha"
+for d in /usr/local/bin /usr/bin /bin; do
+  for f in "$d"/*; do
+    case "${f##*/}" in sha256sum|shasum|openssl) continue ;; esac
+    [ -e "$tmp/nosha/${f##*/}" ] || ln -s "$f" "$tmp/nosha/${f##*/}" 2>/dev/null || :
+  done
+done
+out=$(PATH="$tmp/nosha" sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1); rc=$?
+check 'auto: with no sha256 tool on PATH the loop stops and names the tool' 'no sha256 tool on PATH' "$out"
+no 'auto: and prints no step' '^## Step' "$out"
+[ "$rc" != 0 ]; r=$?; check 'with a non-zero exit' '^0$' "$r"
 printf '\n' >> "$state/repos/demo/plans/export-plan-ready.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a verdict over an edited plan is stale, and plan-check runs again' '^## Step 5 of 16: architect plan-check of export$' "$out"
@@ -266,6 +282,26 @@ no 'autonom: and not analysed again' 'your analysis picked' "$out"
 check 'autonom: the retry is still approved after the answer' 'task-approve\.sh T-020-01 --state' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 no 'herd: a blocked block stays the human'"'"'s' 'auto-decision\.md' "$out"
+# a blocked block answered by the lane once is the human's when it comes back blocked
+block T-020-01 blocked
+mkdir -p "$state/repos/demo/progress"
+printf '## Question\nwhich\n\n**Answer (2026-10-01): option 2** (analysed)\n' > "$state/repos/demo/progress/T-020-01.md"
+out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
+check 'autonom: a block blocked again after an answer of the lane is the human'"'"'s' '^## Step 11 of 16: T-020-01 is blocked again, after 1 answer of the lane$' "$out"
+check 'autonom: through the blocked question' 'Completion:.*the human has answered' "$out"
+no 'autonom: and not analysed a second time' 'your analysis picked' "$out"
+printf '## Question\nwhich\n\n**Answer (2026-10-01): option 2** (human)\n' > "$state/repos/demo/progress/T-020-01.md"
+out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
+check 'autonom: a block blocked again after a human answer is analysed' 'Completion:.*your analysis picked' "$out"
+rm "$state/repos/demo/progress/T-020-01.md"
+# a block MR with changes requested is verified and its MR refreshed over the fixes before it is review again
+block T-020-01 changes_requested
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: changes requested on a block MR runs block-verify again' "^  $bin/block-verify\.sh T-020-01 --state $state\$" "$out"
+check 'auto: and block-mr.sh refreshes the MR from the new report' "^  $bin/block-mr\.sh T-020-01 --state $state\$" "$out"
+check 'auto: before the block is review again' 'Completion:.*block-verify\.sh is green again over the new head' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+check 'herd: the same gates on changes requested' "^  $bin/block-verify\.sh T-020-01 --state $state\$" "$out"
 block T-020-01 draft
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a draft block after the pick is approved without an ask' 'Completion:.*without an ask' "$out"
@@ -300,12 +336,15 @@ block T-020-02 done
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a fix block done after the review is the fix round' '^## Step 12 of 16: fix round over T-020, after the task MR$' "$out"
 check 'auto: which names the block' 'Completion:.* T-020-02 merged' "$out"
-check 'auto: and resets the three sections' "^  sed -i .*## Evidence.*## Duplication.*## Review.* $state/repos/demo/progress/T-020\.md\$" "$out"
-eval "$(printf '%s\n' "$out" | sed -n 's/^  \(sed -i .*\)$/\1/p')"
+check 'auto: and resets the four sections' "^  sed -i .*## Evidence.*## Quality.*## Duplication.*## Review.* $state/repos/demo/progress/T-020\.md\$" "$out"
+reset_cmds() { printf '%s\n' "$1" | sed -n 's/^  \(sed -i .*\|grep -q .*\|awk -v l=.*\)$/\1/p'; }
+eval "$(reset_cmds "$out")"
 out=$(cat "$state/repos/demo/progress/T-020.md")
 check 'the reset keeps the wave plan' '^wave 1: T-020-01$' "$out"
 no 'the reset drops ## Review' '^## Review' "$out"
 no 'the reset drops ## Evidence' '^## Evidence' "$out"
+check 'the reset records the round' '^- round 1 (after the task MR): T-020-02$' "$out"
+check 'under ## Fix rounds' '^## Fix rounds$' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: step 12 runs again after the reset' '^## Step 12 of 16: acceptance and quality over T-020$' "$out"
 printf '## Evidence\nok\n## Duplication\nnone\n' >> "$state/repos/demo/progress/T-020.md"
@@ -317,6 +356,16 @@ check 'herd: the fix round refreshes the body without the decisions' "mr-open\.s
 printf '## Review\nblocks: [`T-020-01`, `T-020-02`]\nok\n' >> "$state/repos/demo/progress/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: once reviewed, a bracketed and backticked blocks line too, step 16 again' '^## Step 16 of 16' "$out"
+sed -i '/^## Review/,$d' "$state/repos/demo/progress/T-020.md"
+printf '## Review\nblocks: T-020-01,\n  T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a blocks line wrapped over a second line names them all, step 16' '^## Step 16 of 16' "$out"
+sed -i '/^## Review/,$d' "$state/repos/demo/progress/T-020.md"
+printf '## Review\nblocks: T-020-01\n\nT-020-02 is not covered\nok\n' >> "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: an id after a blank line is prose, not the blocks line: the fix round' '^## Step 12 of 16: fix round over T-020, after the task MR$' "$out"
+sed -i '/^## Review/,$d' "$state/repos/demo/progress/T-020.md"
+printf '## Review\nblocks: T-020-01 T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
 # the fix round before the MR: a changes-needed fix block merged at step 11 brings 12, 12b and 13 back before 14
 sed -i 's/^status: review$/status: in_progress/; /^mr_url:/d' "$state/repos/demo/tasks/T-020.md"
 block T-020-04 done
@@ -324,12 +373,31 @@ printf 'wave 1: T-020-01\n## Evidence\nok\n## Quality\n| m | 1 | |\n## Duplicati
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a fix block done before the MR is the fix round too' '^## Step 12 of 16: fix round over T-020, before the task MR$' "$out"
 check 'auto: which names the block' 'Completion:.* T-020-04 merged' "$out"
-eval "$(printf '%s\n' "$out" | sed -n 's/^  \(sed -i .*\)$/\1/p')"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+# step 13 before any round: the first verdict is recorded with its blocks: line before the fix block is cut
+printf 'wave 1: T-020-01\n## Evidence\nok\n## Quality\n| m | 1 | |\n## Duplication\nnone\n' > "$tmp/t020-no-review.md"
+cp "$state/repos/demo/progress/T-020.md" "$tmp/t020-review.md"
+cp "$tmp/t020-no-review.md" "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 13 with no round yet records the verdict before the fix block is cut' 'Completion:.*cut after that line is written' "$out"
+no 'auto: and does not call it the second verdict' 'no further fix block' "$out"
+cp "$tmp/t020-review.md" "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+eval "$(reset_cmds "$out")"
 out=$(cat "$state/repos/demo/progress/T-020.md")
 no 'the reset drops ## Quality too' '^## Quality' "$out"
 check 'the reset keeps the wave plan' '^wave 1: T-020-01$' "$out"
+check 'the reset records the round before the MR' '^- round 1 (before the task MR): T-020-04$' "$out"
+check 'under the one ## Fix rounds section' '^1$' "$(printf '%s\n' "$out" | grep -c '^## Fix rounds$')"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: step 12 runs again before the MR' '^## Step 12 of 16: acceptance and quality over T-020$' "$out"
+# step 13 after the round before the MR: the second verdict is recorded and the flow goes on
+printf '## Evidence\nok\n## Quality\n| m | 1 | |\n## Duplication\nnone\n' >> "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 13 after the round before the MR is the second verdict' '^## Step 13 of 16: integrated review of T-020$' "$out"
+check 'auto: which is recorded and the flow goes on' 'Completion:.*no further fix block is cut before the MR' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
+check 'herd: the same rule' 'Completion:.*no further fix block is cut before the MR' "$out"
 rm "$state/repos/demo/tasks/T-020-04.md"
 sed -i 's/^status: in_progress$/status: review/; s/^complexity: medium$/complexity: medium\nmr_url: https:\/\/forge.test\/mr\/20/' "$state/repos/demo/tasks/T-020.md"
 printf 'wave 1: T-020-01\n## Evidence\nok\n## Duplication\nnone\n## Review\nblocks: T-020-01 T-020-02\nok\n' > "$state/repos/demo/progress/T-020.md"
@@ -546,6 +614,40 @@ git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c com
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'two changed source files are two arguments' '^crap:  2$' "$out"
 [ ! -e "$wt/PWNED" ]; r=$?; check 'and a path that looks like a command substitution runs nothing' '^0$' "$r"
+# a tool that exits 0 with no method row in its output held nothing to the threshold: red
+printf '#!/bin/sh\necho "Summary: all files analysed"\n' > "$wt/crap.sh"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a crap run with no method row parsed is red' '^crap:  no method row parsed: Summary: all files analysed$' "$out"
+check 'with the verdict red' '^verdict: red$' "$out"
+[ "$rc" = 1 ]; r=$?; check 'and exit 1' '^0$' "$r"
+# a run over an edit not committed says so, and block-mr.sh refuses it
+printf '#!/bin/sh\nfor f; do printf "%%s.Run 1\\n" "$f"; done\n' > "$wt/crap.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'row stub again'
+printf 'y2\n' > "$wt/src.cs"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a run over a change not committed is green on its files' '^verdict: green$' "$out"
+check 'and says the worktree is dirty' '^dirty: yes, the worktree holds changes not committed at ' "$out"
+check 'the report in .harness carries the line' '^dirty: ' "$(cat "$bv/demo/.harness/T-030-01/verify.txt")"
+git -C "$wt" checkout -q -- src.cs
+mkdir -p "$wt/.coverage/raw" && printf 'x\n' > "$wt/.coverage/raw/c.xml"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+no 'an untracked file (the coverage run leaves them) is not dirt' '^dirty:' "$out"
+rm -rf "$wt/.coverage"
+# a git warning on stderr with exit 0 is no failure
+mkdir -p "$bv/gitwrap"
+printf '#!/bin/sh\nprintf "warning: exhaustive rename detection was skipped due to too many files.\\n" >&2\nexec /usr/bin/git "$@"\n' > "$bv/gitwrap/git"
+chmod +x "$bv/gitwrap/git"
+out=$(PATH="$bv/gitwrap:$PATH" WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a git warning on stderr with exit 0 is no failure' '^verdict: green$' "$out"
+no 'and not a failed diff' 'git diff .* failed' "$out"
+# block-merge.sh --verify runs block-verify.sh over the parent's session worktree: that report is not the block's
+before=$(cat "$bv/demo/.harness/T-030-01/verify.txt")
+git -C "$wt" worktree add -q --detach "$bv/demo/T-030" feat/T-030-x
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$bv/demo/T-030" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a run over another task'"'"'s worktree reports on stdout' '^block: T-030-01$' "$out"
+check 'but leaves the block'"'"'s own verify.txt as it was' "$before" "$(cat "$bv/demo/.harness/T-030-01/verify.txt")"
+[ ! -e "$bv/demo/.harness/T-030/verify.txt" ]; r=$?; check 'and writes none for the other task' '^0$' "$r"
+git -C "$wt" worktree remove --force "$bv/demo/T-030"
 # no source file changed: no crap run, green
 git -C "$wt" rm -q 'src.cs' 'my dir/$(touch PWNED).cs' && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'tests only'
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
@@ -624,7 +726,19 @@ check 'auto.md turns the MR review into fix rounds' 'changes-requested' "$(cat "
 check 'the factory skill routes auto' '^| `auto` |' "$(cat "$root/skills/factory/SKILL.md")"
 check 'the factory skill routes autonom' '^| `autonom` |' "$(cat "$root/skills/factory/SKILL.md")"
 check 'auto.md has the autonom section' '^## autonom$' "$(cat "$auto")"
-check 'auto.md tells the fix round to drop the sections so 12 and 13 run again' 'the three sections' "$(cat "$auto")"
+check 'auto.md tells the fix round to drop the four sections so 12 and 13 run again' 'the four sections' "$(cat "$auto")"
+check 'auto.md names ## Quality among them' '`## Quality`, `## Duplication` and `## Review` go' "$(cat "$auto")"
+check 'auto.md runs the reset before the MR too' 'The same reset runs before the MR' "$(cat "$auto")"
+check 'auto.md counts the rounds' '`## Fix rounds` counts the rounds' "$(cat "$auto")"
+check 'README sends both solution sessions dead twice to the human' 'both solution sessions dead' "$(cat "$root/README.md")"
+check 'the factory skill too' 'both solution sessions dead twice' "$(cat "$root/skills/factory/SKILL.md")"
+check 'the autonom skill too' 'both solution sessions' "$(cat "$root/skills/autonom/SKILL.md")"
+check 'the auto skill keeps the UI round the human'"'"'s' 'UI round of the grill aside' "$(cat "$root/skills/auto/SKILL.md")"
+check 'the grill skill names the third and fourth cases under --autonom' 'asks nothing\*\* but the third and fourth cases' "$(cat "$root/skills/grill/SKILL.md")"
+check 'herd.md has the comments line' '^| `<id> comments <n> -> <m>` |' "$(cat "$root/skills/factory/references/herd.md")"
+check 'the decision rule sends a block blocked again after a lane answer to the human' 'blocked again after an answer the lane gave' "$(cat "$root/skills/_shared/auto-decision.md")"
+check 'crap-loop.md calls the gate absolute with a crap row' 'the gate is absolute' "$(cat "$root/skills/_shared/crap-loop.md")"
+no 'crap-loop.md no longer says to record a method over the threshold' 'record it rather than force it' "$(cat "$root/skills/_shared/crap-loop.md")"
 check 'auto.md reads the comments line of the task MR' '<T-id> comments <n> -> <m>' "$(cat "$auto")"
 check 'auto.md lists both files for a mixed pick' 'lists both files' "$(cat "$auto")"
 check 'the decision rule has the autonomous section' '^## Autonomous$' "$(cat "$root/skills/_shared/auto-decision.md")"

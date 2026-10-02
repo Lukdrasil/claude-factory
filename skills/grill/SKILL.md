@@ -128,7 +128,8 @@ and no other:
 - **The UI round is still asked** under `--auto`. A change that reaches a surface a person sees puts the
   question of `references/ui-round.md` to the human, mockup or agent, and the variant pick after a mockup;
   the fifth case of `_shared/auto-decision.md`.
-- **`--autonom` asks nothing** but the third case of that file: a question with no recommendation, the UI
-  round and its variant included, is analysed and decided as its `## Autonomous` section says, the table in
-  the grill file and the decision line ending with `(analysed)`.
+- **`--autonom` asks nothing** but the third and fourth cases of that file (a destructive or outward-facing
+  choice; a block whose every option fails): a question with no recommendation, the UI round and its variant
+  included, is analysed and decided as its `## Autonomous` section says, the table in the grill file and the
+  decision line ending with `(analysed)`.
 - **Finishing** is the summary of `references/output.md` as a notice, no question in it.

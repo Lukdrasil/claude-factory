@@ -330,6 +330,39 @@ verified T-700-03
 git -C "$tmp/demo/T-700-03" commit -q --allow-empty -m 'ci: skip'
 run T-700-03 --dry-run
 check 'an empty commit over a verified tree is still verified' 0 "$rc"
+# the report has to say green and name its head; a run over changes not committed, or a worktree holding
+# them, is of files the push would not carry
+sed -i '/^head:/d' "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report with no head line is refused' 1 "$rc"
+has 'and says so' 'names no head it is of' "$err"
+verified T-700-03
+sed -i '/^verdict:/d' "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report with no verdict line is refused' 1 "$rc"
+has 'and names the missing verdict' 'reported no verdict' "$err"
+verified T-700-03
+printf 'dirty: yes, the worktree holds changes not committed at abc\n' >> "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a report of a run over changes not committed is refused' 1 "$rc"
+has 'and says to commit them' 'ran over changes not committed' "$err"
+verified T-700-03
+printf 'exit 0\n# edited\n' > "$tmp/demo/T-700-03/tests/more.test.sh"
+run T-700-03 --dry-run
+check 'a worktree holding changes not committed is refused' 1 "$rc"
+has 'and names the worktree' 'holds changes not committed, which the push would leave behind' "$err"
+git -C "$tmp/demo/T-700-03" checkout -q -- tests/more.test.sh
+printf 'stray\n' > "$tmp/demo/T-700-03/untracked.txt"
+run T-700-03 --dry-run
+check 'an untracked file is not dirt' 0 "$rc"
+rm "$tmp/demo/T-700-03/untracked.txt"
+# the 120 words bound What changed and Why; the evidence runs stand outside the count, five kept
+cp "$state/repos/demo/progress/T-700-03.md" "$tmp/progress-700-03.bak"
+{ printf '## Done\n- a\n\n## Evidence\n'; i=0; while [ $i -lt 8 ]; do i=$((i + 1)); printf -- '- `run %s with twenty words of output in its key line, more than any reviewer reads twice, line %s` -> exit 0\n' "$i" "$i"; done; } > "$state/repos/demo/progress/T-700-03.md"
+run T-700-03 --dry-run
+check 'a block MR with long evidence is not over the 120 words' 0 "$rc"
+has 'and keeps five runs with the rest counted' 'and 3 more runs' "$(printf '%s\n' "$out" | grep -F '**How to verify**')"
+cp "$tmp/progress-700-03.bak" "$state/repos/demo/progress/T-700-03.md"
 
 # --- Why is the reason, not the title again (F17) ----------------------------------
 section() { # <id> <heading> <text>: appends a section to the task file

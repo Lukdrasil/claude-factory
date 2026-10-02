@@ -74,5 +74,19 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") c
 out=$(watch2)
 check 'a failed inline call prints no new comments' 1 'T-502 new-comments' "$out"
 check 'and keeps the recorded count'              0 '^T-502 open 3$' "$(cat "$tmp/factory/gh/.harness/T-502/mr-watch.state")"
+# a failed inline call on the first pass records no count, and the first count read is the baseline, not news
+printf -- '---\nid: T-503\nrepo: gh\nstatus: review\nbranch: feat/T-503-x\nmr_url: https://github.com/o/gh/pull/8\n---\n\n# Goal\nfeat(gh): y\n' \
+  > "$state/repos/gh/tasks/T-503.md"
+printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"see threads","state":"COMMENTED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr8.json"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" > "$tmp/bin/gh"
+watch3() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-503 --once --state "$state" 2>&1; }
+out=$(watch3)
+check 'a failed inline call on the first pass prints no new comments' 1 'T-503 new-comments' "$out"
+check 'and records no count'                      0 '^T-503 open *$' "$(cat "$tmp/factory/gh/.harness/T-503/mr-watch.state")"
+printf '201\n202\n' > "$tmp/mrs/inline8.txt"
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) cat "%s" ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" "$tmp/mrs/inline8.txt" > "$tmp/bin/gh"
+out=$(watch3)
+check 'the first count read after that is news to mr-watch (herd-watch takes it as the baseline)' 0 '^T-503 new-comments 3$' "$out"
+check 'and is recorded'                           0 '^T-503 open 3$' "$(cat "$tmp/factory/gh/.harness/T-503/mr-watch.state")"
 
 exit $fail

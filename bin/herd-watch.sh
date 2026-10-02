@@ -104,10 +104,12 @@ mr_state() { # <unit id>
   mw=$(awk -v u="$1" '$1 == u { print $2; exit }' "$mrseen")
   printf '%s' "${mw:-none}"
 }
-mr_comments() { # <unit id>: the comment count mr-watch.sh last recorded, 0 with no MR
+mr_comments() { # <unit id>: the comment count mr-watch.sh last recorded, 0 with no MR, - with no count yet
   [ -f "$mrseen" ] || { printf '0'; return 0; }
-  mc=$(awk -v u="$1" '$1 == u { print $3; exit }' "$mrseen")
-  case "$mc" in ''|*[!0-9]*) mc=0 ;; esac
+  mc=$(awk -v u="$1" '$1 == u { print ($3 == "" ? "-" : $3); exit }' "$mrseen")
+  # why: a record with no count is an MR whose comments mr-watch.sh could not read yet (its inline call
+  # why: failed on the first pass): not 0, or the first count read would print every comment as new
+  case "$mc" in '') mc=0 ;; -) ;; *[!0-9]*) mc=0 ;; esac
   printf '%s' "$mc"
 }
 
@@ -150,7 +152,8 @@ pass() {
       [ "$what" = agent ] || [ "$new" != none ] || continue
       # a count of 0 is no comment yet, never news; a record from before the comments column (five columns)
       # has no old count, so the first count is the baseline, set in silence rather than reported as new
-      [ "$what" != comments ] || { [ "$new" != 0 ] && [ -n "$old" ]; } || continue
+      # has no old count, and so has one whose count was not read yet (-): the first count is the baseline
+      [ "$what" != comments ] || { [ "$new" != 0 ] && [ "$new" != - ] && [ -n "$old" ] && [ "$old" != - ]; } || continue
       if [ -z "$old" ]; then
         printf '%s %s %s\n' "$u" "$what" "$new"
       else

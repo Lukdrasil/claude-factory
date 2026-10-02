@@ -147,7 +147,12 @@ cp "$state/repos/demo/progress/T-700.md" "$tmp/progress.bak"
 { printf '# the progress\n\n## Done\n- a\n\n## Evidence\n'; i=0; while [ $i -lt 8 ]; do i=$((i + 1)); printf -- '- `run %s with twenty words of output in its key line, more than any reviewer reads twice, line %s` -> exit 0\n' "$i" "$i"; done; } > "$state/repos/demo/progress/T-700.md"
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
 check 'mr-open.sh exits 0 with long evidence' 0 "$rc"
-check 'and keeps the first five runs with the rest counted' 'and 3 more runs' "$(printf '%s\n' "$out" | grep -F '**How to verify**' | grep -o 'and 3 more runs')"
+check 'and keeps five runs with the rest counted' 'and 3 more runs' "$(printf '%s\n' "$out" | grep -F '**How to verify**' | grep -o 'and 3 more runs')"
+# the build, the test and the e2e runs go in front of the acceptance, format and arch-build runs
+printf '# the progress\n\n## Done\n- a\n\n## Evidence\n- `curl -s localhost/x` -> exit 0, the acceptance\n- `dotnet format --verify-no-changes` -> exit 0\n- `sh arch-build.sh` -> exit 0\n- `sh tests/x.test.sh` -> exit 0\n- `dotnet build` -> exit 0\n- `dotnet test` -> exit 0\n- `npm run e2e` -> exit 0\n' > "$state/repos/demo/progress/T-700.md"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+verify_line=$(printf '%s\n' "$out" | grep -F '**How to verify**')
+check 'the build, test and e2e runs lead How to verify' '`sh tests/x.test.sh` -> exit 0; `dotnet build` -> exit 0; `dotnet test` -> exit 0; `npm run e2e` -> exit 0; `curl -s localhost/x` -> exit 0, the acceptance; and 2 more runs' "$(printf '%s' "$verify_line" | sed 's/^\*\*How to verify\*\* - //')"
 cp "$tmp/progress.bak" "$state/repos/demo/progress/T-700.md"
 
 out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp/demo/T-700-01" 2>&1); rc=$?

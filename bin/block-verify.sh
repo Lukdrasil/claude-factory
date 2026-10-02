@@ -153,9 +153,12 @@ trap 'rm -rf "$tmp"' EXIT
 # -c core.quotePath=false: a non-ASCII path is printed as it is, not as "Slu\305\276ba.cs", which no file test matches
 # -z: a path with a quote, a backslash, a tab or a non-ASCII character is printed as it is, not as "a\"b.cs",
 # which no file test matches; the NUL between paths becomes the newline the readers below take
-git -C "$worktree" diff -z --name-only "$base" 2>"$tmp/giterr" | tr '\0' '\n' > "$tmp/changed" \
+# --no-renames: a renamed file is its old path gone and its new path changed, which is what the scope reads;
+# and rename detection over a large diff prints a warning on stderr with exit 0, which is no failure.
+# why: git's own exit is what fails the step, read before the pipe into tr, whose exit a pipeline would report
+git -C "$worktree" diff -z --no-renames --name-only "$base" > "$tmp/changed.z" 2>"$tmp/giterr" \
   || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
-[ ! -s "$tmp/giterr" ] || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
+tr '\0' '\n' < "$tmp/changed.z" > "$tmp/changed"
 
 # see: the documentation-block exception of this script's header. `grep -qv` answers "some line is not a .md
 # see: path", so an empty diff leaves docs_only at 0 and stays red, and one code path in the diff clears it.
@@ -220,7 +223,7 @@ done < "$tmp/changed"
 [ "$whole_suite" -eq 0 ] || run_one "$test_binding"
 
 crap_binding=$(binding_of "$toolset" crap)
-crap_over=''
+crap_over='' crap_unparsed=''
 threshold=8
 if [ -n "$crap_binding" ]; then
   t=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && /^---$/ { exit }
@@ -306,11 +309,14 @@ if [ -n "$crap_binding" ]; then
     crap_over=$rows_over
     crap_status=0
   fi
-  # a run that printed no method row at all scored nothing the parser reads: the line says so, for the
-  # Verified section of the block MR, and the reviewer judges it (a file of records has no method to score)
+  # a run that printed no method row at all scored nothing the parser reads, so nothing was held to the
+  # threshold: red, with the output's first line, as a tool whose format changed would otherwise leak every
+  # method through the gate. why: a green with no row is a crap promise on paper
+  crap_unparsed=''
   if [ -s "$tmp/scope" ] && [ "$crap_status" -eq 0 ] && [ -n "$crap" ] && [ -z "$rows_over" ] \
     && ! awk '{ gsub(/\|/, " ") } NF >= 2 && $NF ~ /^[0-9]+([.][0-9]+)?$/ && $1 ~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { found = 1 } END { exit !found }' "$tmp/crap"; then
     crap="no method row parsed: $crap"
+    crap_unparsed=1
   fi
   if [ -n "$crap_over" ] && [ "$crap_status" -eq 0 ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
     joined='' over=0
@@ -329,7 +335,7 @@ else
   crap="not bound (repos/$key/toolset.md)"
 fi
 
-if { [ "$run" -gt 0 ] || [ "$docs_only" -eq 1 ]; } && [ "$failed" -eq 0 ] && [ -z "$crap_over" ]; then
+if { [ "$run" -gt 0 ] || [ "$docs_only" -eq 1 ]; } && [ "$failed" -eq 0 ] && [ -z "$crap_over" ] && [ -z "$crap_unparsed" ]; then
   verdict=green
 else
   verdict=red
@@ -343,18 +349,26 @@ if [ "$docs_only" -eq 1 ] && [ "$run" -eq 0 ]; then note=' (markdown-only diff)'
 # the head the report is of: block-mr.sh refuses a report of another commit, so a block pushed after its
 # verify is verified again
 head=$(git -C "$worktree" rev-parse HEAD 2>/dev/null || :)
+# why: the diff above read the working tree, so a run over an edit not committed proved files HEAD does not
+# why: hold; the line says so and block-mr.sh refuses it, as the push would carry HEAD without the edit.
+# why: untracked files are left out: the coverage run leaves its raw files, and the diff never read them
+dirty=''
+[ -z "$(git -C "$worktree" status --porcelain --untracked-files=no 2>/dev/null)" ] || dirty=1
 {
   printf 'block: %s\n' "$id"
   printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
   printf 'crap:  %s\n' "$crap"
   printf 'verdict: %s\n' "$verdict"
   [ -z "$head" ] || printf 'head: %s\n' "$head"
+  [ -z "$dirty" ] || printf 'dirty: yes, the worktree holds changes not committed at %s\n' "$head"
 } > "$tmp/report"
 cat "$tmp/report"
 # see: 3.4 of the agent-org plan, block-mr.sh puts the last report into the block MR as the verification that
 # see: ran, from `<root>/<key>/.harness/<block>/verify.txt` beside review.md and arch.md; a worktree outside
-# see: $WORK_DIR has no such folder and keeps the report on stdout only
-if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}"; then
+# see: $WORK_DIR has no such folder and keeps the report on stdout only. why: the layout's task has to be
+# why: this block: block-merge.sh --verify runs this script over the parent's session worktree, and its report,
+# why: of another head and a merge not committed, overwrote the block's own and block-mr.sh refused the block
+if resolve_layout "$worktree/verify.txt" "${WORK_DIR:-}" && [ "$LO_TASK" = "$id" ]; then
   mkdir -p "${LO_STAMP%/*}/$id" && cp "$tmp/report" "${LO_STAMP%/*}/$id/verify.txt" \
     || printf 'block-verify: the report could not be written to %s\n' "${LO_STAMP%/*}/$id/verify.txt" >&2
 fi

@@ -19,15 +19,21 @@ anywhere else, it takes the `## Test deviations` route of your block skill, whic
 will not do.
 WIP push after each green.
 
-Stop when every changed method is ≤ 8, **or** when the next turn would break `## Acceptance`, `## Out of scope`
-or the behaviour the task promises. At 100 % coverage CRAP equals cyclomatic complexity, so a method that has
-to stay above complexity 8 never gets there on coverage alone: record it rather than force it.
+Stop when every changed method is ≤ 8. With a `crap` row in the toolset the gate is absolute: `block-verify.sh`
+reddens the block while a changed method is over the threshold, `block-mr.sh` refuses a red report, and no
+note in `## Quality` lets it through. At 100 % coverage CRAP equals cyclomatic complexity, so a method that
+has to stay above complexity 8 never gets there on coverage alone: the turn is the extraction that brings the
+complexity down. When the next turn would break `## Acceptance`, `## Out of scope` or the behaviour the task
+promises, the block is `blocked` with that as its `## Question` (`_shared/blocked-question.md`): the human, or
+the lane's rule, decides between the contract and the threshold, and a block over it is never pushed through
+as a note. Only a toolset with no `crap` row records a method over 8 with its reason instead of forcing it.
 
 Then write `## Quality` into the progress file. Every changed method is a row, one skipped or exempt under
 `_shared/test-exemptions.md` included: name it and say which. A row over 8 with no reason is a
 review finding, and so is a changed method with no row.
 The table is the whole section — **`note` under 15 words**, empty for a row at or under 8, and no prose
-around it.
+around it. The `Dispatcher.Route` row below is what a repo with no `crap` row writes; with the row bound,
+block-verify.sh never let that block through.
 
 ```markdown
 ## Quality

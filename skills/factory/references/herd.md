@@ -107,6 +107,7 @@ into the `mr` lines, so you see the forge without reading an MR:
 | `<id> mr <any> -> ci-failed` | the pipeline is red | a fix round as in `references/solve.md` |
 | `<id> mr <any> -> changes-requested` | a reviewer wants work | `mr-watch.sh <T-id> --comments <id>`, then the fix round |
 | `<id> mr <any> -> approved` | it waits on a human merge | say so, and keep watching |
+| `<id> comments <n> -> <m>` | the MR has new comments, a review that left it `open` among them | `mr-watch.sh <T-id> --comments <id>`, read the threads, then the fix round for what they ask |
 
 An MR that sits at `open` after the pipeline went green is the `need_rebase` case: look with
 `glab mr view <url>` or `gh pr view <url>`, and rebase it on its branch. Only when the parent reads `done` or
