@@ -1,7 +1,8 @@
 #!/bin/sh
 # mr-watch.sh over a glab stub: F31, the parent's own task MR is watched beside its block MRs, so the lead learns
 # the human merged it without being told; a merged parent prints `<T-id> merged` and is not set done here
-# (task-done.sh does that behind the done gate).
+# (task-done.sh does that behind the done gate). With --finish the watcher runs task-done.sh itself on the merge,
+# retries a finish that failed, and its loop ends with the task.
 set -u
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
@@ -22,6 +23,7 @@ printf -- '---\nid: T-501-01\nrepo: demo\nstatus: done\nbranch: block/T-501-01\n
 cat > "$tmp/bin/glab" <<STUB
 #!/bin/sh
 [ "\$1 \$2" = "mr view" ] || exit 1
+printf '%s\\n' "\${3##*/}" >> "$tmp/calls"
 cat "$tmp/mrs/\${3##*/}.json"
 STUB
 chmod +x "$tmp/bin/glab"
@@ -46,8 +48,8 @@ check 'the merge is reported once'                1 'T-501 merged' "$out"
 # GitHub: a review with inline threads leaves the PR open; the reviews and the inline comments are counted
 mkdir -p "$state/repos/gh/tasks"
 printf 'gh: {url: "https://github.com/o/gh.git", default_branch: main, path: "%s"}\n' "$tmp/clone" >> "$state/repos.yml"
-printf -- '---\nid: T-502\nrepo: gh\nstatus: review\nbranch: feat/T-502-x\nmr_url: https://github.com/o/gh/pull/7\n---\n\n# Goal\nfeat(gh): x\n' \
-  > "$state/repos/gh/tasks/T-502.md"
+printf -- '---\nid: T-592\nrepo: gh\nstatus: review\nbranch: feat/T-592-x\nmr_url: https://github.com/o/gh/pull/7\n---\n\n# Goal\nfeat(gh): x\n' \
+  > "$state/repos/gh/tasks/T-592.md"
 cat > "$tmp/bin/gh" <<STUB
 #!/bin/sh
 printf '%s\n' "\$*" >> "$tmp/gh.log"
@@ -60,33 +62,132 @@ STUB
 chmod +x "$tmp/bin/gh"
 printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
 : > "$tmp/mrs/inline7.txt"
-watch2() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --once --state "$state" 2>&1; }
+watch2() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-592 --once --state "$state" 2>&1; }
 out=$(watch2)
-check 'a GitHub PR with no review prints nothing'   1 'T-502 ' "$out"
+check 'a GitHub PR with no review prints nothing'   1 'T-592 ' "$out"
 printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"looks off, see threads","state":"COMMENTED"},{"body":"","state":"APPROVED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr7.json"
 printf '101\n102\n' > "$tmp/mrs/inline7.txt"
 : > "$tmp/gh.log"
 out=$(watch2)
-check 'a review as Comment with inline threads is counted, an empty approving body not' 0 '^T-502 new-comments 3$' "$out"
+check 'a review as Comment with inline threads is counted, an empty approving body not' 0 '^T-592 new-comments 3$' "$out"
 check 'the inline count comes from the paginated pulls comments endpoint of that PR' 0 '^api --paginate repos/o/gh/pulls/7/comments --jq ' "$(cat "$tmp/gh.log")"
 # a gh api call that fails keeps the count last recorded, so no lower total reads as new comments next pass
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr7.json" > "$tmp/bin/gh"
 out=$(watch2)
-check 'a failed inline call prints no new comments' 1 'T-502 new-comments' "$out"
-check 'and keeps the recorded count'              0 '^T-502 open 3$' "$(cat "$tmp/factory/gh/.harness/T-502/mr-watch.state")"
+check 'a failed inline call prints no new comments' 1 'T-592 new-comments' "$out"
+check 'and keeps the recorded count'              0 '^T-592 open 3$' "$(cat "$tmp/factory/gh/.harness/T-592/mr-watch.state")"
 # a failed inline call on the first pass records no count, and the first count read is the baseline, not news
-printf -- '---\nid: T-503\nrepo: gh\nstatus: review\nbranch: feat/T-503-x\nmr_url: https://github.com/o/gh/pull/8\n---\n\n# Goal\nfeat(gh): y\n' \
-  > "$state/repos/gh/tasks/T-503.md"
+printf -- '---\nid: T-593\nrepo: gh\nstatus: review\nbranch: feat/T-593-x\nmr_url: https://github.com/o/gh/pull/8\n---\n\n# Goal\nfeat(gh): y\n' \
+  > "$state/repos/gh/tasks/T-593.md"
 printf '{"state":"OPEN","reviewDecision":"","comments":[],"reviews":[{"body":"see threads","state":"COMMENTED"}],"statusCheckRollup":[]}\n' > "$tmp/mrs/pr8.json"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" > "$tmp/bin/gh"
-watch3() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-503 --once --state "$state" 2>&1; }
+watch3() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-593 --once --state "$state" 2>&1; }
 out=$(watch3)
-check 'a failed inline call on the first pass prints no new comments' 1 'T-503 new-comments' "$out"
-check 'and records no count'                      0 '^T-503 open *$' "$(cat "$tmp/factory/gh/.harness/T-503/mr-watch.state")"
+check 'a failed inline call on the first pass prints no new comments' 1 'T-593 new-comments' "$out"
+check 'and records no count'                      0 '^T-593 open *$' "$(cat "$tmp/factory/gh/.harness/T-593/mr-watch.state")"
 printf '201\n202\n' > "$tmp/mrs/inline8.txt"
 printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) cat "%s" ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr8.json" "$tmp/mrs/inline8.txt" > "$tmp/bin/gh"
 out=$(watch3)
-check 'the first count read after that is news to mr-watch (herd-watch takes it as the baseline)' 0 '^T-503 new-comments 3$' "$out"
-check 'and is recorded'                           0 '^T-503 open 3$' "$(cat "$tmp/factory/gh/.harness/T-503/mr-watch.state")"
+check 'the first count read after that is news to mr-watch (herd-watch takes it as the baseline)' 0 '^T-593 new-comments 3$' "$out"
+check 'and is recorded'                           0 '^T-593 open 3$' "$(cat "$tmp/factory/gh/.harness/T-593/mr-watch.state")"
+
+# --- --finish: the merge ends the task ---------------------------------------------------------
+git init -q "$state"
+git -C "$state" config user.email harness@localhost
+git -C "$state" config user.name harness
+printf -- '---\nid: T-502\nrepo: demo\narchetype: feature\nstatus: review\nowner: factory@h:s1\nbranch: feat/T-502-x\nmr_url: https://forge.test/g/demo/-/merge_requests/12\n---\n\n# Goal\nfeat(demo): z\n' \
+  > "$state/repos/demo/tasks/T-502.md"
+git -C "$state" add -A
+git -C "$state" commit -q -m init
+fin() { PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --finish "$@" --state "$state" 2>&1; }
+file502() { ls "$state"/repos/demo/tasks/T-502.md "$state"/repos/demo/archive/*/tasks/T-502.md 2>/dev/null | head -n1; }
+
+mr 12 opened
+out=$(fin --once)
+check 'an open task MR with --finish prints nothing'   1 'T-502 ' "$out"
+check 'and leaves the parent in review'                0 '^status: review$' "$(cat "$(file502)")"
+
+# a loop over a task MR still open goes on: it is stopped from outside after its first sleep
+out=$( (PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-502 --finish --interval 5 --state "$state" >/dev/null 2>&1 & p=$!
+  sleep 2; kill -0 $p 2>/dev/null && echo running; kill $p 2>/dev/null) )
+check 'a --finish loop keeps watching an open task MR' 0 '^running$' "$out"
+
+mr 12 merged
+# another writer holds the state lock until it is killed, so task-done.sh exits 2 and nothing is written
+if command -v flock >/dev/null 2>&1; then
+  ( exec 9>"$state/.git/factory-state.lock"; flock 9; : > "$tmp/held"; exec sleep 600 ) & holder=$!
+  until [ -f "$tmp/held" ]; do sleep 1; done
+else
+  mkdir "$state/.git/factory-state.lockdir" && date +%s > "$state/.git/factory-state.lockdir/since"; holder=''
+fi
+out=$(STATE_LOCK_WAIT=1 fin --once)
+if [ -n "$holder" ]; then kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null; else rm -rf "$state/.git/factory-state.lockdir"; fi
+check 'a finish task-done.sh refuses is finish-failed' 0 '^T-502 finish-failed ' "$out"
+check 'and the parent stays in review'                 0 '^status: review$' "$(cat "$(file502)")"
+
+out=$(fin --once)
+check 'the next pass finishes it: <T-id> done'         0 '^T-502 done$' "$out"
+check 'the merge itself is not reported twice'         1 '^T-502 merged$' "$out"
+check 'the parent is done'                             0 '^status: done$' "$(cat "$(file502)")"
+check 'its owner is released'                          0 '^owner: null$' "$(cat "$(file502)")"
+check 'the done is committed in the state clone'       0 'chore\(T-502\): review' "$(git -C "$state" log --format=%s)"
+
+out=$(fin --once)
+check 'a finished task is not finished again'          1 'T-502 (done|finish-failed)' "$out"
+ended() { # <pid of a job of the calling shell>: ended within a minute, or killed and running
+  e_n=0
+  while kill -0 "$1" 2>/dev/null; do
+    e_n=$((e_n + 1)); [ "$e_n" -lt 60 ] || { kill "$1"; echo running; return; }
+    sleep 1
+  done
+  echo ended
+}
+out=$(fin --interval 600 >/dev/null & ended $!)
+check 'a --finish loop over a done task ends'          0 '^ended$' "$out"
+
+# --- several finishers at once: one done, no pass that dies ---------------------------------------
+newtask() { # <id> <iid> <status>
+  printf -- '---\nid: %s\nrepo: demo\narchetype: feature\nstatus: %s\nowner: factory@h:s1\nbranch: feat/%s-x\nmr_url: https://forge.test/g/demo/-/merge_requests/%s\n---\n\n# Goal\nfeat(demo): %s\n' \
+    "$1" "${3:-review}" "$1" "$2" "$1" > "$state/repos/demo/tasks/$1.md"
+  git -C "$state" add -A && git -C "$state" commit -q -m "$1"
+}
+newtask T-503 13
+mr 13 merged
+for n in 1 2 3 4; do
+  ( PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-503 --once --finish --state "$state" > "$tmp/race.$n" 2>&1
+    echo "rc=$?" >> "$tmp/race.$n" ) &
+done
+wait
+races=$(cat "$tmp"/race.*)
+check 'four finishers print one done'                  0 '^1$' "$(printf '%s\n' "$races" | grep -c '^T-503 done$')"
+check 'none of them fails'                             1 'finish-failed|rc=[1-9]|cannot stat' "$races"
+check 'the task is done'                               0 '^status: done$' "$(cat "$state"/repos/demo/archive/*/tasks/T-503.md 2>/dev/null)"
+
+# --- a task MR closed without a merge: said once, and the --finish loop ends -----------------------
+newtask T-504 14
+mr 14 closed
+out=$(PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-504 --finish --interval 600 --state "$state" > "$tmp/t504" 2>&1 & ended $!)
+check 'a closed task MR ends the --finish loop'        0 '^ended$' "$out"
+check 'it prints <T-id> closed-unmerged'               0 '^T-504 closed-unmerged$' "$(cat "$tmp/t504")"
+check 'and the parent stays in review'                 0 '^status: review$' "$(cat "$state/repos/demo/tasks/T-504.md")"
+
+# --- --task-mr-only reads the task MR alone ------------------------------------------------------
+newtask T-505 15
+mr 15 opened
+printf -- '---\nid: T-505-01\nrepo: demo\nstatus: review\nbranch: block/T-505-01\nmr_url: https://forge.test/g/demo/-/merge_requests/16\n---\n\n# Goal\nfeat(demo): w\n' \
+  > "$state/repos/demo/tasks/T-505-01.md"
+mr 16 opened
+: > "$tmp/calls"
+PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-505 --once --finish --task-mr-only --state "$state" >/dev/null 2>&1
+check '--task-mr-only asks the forge for the task MR'  0 '^15$' "$(cat "$tmp/calls")"
+check 'and not for the block MRs'                      1 '^16$' "$(cat "$tmp/calls")"
+
+# --- a done commit that does not reach the state root is push-failed ----------------------------
+git -C "$state" remote add origin "$tmp/no-such-root"
+newtask T-506 17
+mr 17 merged
+out=$(PATH="$tmp/bin:$PATH" sh "$root/bin/mr-watch.sh" T-506 --once --finish --state "$state" 2>&1)
+check 'the task is still done'                         0 '^T-506 done$' "$out"
+check 'and the failed push is a stdout line'           0 '^T-506 push-failed$' "$out"
 
 exit $fail

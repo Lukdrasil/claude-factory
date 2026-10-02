@@ -57,9 +57,16 @@ what it found, one sentence of why each in `## Context`.
 ## After the task MR
 
 Step 16 ends the loop with the task MR open and its URL in the parent's `mr_url`. Arm
-`<plugin-root>/bin/mr-watch.sh <T-id> --interval 300` through the Monitor tool: `<T-id> merged` is the human's
-merge, so run `references/done.md` without an ask. A `changes-requested` or `new-comments` line on the task MR is
-one more round:
+`<plugin-root>/bin/mr-watch.sh <T-id> --finish --interval 300` through the Monitor tool, description
+`mr-watch.sh <T-id>`, `timeout_ms` at its maximum, and arm it again whenever it expires (the Stop hook
+`rearm-check.sh` reminds you). `<T-id> merged` is the human's merge, and the watcher then runs
+`references/done.md` itself: `task-done.sh` and `state-push.sh`, with no ask. `<T-id> done` ends the Monitor:
+report the task done to the user with every `<T-id> skipped:` line that followed it (a worktree the session
+itself runs in is one of them: it is never removed under a running session). `<T-id> push-failed` means the done
+commit is still local: run `state-push.sh`. `<T-id> finish-failed <reason>` is retried on the next pass; show the
+reason to the user. `<T-id> closed-unmerged` is a task MR the human closed without a merge: the Monitor ends, the
+task stays in `review`, and what happens to it is the human's call (`task-done.sh <T-id> --close "<reason>"` or a
+new MR). A `changes-requested` or `new-comments` line on the task MR is one more round:
 
 1. The fix as a new block, written the way Block MRs below write a block for work outside a block's acceptance
    (cut-check, `task-new.sh --parent`), approved with the human's yes (`references/approve.md`), then worked
@@ -68,7 +75,8 @@ one more round:
    report it (`state-report.sh --task <T-id> --no-status`), so solve-next.sh runs steps 12 to 13 again.
 3. `<plugin-root>/bin/mr-open.sh <T-id>` updates the task MR's description with the new block.
 
-The session may end while the MR waits; `factory done <T-id>` closes it later.
+The session may end while the MR waits: the next session start runs `<plugin-root>/bin/review-sweep.sh`, which
+finishes every task whose task MR was merged meanwhile, and `factory done <T-id>` still closes one by hand.
 
 ## The worktree rule
 
