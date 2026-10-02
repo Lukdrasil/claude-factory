@@ -217,6 +217,15 @@ auto_solutions_step() {
   ! picked || return 0
   # why: the lane promises every changed method at or under the crap threshold, and block-verify.sh can only
   # why: hold that with a crap row; without one the gate reads `not bound` and the promise is empty
+  ts_stack=$(awk 'NR == 1 && $0 != "---" { exit } NR > 1 && /^---$/ { exit }
+    /^stack:[[:space:]]*/ { sub(/^stack:[[:space:]]*/, ""); sub(/[[:space:]].*$/, ""); print; exit }' "$toolset" 2>/dev/null)
+  if [ "$ts_stack" = dotnet ] && binds coverage && ! grep -E '^\|[[:space:]]*`?coverage' "$toolset" | grep -q Cobertura; then
+    # why: a row seeded before 0.19 wrote no Cobertura report, so crap read nothing and every block went red
+    emit "Step 4a of 16: the coverage row of $key writes no Cobertura report" "the coverage row of $toolset carries Cobertura in its -reporttypes (the plugin's toolsets/dotnet.md shows the row), so the crap run of block-verify.sh has a report to read; factory doctor names it too."
+    cmd "cat $toolset"
+    cmd "$bin/factory-doctor.sh --root $root"
+    exit 0
+  fi
   if ! binds crap; then
     emit "Step 4a of 16: the toolset of $key binds no crap" "$toolset has a \`crap <scope>\` row (and a \`coverage\` row it reads), so block-verify.sh holds every changed method to the crap threshold; factory doctor names the tools it needs. Add an \`e2e\` row too when the repo has an end-to-end suite, so step 12 runs it."
     cmd "cat $toolset"
@@ -225,7 +234,7 @@ auto_solutions_step() {
   fi
   if ! written "$sol_open" || ! written "$sol_min"; then
     if [ -n "$autonom" ]; then
-      emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file leaves the pick to the one solution that exists: write ## Solution over it yourself, with chosen by: agent and the reason, and the lane goes on."
+      emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file leaves the pick to the one solution that exists: write ## Solution over it yourself, its lines - view: <open|min>, - file: <that file>, - chosen by: agent and the reason, and the lane goes on; both gone twice with no file is _shared/blocked-question.md to the human."
     else
       emit "Step 4a of 16: two solutions for $id" "$sol_open (the solution-open session, opus, no point of view imposed) and $sol_min (the solution-min session, fable, the fewest changes) exist, committed in the state clone; the watcher reports each session ready or gone, and a session gone twice with no file is _shared/blocked-question.md to the human."
     fi
@@ -294,7 +303,8 @@ verdict_current() {
   vc_want=$(sed -n 's/^plan_hash:[[:space:]]*//p' "$verdict" | head -n1)
   if command -v sha256sum >/dev/null 2>&1; then vc_have=$(sha256sum "$plan" | cut -d' ' -f1)
   elif command -v shasum >/dev/null 2>&1; then vc_have=$(shasum -a 256 "$plan" | cut -d' ' -f1)
-  else return 0; fi
+  elif command -v openssl >/dev/null 2>&1; then vc_have=$(openssl dgst -sha256 "$plan" | sed 's/^.*= //')
+  else return 1; fi
   [ "$vc_want" = "$vc_have" ]
 }
 
@@ -454,8 +464,12 @@ if [ -n "$pending" ]; then
   if [ "$bs" = blocked ] || [ "$bs" = failed ]; then
     if [ -n "$herd" ]; then bretry="the next dispatch of its wave, a fresh session"; else bretry="a fresh implement subagent"; fi
     if [ -n "$auto" ]; then
-      if [ -n "$autonom" ]; then
-        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md; a block whose every option fails is the human's, through _shared/blocked-question.md, in this lane too), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      # why: the fourth case of auto-decision.md: a block failed at its second attempt is the human's in every
+      # why: lane, so the autonomous answer covers a blocked block and a first failure only
+      if [ -n "$autonom" ] && { [ "$bs" = blocked ] || [ "$bn" -lt 1 ]; }; then
+        emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or with the option your analysis picked where none stood (the autonomous section of _shared/auto-decision.md; a block whose every option fails, or failed at its second attempt, is the human's, through _shared/blocked-question.md, in this lane too), applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
+      elif [ -n "$autonom" ]; then
+        emit "Step 11 of 16: $pending is $bs at attempt $bn" "the human has answered the question in $bprogress (a block failed at its second attempt is the fourth case of _shared/auto-decision.md, the human's in this lane too), what the answer requires is applied to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       else
         emit "Step 11 of 16: $pending is $bs" "you answered the question in $bprogress with its recommendation, or asked the human only where _shared/auto-decision.md says so, applied what the answer requires to the block, and task-approve.sh has set $pending ready again for its retry with attempt $((bn + 1)) on $bretry."
       fi
@@ -594,8 +608,11 @@ base=$(base_branch)
 # why: and ## Review standing, so the loop went to step 16 and the fix was never built, tested or reviewed.
 # why: ## Review names the blocks it covered on a `blocks:` line (step 13 writes it); a done block missing from
 # why: it is a fix block the quality steps have not seen, and the step is the reset that brings them back
-if [ -n "$mr_url" ] && grep -q '^## Review' "$progress" 2>/dev/null; then
-  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { sub(/^blocks:[[:space:]]*/, ""); print; exit }' "$progress" | tr ',' ' ')
+# why: before the MR too: a fix block of step 13's changes-needed round has to pass the build, the tests,
+# why: the e2e and the duplication check before step 14 opens the MR over it. The ids are read by their shape,
+# why: so a blocks: line written with commas, brackets or backticks reads the same
+if grep -q '^## Review' "$progress" 2>/dev/null; then
+  reviewed=$(awk '/^## Review/ { f = 1; next } f && /^#/ { exit } f && /^blocks:/ { print; exit }' "$progress" | grep -oE "$id-[0-9]{2,}" | tr '\n' ' ')
   if [ -n "$reviewed" ]; then
     unreviewed=''
     for b in $blocks; do
@@ -604,8 +621,9 @@ if [ -n "$mr_url" ] && grep -q '^## Review' "$progress" 2>/dev/null; then
       case " $reviewed " in *" $b "*) ;; *) unreviewed="$unreviewed $b" ;; esac
     done
     if [ -n "$unreviewed" ]; then
-      emit "Step 12 of 16: fix round over $id, after the task MR" "## Evidence, ## Duplication and ## Review are gone from $progress and the file is reported, so steps 12 and 13 run again over the work branch with${unreviewed} merged; step 13 then lists every done block on the blocks: line of ## Review and refreshes the MR body."
-      cmd "sed -i '/^## Evidence/,/^## /{/^## Evidence/d;/^## /!d}; /^## Duplication/,/^## /{/^## Duplication/d;/^## /!d}; /^## Review/,/^## /{/^## Review/d;/^## /!d}' $progress"
+      if [ -n "$mr_url" ]; then fr_when="after the task MR"; else fr_when="before the task MR"; fi
+      emit "Step 12 of 16: fix round over $id, $fr_when" "## Evidence, ## Quality, ## Duplication and ## Review are gone from $progress and the file is reported, so steps 12 and 13 run again over the work branch with${unreviewed} merged; step 13 then lists every done block on the blocks: line of ## Review$( [ -z "$mr_url" ] || printf ' and refreshes the MR body')."
+      cmd "sed -i '/^## Evidence/,/^## /{/^## Evidence/d;/^## /!d}; /^## Quality/,/^## /{/^## Quality/d;/^## /!d}; /^## Duplication/,/^## /{/^## Duplication/d;/^## /!d}; /^## Review/,/^## /{/^## Review/d;/^## /!d}' $progress"
       cmd "$bin/state-report.sh --task $id --no-status --message 'chore($id): fix round, quality steps again'"
       exit 0
     fi

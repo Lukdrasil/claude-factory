@@ -95,7 +95,8 @@ held to the fewest changes, both at effort medium, each writing `research/<T-id>
 `## Solution` in the task and is the consent for the rest. The grill and decompose then run with `--auto`:
 every round is written with its options and recommendation and the recommendation is taken, the human asked
 only where `skills/_shared/auto-decision.md` says so (no recommendation stands, the choice leaves the chosen
-solution, something destructive, every option fails). Every proposal names the tests that cover it, the
+solution, something destructive, every option fails, the look of a user-facing change, a solution session
+dead twice). Every proposal names the tests that cover it, the
 approval is the script run, a blocked block is answered by its recommendation, step 12 runs `build`, `test`
 and the toolset's `e2e` when it binds one, and `block-verify.sh` holds every changed method to the crap
 threshold, which is why the lane refuses a toolset without a `crap` row. The task MR is opened with
@@ -106,7 +107,8 @@ watcher turns the human's review of that MR into fix rounds, approved without an
 `/claude-factory:autonom <T-id>` is the same lane with no pick and no question: the monitor compares the two
 solutions and chooses, and a question with no recommendation is analysed over a table of its options and
 decided by the session that meets it, the line marked `(analysed)` in the MR body. A destructive or
-outward-facing choice and a session's permission dialog still reach the human.
+outward-facing choice, a block whose every option fails or that failed twice, and a session's permission
+dialog still reach the human.
 
 ## Layout
 

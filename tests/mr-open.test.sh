@@ -98,6 +98,8 @@ mkdir -p "$tmp/demo/.harness/T-700"
 printf '{"merge_method": "merge", "pipeline_must_succeed": false, "skipped_counts_as_success": false}\n' \
   > "$tmp/demo/.harness/T-700/forge.json"
 printf '## Review\n\n### Verdict\n`ok`: clean.\n' > "$tmp/demo/.harness/T-700-01/review.md"
+git -C "$tmp/demo/T-700-01" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q --allow-empty -m init
+printf 'block: T-700-01\ntests: 1 run, 1 passed, 0 failed\ncrap:  not bound\nverdict: green\nhead: %s\n' "$(git -C "$tmp/demo/T-700-01" rev-parse HEAD)" > "$tmp/demo/.harness/T-700-01/verify.txt"
 
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
 check 'mr-open.sh --dry-run exits 0' 0 "$rc"
@@ -139,6 +141,14 @@ check 'mr-open.sh --decisions keeps ## Blocks in front of it' '## Blocks' \
   "$(printf '%s\n' "$out" | grep -E '^## (Blocks|Decisions)$' | head -n1)"
 out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1)
 check 'mr-open.sh without --decisions lists none' '' "$(printf '%s\n' "$out" | grep -c '^## Decisions$' | sed 's/^0$//')"
+
+# the 120 words bound What changed and Why; the evidence runs stand outside the count, the first five kept
+cp "$state/repos/demo/progress/T-700.md" "$tmp/progress.bak"
+{ printf '# the progress\n\n## Done\n- a\n\n## Evidence\n'; i=0; while [ $i -lt 8 ]; do i=$((i + 1)); printf -- '- `run %s with twenty words of output in its key line, more than any reviewer reads twice, line %s` -> exit 0\n' "$i" "$i"; done; } > "$state/repos/demo/progress/T-700.md"
+out=$(sh "$bin/mr-open.sh" T-700 --dry-run --state "$state" --worktree "$tmp/demo/T-700" 2>&1); rc=$?
+check 'mr-open.sh exits 0 with long evidence' 0 "$rc"
+check 'and keeps the first five runs with the rest counted' 'and 3 more runs' "$(printf '%s\n' "$out" | grep -F '**How to verify**' | grep -o 'and 3 more runs')"
+cp "$tmp/progress.bak" "$state/repos/demo/progress/T-700.md"
 
 out=$(sh "$bin/block-mr.sh" T-700-01 --dry-run --state "$state" --worktree "$tmp/demo/T-700-01" 2>&1); rc=$?
 check 'block-mr.sh --dry-run exits 0' 0 "$rc"

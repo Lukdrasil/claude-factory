@@ -69,5 +69,10 @@ printf '101\n102\n' > "$tmp/mrs/inline7.txt"
 out=$(watch2)
 check 'a review as Comment with inline threads is counted, an empty approving body not' 0 '^T-502 new-comments 3$' "$out"
 check 'the inline count comes from the paginated pulls comments endpoint of that PR' 0 '^api --paginate repos/o/gh/pulls/7/comments --jq ' "$(cat "$tmp/gh.log")"
+# a gh api call that fails keeps the count last recorded, so no lower total reads as new comments next pass
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\ncase "$1 $2" in\n  "pr view") cat "%s" ;;\n  api*) exit 1 ;;\n  *) exit 1 ;;\nesac\n' "$tmp/gh.log" "$tmp/mrs/pr7.json" > "$tmp/bin/gh"
+out=$(watch2)
+check 'a failed inline call prints no new comments' 1 'T-502 new-comments' "$out"
+check 'and keeps the recorded count'              0 '^T-502 open 3$' "$(cat "$tmp/factory/gh/.harness/T-502/mr-watch.state")"
 
 exit $fail

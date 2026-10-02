@@ -162,11 +162,13 @@ no question, `sh <plugin-root>/bin/solve-next.sh <T-id> --autonom`. Everything a
   the decision line ending with `(analysed)`; the mockup page is still written, so the MR reviewer sees the
   variants the choice was made against.
 - **A blocked block** with no recommendation standing is answered the same way, the table in its progress
-  file and the answer line `(analysed)`; a `failed` block at its second attempt too, with the option the
-  table picks. A block whose every option fails is the human's in this lane too (the fourth case): no table
-  picks an option that breaks the acceptance, and a block is never closed by a session.
+  file and the answer line `(analysed)`, and a block at its first failure too, with the option the table
+  picks. A block whose every option fails, or that failed at its second attempt, is the human's in this lane
+  too (the fourth case): no table picks an option that breaks the acceptance, a third attempt over the same
+  analysis is a loop, and a block is never closed by a session.
 - **A solution session gone twice** with no file leaves the pick to the one solution that exists: write
-  `## Solution` over it, `chosen by: agent` and the reason, and the lane goes on.
+  `## Solution` over it, with `- view: <open|min>`, `- file: <that file>`, `- chosen by: agent` and the
+  reason, and the lane goes on; both gone twice is the human's.
 - **What stays the human's**: the third and fourth cases of `_shared/auto-decision.md` (data deleted, a
   migration that loses rows, a forge action beyond the task's MRs, a cost; a block whose every option
   fails), the permission dialogs of the sessions, and the review and merge of the task MR. A task whose text says in words that the third case is theirs to take

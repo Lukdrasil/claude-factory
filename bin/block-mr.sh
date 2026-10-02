@@ -192,12 +192,23 @@ else
   reasons=''
 fi
 
+# why: a block MR without a verification, or with one of an older commit, carried the crap promise on paper
+# why: only; the report has to be there, green, and of the worktree's HEAD
 verified=''
-if [ -f "$desc_dir/verify.txt" ]; then
-  [ "$(sed -n 's/^verdict:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)" != red ] \
-    || die "block-verify.sh reported red for $id in $desc_dir/verify.txt; make it green and run block-verify.sh again"
-  verified=$(awk 'NR > 1 && NF { gsub(/[[:space:]]+/, " "); s = s ? s "; " $0 : $0 } END { print s }' "$desc_dir/verify.txt")
+[ -f "$desc_dir/verify.txt" ] \
+  || die "no verification of block $id at $desc_dir/verify.txt: run block-verify.sh $id first"
+[ "$(sed -n 's/^verdict:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)" != red ] \
+  || die "block-verify.sh reported red for $id in $desc_dir/verify.txt; make it green and run block-verify.sh again"
+# the trees are compared, not the commits: the [skip ci] commit this script adds below changes no file, and a
+# rerun over it is still verified
+v_head=$(sed -n 's/^head:[[:space:]]*//p' "$desc_dir/verify.txt" | head -n1)
+if [ -n "$v_head" ]; then
+  v_tree=$(git -C "$worktree" rev-parse "$v_head^{tree}" 2>/dev/null || :)
+  w_tree=$(git -C "$worktree" rev-parse 'HEAD^{tree}' 2>/dev/null || :)
+  [ -n "$v_tree" ] && [ "$v_tree" = "$w_tree" ] \
+    || die "the verification at $desc_dir/verify.txt is of $v_head and the block worktree's files are not those: run block-verify.sh $id again"
 fi
+verified=$(awk 'NR > 1 && NF && !/^head:/ { gsub(/[[:space:]]+/, " "); s = s ? s "; " $0 : $0 } END { print s }' "$desc_dir/verify.txt")
 
 {
   printf '**What changed** - %s\n' "$changed"

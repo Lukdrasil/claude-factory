@@ -46,6 +46,7 @@
 #     tests: <n> run, <n> passed, <n> failed
 #     crap:  <value> | over <threshold>: <method> <value>, ... | not bound (repos/<key>/toolset.md)
 #     verdict: green | red
+#     head: <the commit the report is of>
 #
 # The same four lines go to `<root>/<key>/.harness/<block-id>/verify.txt` when the worktree sits under
 # $WORK_DIR, which is where block-mr.sh reads the verification that ran.
@@ -150,8 +151,11 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # -c core.quotePath=false: a non-ASCII path is printed as it is, not as "Slu\305\276ba.cs", which no file test matches
-git -C "$worktree" -c core.quotePath=false diff --name-only "$base" > "$tmp/changed" 2>"$tmp/giterr" \
+# -z: a path with a quote, a backslash, a tab or a non-ASCII character is printed as it is, not as "a\"b.cs",
+# which no file test matches; the NUL between paths becomes the newline the readers below take
+git -C "$worktree" diff -z --name-only "$base" 2>"$tmp/giterr" | tr '\0' '\n' > "$tmp/changed" \
   || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
+[ ! -s "$tmp/giterr" ] || die "git diff $base failed in $worktree: $(cat "$tmp/giterr")"
 
 # see: the documentation-block exception of this script's header. `grep -qv` answers "some line is not a .md
 # see: path", so an empty diff leaves docs_only at 0 and stays red, and one code path in the diff clears it.
@@ -302,6 +306,12 @@ if [ -n "$crap_binding" ]; then
     crap_over=$rows_over
     crap_status=0
   fi
+  # a run that printed no method row at all scored nothing the parser reads: the line says so, for the
+  # Verified section of the block MR, and the reviewer judges it (a file of records has no method to score)
+  if [ -s "$tmp/scope" ] && [ "$crap_status" -eq 0 ] && [ -n "$crap" ] && [ -z "$rows_over" ] \
+    && ! awk '{ gsub(/\|/, " ") } NF >= 2 && $NF ~ /^[0-9]+([.][0-9]+)?$/ && $1 ~ /^[A-Za-z_][A-Za-z0-9_]*[.:#]/ { found = 1 } END { exit !found }' "$tmp/crap"; then
+    crap="no method row parsed: $crap"
+  fi
   if [ -n "$crap_over" ] && [ "$crap_status" -eq 0 ] && [ -n "$(head -n1 "$tmp/crap")" ]; then
     joined='' over=0
     while IFS= read -r row; do
@@ -330,11 +340,15 @@ fi
 note=''
 if [ "$docs_only" -eq 1 ] && [ "$run" -eq 0 ]; then note=' (markdown-only diff)'; fi
 
+# the head the report is of: block-mr.sh refuses a report of another commit, so a block pushed after its
+# verify is verified again
+head=$(git -C "$worktree" rev-parse HEAD 2>/dev/null || :)
 {
   printf 'block: %s\n' "$id"
   printf 'tests: %s run, %s passed, %s failed%s\n' "$run" "$passed" "$failed" "$note"
   printf 'crap:  %s\n' "$crap"
   printf 'verdict: %s\n' "$verdict"
+  [ -z "$head" ] || printf 'head: %s\n' "$head"
 } > "$tmp/report"
 cat "$tmp/report"
 # see: 3.4 of the agent-org plan, block-mr.sh puts the last report into the block MR as the verification that

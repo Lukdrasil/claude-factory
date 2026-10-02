@@ -29,6 +29,9 @@ every question that does not hang on it goes on. Ask only when one of these hold
    leave the look to the agent, and the pick of a variant after a mockup. How a thing looks is the human's
    call, so no recommendation is taken for them here; a task whose text already settles it (a design to
    build against, or the look left to the agent) is that answer, and the round is skipped.
+6. **A solution session dead twice** with no file, in step 4a of `references/auto.md`: the human is told
+   through `_shared/blocked-question.md`. Under `--autonom` the pick is made over the one solution that
+   exists, and only both sessions dead twice reach the human.
 
 A permission dialog of a session is none of these: the monitor reads it and asks, as `references/herd.md`
 says. The human's own words, in the `## Solution` of the task or in an answer, win over any recommendation.
@@ -50,7 +53,7 @@ what was decided for them.
 ## Autonomous
 
 Under `--autonom` (`factory autonom`, `references/auto.md`) the cases above are not asked either, bar two.
-Cases 1, 2 and 5, and the pick of step 4a, are **analysed and decided by the session**:
+Cases 1, 2, 5 and 6, and the pick of step 4a, are **analysed and decided by the session**:
 
 1. Write the analysis as the `explore` table of the grill: one row per option, two to four pros and cons
    each, specific to this repository, over goal fit, size of the change, risk, the tests it needs and what it

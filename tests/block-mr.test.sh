@@ -120,7 +120,14 @@ block() { # <id>: the worktree cut by worktree-add.sh, one commit with a passing
   git -C "$tmp/demo/$1" commit -q -m "feat: $1"
   printf '\n## Done\n- the parser takes empty rows\n\n## Evidence\n- `sh tests/%s.test.sh` -> exit 0\n' "$1" \
     >> "$state/repos/demo/progress/$1.md"
+  verified "$1"
   publish
+}
+
+verified() { # <id>: the green report block-verify.sh leaves, of the worktree's head
+  mkdir -p "$harness/$1"
+  printf 'block: %s\ntests: 1 run, 1 passed, 0 failed\ncrap:  not bound\nverdict: green\nhead: %s\n' "$1" \
+    "$(git -C "$tmp/demo/$1" rev-parse HEAD)" > "$harness/$1/verify.txt"
 }
 
 review() { # <id> <verdict line>
@@ -305,9 +312,24 @@ check 'no arch.md in a repo with docs/architecture/ is refused' 1 "$rc"
 has 'the refusal names arch.md' 'arch.md' "$err"
 
 arch T-700-03 low
-printf 'block: T-700-03\ntests: 1 run, 0 passed, 1 failed\ncrap:  not bound\nverdict: red\n' > "$harness/T-700-03/verify.txt"
+printf 'block: T-700-03\ntests: 1 run, 0 passed, 1 failed\ncrap:  not bound\nverdict: red\nhead: %s\n' "$(git -C "$tmp/demo/T-700-03" rev-parse HEAD)" > "$harness/T-700-03/verify.txt"
 run T-700-03 --dry-run
 check 'a block block-verify.sh found red is refused' 1 "$rc"
+# the verification has to be there, and of the files the worktree holds now
+rm "$harness/T-700-03/verify.txt"
+run T-700-03 --dry-run
+check 'a block with no verification is refused' 1 "$rc"
+check 'and told to verify first' 1 "$(printf '%s' "$err" | grep -c 'run block-verify.sh T-700-03 first')"
+verified T-700-03
+printf 'x\n' > "$tmp/demo/T-700-03/tests/more.test.sh"
+git -C "$tmp/demo/T-700-03" add -A && git -C "$tmp/demo/T-700-03" commit -q -m 'feat: more'
+run T-700-03 --dry-run
+check 'a verification of an older tree is refused' 1 "$rc"
+check 'and told to verify again' 1 "$(printf '%s' "$err" | grep -c 'run block-verify.sh T-700-03 again')"
+verified T-700-03
+git -C "$tmp/demo/T-700-03" commit -q --allow-empty -m 'ci: skip'
+run T-700-03 --dry-run
+check 'an empty commit over a verified tree is still verified' 0 "$rc"
 
 # --- Why is the reason, not the title again (F17) ----------------------------------
 section() { # <id> <heading> <text>: appends a section to the task file

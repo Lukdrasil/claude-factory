@@ -135,7 +135,7 @@ state_word() { # <the forge's json>
 # `gh pr view` lists and which `gh api .../pulls/<n>/comments` counts. why: a review submitted as "Comment" with
 # inline threads leaves the state `open` and, before this, the count unchanged, so the human's main way of
 # reviewing on GitHub never reached the watcher
-comment_count() { # <the forge's json> [<mr url>]
+comment_count() { # <the forge's json> [<mr url> [<the count last recorded>]]
   n=$(printf '%s' "$1" | sed -n 's/.*"user_notes_count"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
   if [ -z "$n" ]; then
     # a body with text: an approving review with an empty body is no comment to answer
@@ -144,8 +144,16 @@ comment_count() { # <the forge's json> [<mr url>]
     if [ -n "${2:-}" ] && [ "$(forge_of "$2")" = gh ]; then
       cc_path=$(printf '%s' "$2" | sed -n 's#^[a-zA-Z+]*://[^/]*/\([^/]*\)/\([^/]*\)/pull/\([0-9]*\).*#repos/\1/\2/pulls/\3/comments#p')
       cc_inline=''
-      # --paginate: the endpoint pages at 30, and one id per line counts every page
-      [ -z "$cc_path" ] || cc_inline=$(gh api --paginate "$cc_path" --jq '.[].id' 2>/dev/null | grep -c . || :)
+      # --paginate: the endpoint pages at 30, and one id per line counts every page; a call that fails is no
+      # count at all, so the one last recorded stands, or a lower total would read as new comments next pass
+      if [ -n "$cc_path" ]; then
+        if cc_ids=$(gh api --paginate "$cc_path" --jq '.[].id' 2>/dev/null); then
+          cc_inline=$(printf '%s\n' "$cc_ids" | grep -c . || :)
+        else
+          printf '%s' "${3:-0}"
+          return 0
+        fi
+      fi
       case "$cc_inline" in ''|*[!0-9]*) cc_inline=0 ;; esac
       n=$((n + cc_inline))
     fi
@@ -193,7 +201,7 @@ pass() {
     json=$(view "$url")
     [ -n "$json" ] || { printf '%s %s %s\n' "$b" "$(remembered "$b" 2)" "$(remembered "$b" 3)" >> "$new"; continue; }
     w=$(state_word "$json")
-    n=$(comment_count "$json" "$url")
+    n=$(comment_count "$json" "$url" "$(remembered "$b" 3)")
     was=$(remembered "$b" 2)
     wasn=$(remembered "$b" 3)
     case "$wasn" in ''|*[!0-9]*) wasn=0 ;; esac

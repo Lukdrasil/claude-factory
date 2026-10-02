@@ -86,7 +86,7 @@ oneline() { awk 'NF { s = s ? s "; " $0 : $0 } END { if (s) print s }'; }
 
 changed=$(bullets '## Done' | oneline)
 [ -n "$changed" ] || die "$progress has no '## Done' bullets for the What changed section"
-verify=$(bullets '## Evidence' | oneline)
+verify=$(bullets '## Evidence' | awk 'NR <= 5 { print; next } { more++ } END { if (more) printf "and %d more run%s\n", more, (more > 1 ? "s" : "") }' | oneline)
 [ -n "$verify" ] || die "$progress has no '## Evidence' bullets for the How to verify section"
 follow=$(bullets '## Follow-ups')
 
@@ -141,9 +141,12 @@ desc="$desc_dir/mr.md"
   fi
 } > "$desc"
 
-words=$(wc -w < "$desc" | tr -d '[:space:]')
+# why: the 120 words bound what a reviewer reads first, What changed and Why; the evidence lines grow with
+# why: every build, test and e2e run and every fix round (the auto lane), so How to verify stands outside
+# why: the count and is cut to its first five runs with the rest counted
+words=$(grep -v '^\*\*How to verify\*\*' "$desc" | wc -w | tr -d '[:space:]')
 [ "$words" -le 120 ] \
-  || die "the description is $words words and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
+  || die "the description is $words words outside How to verify and the contract caps it at 120; shorten $progress or the sentence Why takes from the task's ## Context"
 
 # the block MRs of the task, each with the risk its architecture audit rated; the audits sit beside this task's
 # own stamp folder, in <root>/<key>/.harness/<block>/

@@ -95,9 +95,9 @@ check 'auto: step 4a opens with state-push.sh' "^  .*state-push\.sh --state $sta
 printf '\n## Solution\nthe issue author wrote this heading\n' >> "$state/repos/demo/tasks/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
 check 'auto: a ## Solution heading without a view line is no pick' '^## Step 4a of 16: two solutions for T-020$' "$out"
-printf '\n## Solution\n- view: open\n- file: repos/demo/research/T-020-solution-open.md\n' >> "$state/repos/demo/tasks/T-020.md"
+printf '\n## Steps\n1. the issue author wrote this too\n\n## Solution\n- view: open\n- file: repos/demo/research/T-020-solution-open.md\n' >> "$state/repos/demo/tasks/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-check 'auto: the lane'"'"'s pick below the issue heading is still the pick' '^## Step 4 of 16: grill T-020$' "$out"
+check 'auto: the lane'"'"'s pick below the issue heading and another heading is still the pick' '^## Step 4 of 16: grill T-020$' "$out"
 sed -i '/^## Solution$/,$d' "$state/repos/demo/tasks/T-020.md"
 # the state clone is a git repo from here: a solution file counts once it is committed
 git -C "$state" init -q 2>/dev/null; git -C "$state" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false add -A >/dev/null 2>&1
@@ -255,8 +255,15 @@ out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
 check 'autonom: a blocked block with no recommendation is analysed' 'Completion:.*your analysis picked' "$out"
 block T-020-01 failed
 out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
-check 'autonom: a failed block whose every option fails is the human'"'"'s' 'Completion:.*every option fails is the human' "$out"
+check 'autonom: a first failure is analysed' 'Completion:.*your analysis picked' "$out"
+check 'autonom: and says every option failing, or a second failure, is the human'"'"'s' 'Completion:.*failed at its second attempt, is the human' "$out"
 no 'autonom: no session closes a block' 'set-status closed' "$out"
+sed -i 's/^complexity: low$/complexity: low\nattempt: 1/' "$state/repos/demo/tasks/T-020-01.md"
+out=$(sh "$bin/solve-next.sh" T-020 --autonom --state "$state" 2>&1)
+check 'autonom: a block failed at its second attempt is the human'"'"'s' '^## Step 11 of 16: T-020-01 is failed at attempt 1$' "$out"
+check 'autonom: through the blocked question' 'Completion:.*the human has answered' "$out"
+no 'autonom: and not analysed again' 'your analysis picked' "$out"
+check 'autonom: the retry is still approved after the answer' 'task-approve\.sh T-020-01 --state' "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 no 'herd: a blocked block stays the human'"'"'s' 'auto-decision\.md' "$out"
 block T-020-01 draft
@@ -307,9 +314,25 @@ check 'auto: step 13 lists both done blocks' 'Completion:.*blocks: T-020-01 T-02
 check 'auto: and refreshes the MR body with the decisions' "mr-open\.sh T-020 --decisions --state $state\$" "$out"
 out=$(sh "$bin/solve-next.sh" T-020 --herd --state "$state" 2>&1)
 check 'herd: the fix round refreshes the body without the decisions' "mr-open\.sh T-020 --state $state\$" "$out"
-printf '## Review\nblocks: T-020-01, T-020-02\nok\n' >> "$state/repos/demo/progress/T-020.md"
+printf '## Review\nblocks: [`T-020-01`, `T-020-02`]\nok\n' >> "$state/repos/demo/progress/T-020.md"
 out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
-check 'auto: once reviewed, a comma-separated blocks line too, step 16 again' '^## Step 16 of 16' "$out"
+check 'auto: once reviewed, a bracketed and backticked blocks line too, step 16 again' '^## Step 16 of 16' "$out"
+# the fix round before the MR: a changes-needed fix block merged at step 11 brings 12, 12b and 13 back before 14
+sed -i 's/^status: review$/status: in_progress/; /^mr_url:/d' "$state/repos/demo/tasks/T-020.md"
+block T-020-04 done
+printf 'wave 1: T-020-01\n## Evidence\nok\n## Quality\n| m | 1 | |\n## Duplication\nnone\n## Review\nblocks: T-020-01 T-020-02\nchanges needed\n' > "$state/repos/demo/progress/T-020.md"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: a fix block done before the MR is the fix round too' '^## Step 12 of 16: fix round over T-020, before the task MR$' "$out"
+check 'auto: which names the block' 'Completion:.* T-020-04 merged' "$out"
+eval "$(printf '%s\n' "$out" | sed -n 's/^  \(sed -i .*\)$/\1/p')"
+out=$(cat "$state/repos/demo/progress/T-020.md")
+no 'the reset drops ## Quality too' '^## Quality' "$out"
+check 'the reset keeps the wave plan' '^wave 1: T-020-01$' "$out"
+out=$(sh "$bin/solve-next.sh" T-020 --auto --state "$state" 2>&1)
+check 'auto: step 12 runs again before the MR' '^## Step 12 of 16: acceptance and quality over T-020$' "$out"
+rm "$state/repos/demo/tasks/T-020-04.md"
+sed -i 's/^status: in_progress$/status: review/; s/^complexity: medium$/complexity: medium\nmr_url: https:\/\/forge.test\/mr\/20/' "$state/repos/demo/tasks/T-020.md"
+printf 'wave 1: T-020-01\n## Evidence\nok\n## Duplication\nnone\n## Review\nblocks: T-020-01 T-020-02\nok\n' > "$state/repos/demo/progress/T-020.md"
 # a closed last block (a research block, or a block the human closed) does not end the step under set -e
 block T-020-03 closed
 sed -i '/^## Review/,$d' "$state/repos/demo/progress/T-020.md"
@@ -479,9 +502,21 @@ git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c com
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'block-verify runs a crap binding that opens with an assignment, over the changed .cs file alone' '^crap:  src\.cs\.Run 2$' "$out"
 check 'coverage ran first' '^verdict: green$' "$out"
+check 'the report names the head it is of' "^head: $(git -C "$wt" rev-parse HEAD)\$" "$out"
+printf 'z\n' > "$wt/Služba two.cs"
+printf 'q\n' > "$wt/a\"b.cs"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'more files'
+printf '#!/bin/sh\nprintf "%%s\\n" "$#"\nfor f; do printf "arg.%%s 1\\n" "$(printf %%s "$f" | tr -c "a-zA-Z0-9.\\n" _)"; done\n' > "$wt/crap.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'counting stub'
 sed -i 's/^| `crap <scope>` .*$/| `crap <scope>` | `CRAP_ENV=1 sh crap.sh "<scope>"` |/' "$bv/state/repos/demo/toolset.md"
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
-check 'a row that quotes <scope> (the older template) still hands the files one by one' '^crap:  src\.cs\.Run 2$' "$out"
+check 'a row that quotes <scope> (the older template) still hands three files one by one, a space, a quote and a non-ASCII name among them' '^crap:  3$' "$out"
+sed -i "s/^| \`crap <scope>\` .*\$/| \`crap <scope>\` | \`CRAP_ENV=1 sh crap.sh '<scope>'\` |/" "$bv/state/repos/demo/toolset.md"
+out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
+check 'a single-quoted <scope> too' '^crap:  3$' "$out"
+printf '#!/bin/sh\n[ "${CRAP_ENV:-}" = 1 ] || exit 3\n[ -f .coverage ] || exit 4\nfor f; do printf "%%s.Run %%s\\n" "$f" "${CRAP_VALUE:-2}"; done\n' > "$wt/crap.sh"
+git -C "$wt" add -A && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'row stub'
+git -C "$wt" rm -q 'Služba two.cs' 'a"b.cs' && git -C "$wt" -c user.name=t -c user.email=t@t.test -c commit.gpgsign=false commit -q -m 'fewer files'
 sed -i 's/^| `crap <scope>` .*$/| `crap <scope>` | `CRAP_ENV=1 sh crap.sh <scope>` |/' "$bv/state/repos/demo/toolset.md"
 sed -i 's/^| `coverage` .*$/| `coverage` | `echo no collector >\&2; exit 5` |/' "$bv/state/repos/demo/toolset.md"
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
@@ -516,6 +551,32 @@ git -C "$wt" rm -q 'src.cs' 'my dir/$(touch PWNED).cs' && git -C "$wt" -c user.n
 out=$(WORK_DIR=$bv sh "$bin/block-verify.sh" T-030-01 --worktree "$wt" --state "$bv/state" --base feat/T-030-x 2>&1); rc=$?
 check 'a block with no source file changed runs no crap' '^crap:  no source file changed$' "$out"
 check 'and is green on its tests' '^verdict: green$' "$out"
+
+# --- the doctor names a seeded coverage row without Cobertura and a quoted <scope> ---------------------------
+dr="$tmp/doctor"
+mkdir -p "$dr/state/repos/demo" "$dr/clone"
+git init -q "$dr/clone" && git -C "$dr/clone" remote add origin https://example.invalid/demo.git
+printf 'demo: { path: %s }\n' "$dr/clone" > "$dr/state/repos.yml"
+printf -- '---\nstack: dotnet\ntest-globs:\n  - "**/*Tests.cs"\n---\n\n| command | binding |\n|---|---|\n| `coverage` | `dotnet test && reportgenerator -reporttypes:TextSummary` |\n| `crap <scope>` | `dotnet-crap analyze "<scope>"` |\n' > "$dr/state/repos/demo/toolset.md"
+out=$(cd "$dr/clone" && sh "$bin/factory-doctor.sh" --root "$dr" --repo "$dr/clone" 2>&1)
+check 'the doctor names a coverage row without a Cobertura report' 'missing: a Cobertura report in the coverage row' "$out"
+check 'the doctor names a quoted <scope>' 'missing: an unquoted <scope> in the crap row' "$out"
+printf -- '---\nstack: dotnet\ntest-globs:\n  - "**/*Tests.cs"\n---\n\n| command | binding |\n|---|---|\n| `coverage` | `dotnet test && reportgenerator -reporttypes:"TextSummary;Cobertura"` |\n| `crap <scope>` | `dotnet-crap analyze <scope>` |\n' > "$dr/state/repos/demo/toolset.md"
+out=$(cd "$dr/clone" && sh "$bin/factory-doctor.sh" --root "$dr" --repo "$dr/clone" 2>&1)
+check 'the doctor accepts the 0.19 rows' 'ok: coverage writes the Cobertura report crap reads' "$out"
+check 'and the unquoted scope' 'ok: the crap row takes <scope> unquoted' "$out"
+tsrow=$(grep -E '^\|[[:space:]]*`coverage`' "$root/toolsets/dotnet.md")
+check 'the plugin coverage row writes Cobertura' 'TextSummary;Cobertura' "$tsrow"
+check 'and empties its raw results before every run' 'rm -rf .coverage/raw' "$tsrow"
+check 'and reads only that run' '-reports:".coverage/raw/' "$tsrow"
+# the auto lane gates on the coverage row of a dotnet toolset too
+parent T-022 triaged 'a fresh task'
+printf -- '---\nstack: dotnet\n---\n| command | binding |\n|---|---|\n| `coverage` | `reportgenerator -reporttypes:TextSummary` |\n| `crap <scope>` | `crap <scope>` |\n' > "$state/repos/demo/toolset.md"
+out=$(sh "$bin/solve-next.sh" T-022 --auto --state "$state" 2>&1)
+check 'auto: a dotnet coverage row without Cobertura stops at step 4a' '^## Step 4a of 16: the coverage row of demo writes no Cobertura report$' "$out"
+printf -- '---\nstack: dotnet\n---\n| command | binding |\n|---|---|\n| `coverage` | `reportgenerator -reporttypes:"TextSummary;Cobertura"` |\n| `crap <scope>` | `crap <scope>` |\n' > "$state/repos/demo/toolset.md"
+out=$(sh "$bin/solve-next.sh" T-022 --auto --state "$state" 2>&1)
+check 'auto: with Cobertura the lane goes on to the solutions' '^## Step 4a of 16: two solutions for T-022$' "$out"
 
 # --- the skills: the auto sections and the solution skill ------------------------------------------------------
 grill="$root/skills/grill/SKILL.md"

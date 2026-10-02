@@ -4,8 +4,10 @@
 progress file and opens the MR, and it refuses what the contract refuses.
 
 The rules it checks: the sections **What changed**, **Why**, **Issues**, **How to verify** and
-**Follow-ups**, in that order, one with nothing to say left out, the whole thing **under 120 words**, short
-sentences, written for whoever reviews the MR and not for the factory.
+**Follow-ups**, in that order, one with nothing to say left out, everything but **How to verify** **under 120
+words**, short sentences, written for whoever reviews the MR and not for the factory. **How to verify** is
+the first five evidence runs and a count of the rest, since a build, a test run, an e2e run and every fix
+round add a line of their own.
 
 **Why** is the reason for the change, never the title again: the first sentence of the task's `## Context`
 (a block's own, else its parent's; the `From the plan` line is skipped), else the `# Spec` sentence of the
