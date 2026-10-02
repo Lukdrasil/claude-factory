@@ -5,6 +5,20 @@ a web page or component, a form, a dialog, an email, a CLI or TUI output, a repo
 such surface skips this file. Held in `--auto` too: it is the fifth case of `_shared/auto-decision.md`, and
 the recommendation is never taken for the human here.
 
+## Skipped when the task settles it
+
+Read the task before you ask: `## Context`, the human's words under `## Internal` and `## Solution`, and the
+spec as given. The round is not held, and the row closes with the answer the task gave, when either holds:
+
+- the task names what the result looks like: a design or mockup link, a screenshot or attachment, a page or
+  component to copy, a sentence that describes the layout. That is the variant; the design round sketches it
+  and the proposals that build it name it under `context:`.
+- the task leaves the look to the agent: `no mockup`, `look as you see fit`, `follow the existing UI`, or
+  words to that effect. The row closes with `agent decides`.
+
+Say in one line which of the two the task settled and where it says so. Ask when the task says neither, or
+says both.
+
 ## The question
 
 One round, in the interview format, before the design round:
