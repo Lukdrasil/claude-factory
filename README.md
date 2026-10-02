@@ -85,7 +85,7 @@ doctor checks herdr 0.8.2 or later, its server and its Claude integration (`skil
 The herd with one interactive step:
 
 ```
-/claude-factory:factory auto <T-id>        # or: auto <the task in words>
+/claude-factory:auto <T-id>                # or: auto <the task in words>; the same as factory auto <...>
 ```
 
 After triage, `solve-next.sh <T-id> --auto` dispatches two solution sessions in the task worktree:

@@ -258,5 +258,9 @@ check 'auto.md names the e2e run' '`e2e` when the toolset binds one' "$(cat "$au
 check 'auto.md opens the MR with the decisions' 'mr-open\.sh <T-id> --decisions' "$(cat "$auto")"
 check 'auto.md turns the MR review into fix rounds' 'changes-requested' "$(cat "$auto")"
 check 'the factory skill routes auto' '^| `auto` |' "$(cat "$root/skills/factory/SKILL.md")"
+entry="$root/skills/auto/SKILL.md"
+check 'the auto skill is its own entry' '^name: auto$' "$(cat "$entry")"
+check 'the auto skill runs solve-next.sh --auto' 'solve-next\.sh <T-id> --auto' "$(cat "$entry")"
+check 'the auto skill reads the reference' 'references/auto\.md' "$(cat "$entry")"
 
 exit "$fail"
