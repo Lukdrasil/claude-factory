@@ -20,6 +20,8 @@ the MR, the self-report and the knowledge review. You own the worktree and your 
   line in your report, never a wait.
 - The hooks refuse, they do not remind: a test-file write once `phase: implement` is armed
   (`_shared/implement-phase.md`), a comment that is not a doc comment on a public member, an em dash. The deny message carries the fix.
+- Every test and production line you write follows the coding skills `_shared/coding-skills.md` names for
+  what it touches.
 
 ## Phase tests
 

@@ -27,6 +27,11 @@ test. An entry nobody acts on is mis-levelled or should not exist, and noise hid
   100 %". Bad input and a user-facing 404 are not warnings.
 - Attach only the data needed to act. **Never personal data**, secrets, tokens or full payloads; a hashed
   id when identity is needed.
+- **Untrusted text is sanitized and capped** before it enters an entry: headers, paths, query strings,
+  upstream messages. Claims, tokens, request bodies and credential file paths stay out.
+- **A library logs through an injected logger** and leaves the global logger configuration to the host.
+- **Arguments are built only when the level is enabled.**
+- **Entries that matter are tested** by event id and level.
 - **No browser console output in production.** Tell the user in the interface, or send it to a log service.
 - **Log once**, at the boundary that decides the outcome, structured and with a category, never per layer.
 - Traces answer "how long", logs answer "what needs action". Sample traces freely. **Never sample Error** or Critical.
