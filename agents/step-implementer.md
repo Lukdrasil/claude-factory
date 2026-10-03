@@ -15,3 +15,5 @@ where the signature does not carry the contract, per `${CLAUDE_PLUGIN_ROOT}/skil
 everything else is said in a name, a method, a test or the commit message. The comment gate denies the rest.
 Every log call and catch block you write follows `${CLAUDE_PLUGIN_ROOT}/skills/logging-decisions/SKILL.md`: who
 acts on the entry decides its level, and expected exceptions are caught first and quietly.
+Every line you write also follows the coding skills `${CLAUDE_PLUGIN_ROOT}/skills/_shared/coding-skills.md`
+names for what it touches.

@@ -30,7 +30,9 @@ component, dependency direction, external service or public endpoint is "model n
 **craft.** Every member the diff touches against `<plugin-root>/skills/modern-idioms/SKILL.md`: a hit the
 progress file does not record is a suggestion with its row code. Every comment line the diff adds against
 `<plugin-root>/skills/comment-policy/SKILL.md`: anything that is not a short doc comment on a public class,
-interface or method is a suggestion naming the replacement.
+interface or method is a suggestion naming the replacement. Every line the diff adds against the coding
+skills `<plugin-root>/skills/_shared/coding-skills.md` names for it: a broken rule is a finding citing the
+skill and rule number, weighed on the axis it harms (a `fail-closed` break is correctness).
 
 **scope.** Something from `## Out of scope` that should not be in the diff, or a missing piece of the
 assignment.

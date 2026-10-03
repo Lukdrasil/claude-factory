@@ -40,6 +40,14 @@ A support or internal tool sends only Critical to the central provider and every
 Use `[LoggerMessage]` source generators for structured entries, and `Microsoft.Extensions.Compliance.Redaction`
 for members that carry personal data. Log opaque ids, never names or e-mail addresses.
 
+- A `[LoggerMessage]` method takes the exception as a parameter, so the entry carries the exception object;
+  `ex.Message` in a template loses the stack and may carry caller text.
+- `PathString` and `QueryString` are redacted before logging; a query string can carry a token.
+- A library takes `ILogger<T>` or `ILoggerFactory` and never assigns Serilog's static `Log.Logger`.
+- With StepUpLogging, Debug entries are buffered per request and flushed when an Error occurs. Write Debug as
+  the context an Error investigation needs; it costs little until then.
+- Tests assert `EventId` and `LogLevel` through `FakeLogCollector` (`Microsoft.Extensions.Diagnostics.Testing`).
+
 ## Boundary
 
 Log once, in the `IExceptionHandler`, the middleware or the job runner that decides the outcome, and carry the
